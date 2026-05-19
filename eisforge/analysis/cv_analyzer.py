@@ -2,17 +2,26 @@
 CV Analyzer — Automatic Cyclic Voltammetry Analysis for AOR.
 Author: Hoda Jafari | May 2026
 
+Supports three catalyst families:
+    - noble_metal  : Pt, Pd, Au, Rh — uses I_f/I_b, H-UPD ECSA
+    - alloy        : PtRu, PtSn, PdAu, PtCu — bifunctional mechanism
+    - metal_oxide  : NiO, Co3O4, NiCoO, MnO2 — oxide peaks, high onset
+    - metal_free   : B4C, N-doped Carbon, CNT, rGO — no I_f/I_b, Cdl ECSA
+
+Electrolyte specifics:
+    - Acid type    : H2SO4, HClO4, HCl, HNO3
+    - Base type    : KOH, NaOH, Na2CO3, NH3
+    - Concentration: float in mol/L (M)
+
 iR Compensation:
     E_corrected = E_measured - I(A) × R_s(Ohm)
-
-    IMPORTANT: Current must be in Amperes for the formula to give Volts.
-    If current is in mA, set current_unit="mA" and the class converts automatically.
+    Current must be in Amperes. Set current_unit="mA" for auto-conversion.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -21,82 +30,203 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+# ── Catalyst type constants ──────────────────────────────────────────────────
+
+CATALYST_NOBLE_METAL = "noble_metal"   # Pt, Pd, Au, Rh
+CATALYST_ALLOY       = "alloy"         # PtRu, PtSn, PdAu, PtCu, PdNi
+CATALYST_METAL_OXIDE = "metal_oxide"   # NiO, Co3O4, NiCoO, MnO2, Co2NiO4
+CATALYST_METAL_FREE  = "metal_free"    # B4C, N-doped C, CNT, rGO, g-C3N4
+
+# ── Electrolyte constants ───────────────────────────────────────────────────
+
+ACID_H2SO4  = "H2SO4"
+ACID_HClO4  = "HClO4"
+ACID_HCl    = "HCl"
+ACID_HNO3   = "HNO3"
+
+BASE_KOH    = "KOH"
+BASE_NaOH   = "NaOH"
+BASE_Na2CO3 = "Na2CO3"
+BASE_NH3    = "NH3"
+
+
+@dataclass
+class ElectrolyteInfo:
+    """
+    Detailed electrolyte description.
+
+    Parameters
+    ----------
+    media : str
+        'acidic' or 'alkaline'
+    compound : str
+        Specific acid or base: 'H2SO4', 'HClO4', 'KOH', 'NaOH', etc.
+    concentration : float
+        Concentration in mol/L (M).
+    """
+    media         : str   = "acidic"
+    compound      : str   = "H2SO4"
+    concentration : float = 0.5
+
+    def label(self) -> str:
+        return f"{self.concentration} M {self.compound}"
+
+    def is_acidic(self) -> bool:
+        return self.media == "acidic"
+
+    def is_alkaline(self) -> bool:
+        return self.media == "alkaline"
+
+    @classmethod
+    def from_string(cls, s: str, concentration: float = 0.5) -> "ElectrolyteInfo":
+        """
+        Create ElectrolyteInfo from a simple string.
+        e.g. 'acidic', 'alkaline', 'KOH', 'H2SO4', '1M KOH'
+        """
+        s = s.strip()
+        acids   = [ACID_H2SO4, ACID_HClO4, ACID_HCl, ACID_HNO3]
+        bases   = [BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3]
+        compound = "H2SO4"
+        media    = "acidic"
+        for a in acids:
+            if a.lower() in s.lower():
+                compound, media = a, "acidic"
+                break
+        for b in bases:
+            if b.lower() in s.lower():
+                compound, media = b, "alkaline"
+                break
+        if "alkaline" in s.lower() or "base" in s.lower():
+            media = "alkaline"
+            if compound == "H2SO4":
+                compound = "KOH"
+        return cls(media=media, compound=compound, concentration=concentration)
+
+
 @dataclass
 class CVAnalysisResult:
     """Results of complete CV analysis."""
 
+    # Catalyst and electrolyte info
+    catalyst_type    : str = CATALYST_NOBLE_METAL
+    electrolyte      : ElectrolyteInfo = field(default_factory=ElectrolyteInfo)
+
     # Potentials
-    e_onset: float
-    e_onset_method: str
-    e_forward_peak: float
-    e_backward_peak: float
+    e_onset          : float = 0.0
+    e_onset_method   : str   = ""
+    e_forward_peak   : float = 0.0
+    e_backward_peak  : float = 0.0
 
     # Currents (mA)
-    i_forward_peak: float
-    i_backward_peak: float
-    if_ib_ratio: float
-    baseline_current: float
+    i_forward_peak   : float = 0.0
+    i_backward_peak  : float = 0.0
+    if_ib_ratio      : float = float("nan")
+    baseline_current : float = 0.0
 
     # Current density — geometric (mA/cm²)
-    j_forward_peak: float = 0.0
-    j_backward_peak: float = 0.0
+    j_forward_peak   : float = 0.0
+    j_backward_peak  : float = 0.0
 
-    # Current density — ECSA-normalized (mA/cm²_metal)
-    j_specific_forward: float = 0.0
-    j_specific_backward: float = 0.0
+    # Current density — ECSA-normalized (mA/cm²_metal or mA/cm²_BET)
+    j_specific_forward  : float = 0.0
+    j_specific_backward : float = 0.0
+
+    # Metal-free specific
+    capacitive_background_mA  : float = 0.0   # background subtracted
+    net_faradaic_current_mA   : float = 0.0   # i_f - background
+    cdl_mF_cm2                : float = 0.0   # double-layer capacitance
 
     # iR compensation
-    ir_compensated: bool = False
-    r_s_used: float = 0.0
+    ir_compensated : bool  = False
+    r_s_used       : float = 0.0
 
     # Measurement parameters
-    scan_rate: float = 50.0
-    electrode_area: float = 1.0
-    ecsa: float = 0.0
-    catalyst_loading: float = 0.0
-    interpretation: str = ""
-    electrolyte: str = "acidic"
+    scan_rate        : float = 50.0
+    electrode_area   : float = 1.0
+    ecsa             : float = 0.0
+    catalyst_loading : float = 0.0
+    interpretation   : str   = ""
 
     def summary(self) -> str:
+        el = self.electrolyte
+        is_metal_free = self.catalyst_type == CATALYST_METAL_FREE
+
         lines = [
-            "=" * 64,
+            "=" * 68,
             "  CV Analysis Results — EISForge",
-            "=" * 64,
+            "=" * 68,
+            f"  Catalyst type     : {self._catalyst_label()}",
+            f"  Electrolyte       : {el.label()}  ({el.media})",
+            "-" * 68,
         ]
+
         if self.ir_compensated:
-            lines.append(f"  iR Compensation   : APPLIED (R_s = {self.r_s_used:.3f} Ω)")
+            lines.append(f"  iR Compensation   : APPLIED  (R_s = {self.r_s_used:.3f} Ω)")
         else:
-            lines.append(f"  iR Compensation   : NOT applied")
+            lines.append(f"  iR Compensation   : not applied")
+
         lines += [
             f"  E_onset           = {self.e_onset:.4f} V  ({self.e_onset_method})",
             f"  E_forward_peak    = {self.e_forward_peak:.4f} V",
-            f"  E_backward_peak   = {self.e_backward_peak:.4f} V",
-            "-" * 64,
-            f"  I_f               = {self.i_forward_peak:.4f} mA",
-            f"  I_b               = {self.i_backward_peak:.4f} mA",
-            f"  I_f/I_b           = {self.if_ib_ratio:.3f}",
-            "-" * 64,
+        ]
+
+        if not is_metal_free:
+            lines.append(
+                f"  E_backward_peak   = {self.e_backward_peak:.4f} V"
+            )
+
+        lines += [
+            "-" * 68,
+            f"  I_forward_peak    = {self.i_forward_peak:.4f} mA",
+        ]
+
+        if is_metal_free:
+            lines += [
+                f"  Capacitive bg     = {self.capacitive_background_mA:.4f} mA",
+                f"  Net faradaic I    = {self.net_faradaic_current_mA:.4f} mA",
+                f"  C_dl              = {self.cdl_mF_cm2:.4f} mF/cm²",
+                "  I_f/I_b           : NOT applicable (metal-free catalyst)",
+            ]
+        else:
+            lines += [
+                f"  I_backward_peak   = {self.i_backward_peak:.4f} mA",
+                f"  I_f/I_b           = {self.if_ib_ratio:.3f}"
+                if not np.isnan(self.if_ib_ratio)
+                else "  I_f/I_b           : not calculable",
+            ]
+
+        lines += [
+            "-" * 68,
             f"  j_f (geometric)   = {self.j_forward_peak:.4f} mA/cm²",
-            f"  j_b (geometric)   = {self.j_backward_peak:.4f} mA/cm²",
         ]
         if self.ecsa > 0:
-            lines += [
-                f"  j_f (ECSA)        = {self.j_specific_forward:.4f} mA/cm²_Pt",
-                f"  j_b (ECSA)        = {self.j_specific_backward:.4f} mA/cm²_Pt",
-            ]
+            label = "cm²_BET" if is_metal_free else "cm²_metal"
+            lines.append(
+                f"  j_f (ECSA)        = {self.j_specific_forward:.4f} mA/{label}"
+            )
+
         lines += [
             f"  Scan rate         = {self.scan_rate} mV/s",
             f"  Electrode area    = {self.electrode_area} cm²",
-            "-" * 64,
+            "-" * 68,
             f"  Interpretation    : {self.interpretation}",
-            "=" * 64,
+            "=" * 68,
         ]
         return "\n".join(lines)
+
+    def _catalyst_label(self) -> str:
+        labels = {
+            CATALYST_NOBLE_METAL : "Noble Metal (Pt / Pd / Au / Rh)",
+            CATALYST_ALLOY       : "Alloy (PtRu / PtSn / PdAu / PtCu ...)",
+            CATALYST_METAL_OXIDE : "Metal Oxide (NiO / Co3O4 / MnO2 ...)",
+            CATALYST_METAL_FREE  : "Metal-Free (B4C / N-doped C / CNT ...)",
+        }
+        return labels.get(self.catalyst_type, self.catalyst_type)
 
 
 class CVAnalyzer:
     """
-    Automatic CV analyzer for AOR.
+    Automatic CV analyzer for AOR — supports all catalyst families.
 
     Parameters
     ----------
@@ -105,107 +235,121 @@ class CVAnalyzer:
     electrode_area : float
         Geometric electrode area in cm² (default: 1.0).
     ecsa : float
-        Electrochemically active surface area in cm²_metal (default: 0).
+        Electrochemically active surface area in cm²_metal or cm²_BET.
+        For metal-free catalysts, set to BET-derived surface area.
     onset_method : str
         E_onset detection: 'tangent', 'threshold', or 'derivative'.
-    electrolyte : str
-        'acidic' or 'alkaline'.
+    electrolyte : str or ElectrolyteInfo
+        Electrolyte description. Can be:
+          - ElectrolyteInfo object (recommended)
+          - simple string: 'acidic', 'alkaline', 'KOH', 'H2SO4'
+    electrolyte_concentration : float
+        Concentration in mol/L — used when electrolyte is a string.
+    catalyst_type : str
+        One of: 'noble_metal', 'alloy', 'metal_oxide', 'metal_free'
+        Controls which metrics are computed and how results are interpreted.
     current_unit : str
         Unit of input current: 'mA', 'A', 'uA', 'nA'.
-        All currents are internally stored as mA.
     catalyst_loading : float
         Catalyst loading in mg/cm².
     """
 
-    # Conversion factors to mA
     _UNIT_TO_MA = {"A": 1000.0, "mA": 1.0, "uA": 1e-3, "μA": 1e-3, "nA": 1e-6}
+
+    # E_onset reference ranges per electrolyte compound (V vs RHE)
+    # Format: {compound: (excellent_max, moderate_max)}
+    _ONSET_RANGES = {
+        # Acids
+        ACID_H2SO4 : {"noble_metal": (0.45, 0.65), "alloy": (0.35, 0.55),
+                       "metal_oxide": (1.30, 1.55), "metal_free": (0.60, 0.90)},
+        ACID_HClO4 : {"noble_metal": (0.40, 0.60), "alloy": (0.30, 0.50),
+                       "metal_oxide": (1.25, 1.50), "metal_free": (0.55, 0.85)},
+        ACID_HCl   : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
+                       "metal_oxide": (1.35, 1.60), "metal_free": (0.65, 0.95)},
+        ACID_HNO3  : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
+                       "metal_oxide": (1.35, 1.60), "metal_free": (0.65, 0.95)},
+        # Bases
+        BASE_KOH   : {"noble_metal": (0.20, 0.40), "alloy": (0.10, 0.30),
+                       "metal_oxide": (1.30, 1.50), "metal_free": (0.40, 0.70)},
+        BASE_NaOH  : {"noble_metal": (0.22, 0.42), "alloy": (0.12, 0.32),
+                       "metal_oxide": (1.32, 1.52), "metal_free": (0.42, 0.72)},
+        BASE_Na2CO3: {"noble_metal": (0.30, 0.55), "alloy": (0.20, 0.45),
+                       "metal_oxide": (1.40, 1.65), "metal_free": (0.50, 0.80)},
+        BASE_NH3   : {"noble_metal": (0.35, 0.60), "alloy": (0.25, 0.50),
+                       "metal_oxide": (1.45, 1.70), "metal_free": (0.55, 0.85)},
+    }
 
     def __init__(
         self,
-        scan_rate: float = 50.0,
-        electrode_area: float = 1.0,
-        ecsa: float = 0.0,
-        onset_method: str = "tangent",
-        onset_threshold: float = 0.05,
-        smoothing: bool = True,
-        electrolyte: str = "acidic",
-        catalyst_loading: float = 0.0,
-        current_unit: str = "mA",
+        scan_rate              : float = 50.0,
+        electrode_area         : float = 1.0,
+        ecsa                   : float = 0.0,
+        onset_method           : str   = "tangent",
+        onset_threshold        : float = 0.05,
+        smoothing              : bool  = True,
+        electrolyte            = "acidic",
+        electrolyte_concentration: float = 0.5,
+        catalyst_type          : str   = CATALYST_NOBLE_METAL,
+        current_unit           : str   = "mA",
+        catalyst_loading       : float = 0.0,
     ) -> None:
-        self.scan_rate        = scan_rate
-        self.electrode_area   = max(electrode_area, 1e-10)
-        self.ecsa             = ecsa
-        self.onset_method     = onset_method
-        self.onset_threshold  = onset_threshold
-        self.smoothing        = smoothing
-        self.electrolyte      = electrolyte
-        self.catalyst_loading = catalyst_loading
-        self.current_unit     = current_unit
-        self._unit_factor     = self._UNIT_TO_MA.get(current_unit, 1.0)
+        self.scan_rate               = scan_rate
+        self.electrode_area          = max(electrode_area, 1e-10)
+        self.ecsa                    = ecsa
+        self.onset_method            = onset_method
+        self.onset_threshold         = onset_threshold
+        self.smoothing               = smoothing
+        self.catalyst_type           = catalyst_type
+        self.catalyst_loading        = catalyst_loading
+        self.current_unit            = current_unit
+        self._unit_factor            = self._UNIT_TO_MA.get(current_unit, 1.0)
+
+        # Build ElectrolyteInfo
+        if isinstance(electrolyte, ElectrolyteInfo):
+            self.electrolyte_info = electrolyte
+        else:
+            self.electrolyte_info = ElectrolyteInfo.from_string(
+                str(electrolyte), concentration=electrolyte_concentration
+            )
+
+        # Adjust onset sensitivity for metal-free (higher Tafel slope)
+        if catalyst_type == CATALYST_METAL_FREE:
+            self.onset_threshold = max(onset_threshold, 0.03)
+            logger.info("Metal-Free mode: onset threshold adjusted for higher Tafel slope.")
 
     # ── iR Compensation ───────────────────────────────────────────────────────
 
     @staticmethod
     def apply_ir_compensation(
-        potential: np.ndarray,
-        current_ma: np.ndarray,
-        r_s_ohms: float,
+        potential  : np.ndarray,
+        current_ma : np.ndarray,
+        r_s_ohms   : float,
     ) -> np.ndarray:
         """
-        Apply iR compensation to potential array.
-
-        Formula:
-            E_corrected = E_measured - I(A) × R_s(Ω)
-
-        Parameters
-        ----------
-        potential : np.ndarray
-            Measured potential (V).
-        current_ma : np.ndarray
-            Current in mA — converted internally to A.
-        r_s_ohms : float
-            Solution resistance in Ohms (R0 from EIS fit).
-
-        Returns
-        -------
-        np.ndarray
-            iR-corrected potential (V).
-
-        Notes
-        -----
-        R_s should come from the high-frequency intercept of the EIS Nyquist plot
-        (R0 parameter in CNLS fit). Always verify that R0 from EIS was measured
-        in the same electrolyte and at a similar potential.
+        Apply iR compensation.
+        E_corrected = E_measured - I(A) × R_s(Ω)
         """
         if r_s_ohms <= 0:
             return potential.copy()
+        current_a = current_ma * 1e-3
+        return potential - current_a * r_s_ohms
 
-        # Current: mA → A for correct V = IR calculation
-        current_a  = current_ma * 1e-3
-        ir_drop    = current_a * r_s_ohms          # V
-        return potential - ir_drop
-
-    # ── Main analyze method ───────────────────────────────────────────────────
+    # ── Main analyze ──────────────────────────────────────────────────────────
 
     def analyze(
         self,
-        potential: np.ndarray,
-        current: np.ndarray,
-        r_s_ohms: float = 0.0,
+        potential : np.ndarray,
+        current   : np.ndarray,
+        r_s_ohms  : float = 0.0,
     ) -> CVAnalysisResult:
         """
-        Perform complete CV analysis.
+        Full CV analysis — adapts automatically to catalyst_type.
 
         Parameters
         ----------
-        potential : np.ndarray
-            Potential array (V).
-        current : np.ndarray
-            Current array (in units specified by current_unit, default mA).
-        r_s_ohms : float
-            Solution resistance for iR compensation (Ω).
-            Set to 0 to skip iR compensation (default).
-            Obtain R_s from EIS fit (R0 parameter).
+        potential : np.ndarray   Potential (V)
+        current   : np.ndarray   Current (in current_unit, default mA)
+        r_s_ohms  : float        Solution resistance for iR compensation (Ω)
 
         Returns
         -------
@@ -219,29 +363,33 @@ class CVAnalyzer:
                 f"Insufficient data: {len(potential)} points. Minimum 6 required."
             )
 
-        # Convert current to mA
-        current_ma = current * self._unit_factor
-
-        # Apply iR compensation if R_s provided
+        current_ma     = current * self._unit_factor
         ir_compensated = r_s_ohms > 0
+
         if ir_compensated:
             potential = self.apply_ir_compensation(potential, current_ma, r_s_ohms)
             logger.info(f"iR compensation applied: R_s = {r_s_ohms:.3f} Ω")
 
-        # Smooth current
         if self.smoothing:
             current_ma = self._smooth(current_ma)
 
-        # Split forward / backward scan
+        # Metal-free: background subtraction before peak detection
+        background = np.zeros_like(current_ma)
+        if self.catalyst_type == CATALYST_METAL_FREE:
+            current_ma, background = self._subtract_capacitive_background(
+                potential, current_ma
+            )
+
+        # Split scans
         fwd_mask, bwd_mask = self._split_scans(potential, current_ma)
         e_fwd, i_fwd = potential[fwd_mask], current_ma[fwd_mask]
         e_bwd, i_bwd = potential[bwd_mask], current_ma[bwd_mask]
 
         if len(e_fwd) < 3 or len(e_bwd) < 3:
-            mid = len(potential) // 2
+            mid  = len(potential) // 2
             e_fwd, i_fwd = potential[:mid], current_ma[:mid]
             e_bwd, i_bwd = potential[mid:], current_ma[mid:]
-            logger.warning("Scan direction auto-detected: using midpoint split.")
+            logger.warning("Scan split: midpoint fallback.")
 
         # Peaks
         i_f = float(i_fwd[np.argmax(i_fwd)])
@@ -249,52 +397,120 @@ class CVAnalyzer:
         i_b = float(i_bwd[np.argmax(i_bwd)])
         e_b = float(e_bwd[np.argmax(i_bwd)])
 
-        # E_onset
-        e_onset, baseline = self._detect_onset(e_fwd, i_fwd, i_f)
+        # E_onset (higher derivative sensitivity for metal-free)
+        onset_method = (
+            "derivative"
+            if self.catalyst_type == CATALYST_METAL_FREE
+            and self.onset_method == "tangent"
+            else self.onset_method
+        )
+        e_onset, baseline = self._detect_onset_method(
+            onset_method, e_fwd, i_fwd, i_f
+        )
 
-        # I_f/I_b ratio
-        ratio = i_f / i_b if i_b > 1e-10 else float("nan")
+        # I_f/I_b — only for metal/alloy catalysts
+        if self.catalyst_type in (CATALYST_NOBLE_METAL, CATALYST_ALLOY):
+            ratio = i_f / i_b if i_b > 1e-10 else float("nan")
+        else:
+            ratio = float("nan")   # not meaningful for oxide/metal-free
 
-        # Current density
+        # Current densities
         j_f      = i_f / self.electrode_area
         j_b      = i_b / self.electrode_area
         j_spec_f = i_f / self.ecsa if self.ecsa > 0 else 0.0
         j_spec_b = i_b / self.ecsa if self.ecsa > 0 else 0.0
 
+        # Capacitive background (metal-free)
+        bg_mean   = float(np.mean(np.abs(background))) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
+        net_farad = i_f - bg_mean
+        cdl       = self._estimate_cdl(background) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
+
         return CVAnalysisResult(
-            e_onset=e_onset,
-            e_onset_method=self.onset_method + (" (iR-corrected)" if ir_compensated else ""),
-            e_forward_peak=e_f,
-            e_backward_peak=e_b,
-            i_forward_peak=i_f,
-            i_backward_peak=i_b,
-            if_ib_ratio=ratio,
-            baseline_current=baseline,
-            j_forward_peak=j_f,
-            j_backward_peak=j_b,
-            j_specific_forward=j_spec_f,
-            j_specific_backward=j_spec_b,
-            ir_compensated=ir_compensated,
-            r_s_used=r_s_ohms,
-            scan_rate=self.scan_rate,
-            electrode_area=self.electrode_area,
-            ecsa=self.ecsa,
-            catalyst_loading=self.catalyst_loading,
-            interpretation=self._interpret(e_onset, i_f, i_b, ratio),
-            electrolyte=self.electrolyte,
+            catalyst_type           = self.catalyst_type,
+            electrolyte             = self.electrolyte_info,
+            e_onset                 = e_onset,
+            e_onset_method          = onset_method + (" (iR-corrected)" if ir_compensated else ""),
+            e_forward_peak          = e_f,
+            e_backward_peak         = e_b,
+            i_forward_peak          = i_f,
+            i_backward_peak         = i_b,
+            if_ib_ratio             = ratio,
+            baseline_current        = baseline,
+            j_forward_peak          = j_f,
+            j_backward_peak         = j_b,
+            j_specific_forward      = j_spec_f,
+            j_specific_backward     = j_spec_b,
+            capacitive_background_mA= bg_mean,
+            net_faradaic_current_mA = net_farad,
+            cdl_mF_cm2              = cdl,
+            ir_compensated          = ir_compensated,
+            r_s_used                = r_s_ohms,
+            scan_rate               = self.scan_rate,
+            electrode_area          = self.electrode_area,
+            ecsa                    = self.ecsa,
+            catalyst_loading        = self.catalyst_loading,
+            interpretation          = self._interpret(e_onset, i_f, i_b, ratio),
         )
+
+    # ── Capacitive background subtraction (metal-free) ────────────────────────
+
+    def _subtract_capacitive_background(
+        self,
+        potential  : np.ndarray,
+        current_ma : np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Estimate and subtract capacitive background current.
+
+        For metal-free catalysts (B4C, N-doped C, CNT), the CV shows a
+        roughly rectangular capacitive envelope. We fit a low-order polynomial
+        to regions far from the faradaic peak and subtract it.
+
+        Returns
+        -------
+        corrected_current, background
+        """
+        n         = len(current_ma)
+        bg_pts    = int(n * 0.15)
+        bg_pts    = max(bg_pts, 3)
+
+        # Use first and last 15% as baseline regions
+        x_bg = np.concatenate([potential[:bg_pts], potential[-bg_pts:]])
+        y_bg = np.concatenate([current_ma[:bg_pts], current_ma[-bg_pts:]])
+
+        try:
+            coeffs     = np.polyfit(x_bg, y_bg, 1)          # linear background
+            background = np.polyval(coeffs, potential)
+            corrected  = current_ma - background
+            logger.info("Capacitive background subtracted (linear fit).")
+        except Exception:
+            background = np.zeros_like(current_ma)
+            corrected  = current_ma.copy()
+
+        return corrected, background
+
+    def _estimate_cdl(self, background: np.ndarray) -> float:
+        """
+        Estimate double-layer capacitance from background current.
+        C_dl = I_background / (scan_rate)
+        scan_rate in V/s for result in F, then convert to mF/cm²
+        """
+        if self.scan_rate <= 0 or self.electrode_area <= 0:
+            return 0.0
+        scan_rate_V_s = self.scan_rate * 1e-3   # mV/s → V/s
+        i_bg_A        = np.mean(np.abs(background)) * 1e-3   # mA → A
+        cdl_F         = i_bg_A / scan_rate_V_s
+        cdl_mF_cm2    = (cdl_F * 1e3) / self.electrode_area
+        return float(cdl_mF_cm2)
 
     # ── Scan splitting ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _split_scans(
-        potential: np.ndarray,
-        current: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        n       = len(potential)
-        peak    = int(np.argmax(potential))
-        if peak < 2:      peak = n // 2
-        if peak > n - 3:  peak = n // 2
+    def _split_scans(potential, current):
+        n    = len(potential)
+        peak = int(np.argmax(potential))
+        if peak < 2:     peak = n // 2
+        if peak > n - 3: peak = n // 2
         fwd = np.zeros(n, dtype=bool)
         bwd = np.zeros(n, dtype=bool)
         fwd[:peak + 1] = True
@@ -303,22 +519,20 @@ class CVAnalyzer:
 
     # ── E_onset detection ─────────────────────────────────────────────────────
 
-    def _detect_onset(
-        self,
-        potential: np.ndarray,
-        current: np.ndarray,
-        i_peak: float,
-    ) -> tuple[float, float]:
-        if self.onset_method == "tangent":
-            return self._onset_tangent(potential, current, i_peak)
-        elif self.onset_method == "threshold":
-            return self._onset_threshold(potential, current, i_peak)
+    def _detect_onset_method(self, method, e_fwd, i_fwd, i_peak):
+        if method == "tangent":
+            return self._onset_tangent(e_fwd, i_fwd, i_peak)
+        elif method == "threshold":
+            return self._onset_threshold(e_fwd, i_fwd, i_peak)
         else:
-            return self._onset_derivative(potential, current)
+            return self._onset_derivative(e_fwd, i_fwd)
+
+    def _detect_onset(self, potential, current, i_peak):
+        return self._detect_onset_method(self.onset_method, potential, current, i_peak)
 
     def _onset_tangent(self, potential, current, i_peak):
-        n       = len(potential)
-        bl_end  = max(int(n * 0.2), 3)
+        n      = len(potential)
+        bl_end = max(int(n * 0.2), 3)
         baseline = float(np.mean(current[:bl_end]))
         try:
             m_bl, b_bl = np.polyfit(potential[:bl_end], current[:bl_end], 1)
@@ -352,12 +566,12 @@ class CVAnalyzer:
         if len(current) < 5:
             return self._onset_threshold(potential, current, float(np.max(current)))
         try:
-            d2 = np.gradient(np.gradient(current, potential), potential)
+            d2   = np.gradient(np.gradient(current, potential), potential)
             peak = int(np.argmax(current))
             pre  = d2[:peak]
             if len(pre) == 0:
                 return float(potential[0]), float(current[0])
-            idx = int(np.argmax(pre))
+            idx  = int(np.argmax(pre))
             return float(potential[idx]), float(np.mean(current[:max(idx, 1)]))
         except Exception:
             return self._onset_threshold(potential, current, float(np.max(current)))
@@ -382,23 +596,144 @@ class CVAnalyzer:
     # ── Interpretation ────────────────────────────────────────────────────────
 
     def _interpret(self, e_onset, i_f, i_b, ratio) -> str:
-        parts = []
-        if np.isnan(ratio):
-            parts.append("I_f/I_b: not calculable")
-        elif ratio > 2.0:
-            parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance")
-        elif ratio > 1.0:
-            parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
-        elif ratio > 0.5:
-            parts.append(f"I_f/I_b={ratio:.2f} — Moderate CO poisoning")
-        else:
-            parts.append(f"I_f/I_b={ratio:.2f} — Severe CO poisoning")
+        parts  = []
+        el     = self.electrolyte_info
+        ctype  = self.catalyst_type
+        conc   = el.concentration
 
-        lo, hi = (0.4, 0.6) if self.electrolyte == "acidic" else (0.2, 0.4)
-        if e_onset < lo:   parts.append(f"E_onset={e_onset:.3f}V — Excellent activity")
-        elif e_onset < hi: parts.append(f"E_onset={e_onset:.3f}V — Moderate activity")
-        else:              parts.append(f"E_onset={e_onset:.3f}V — High overpotential")
+        # ── Onset potential assessment ──────────────────────────────────────
+        ranges = self._ONSET_RANGES.get(
+            el.compound,
+            self._ONSET_RANGES[ACID_H2SO4 if el.is_acidic() else BASE_KOH]
+        ).get(ctype, (0.45, 0.65))
+
+        lo, hi = ranges
+
+        # Concentration correction: higher concentration → slightly lower onset
+        conc_note = ""
+        if conc != 0.5 and el.is_acidic():
+            conc_note = f" [{conc} M {el.compound}]"
+        elif conc != 1.0 and el.is_alkaline():
+            conc_note = f" [{conc} M {el.compound}]"
+
+        if e_onset < lo:
+            parts.append(f"E_onset={e_onset:.3f} V — Excellent activity{conc_note}")
+        elif e_onset < hi:
+            parts.append(f"E_onset={e_onset:.3f} V — Moderate activity{conc_note}")
+        else:
+            parts.append(f"E_onset={e_onset:.3f} V — High overpotential{conc_note}")
+
+        # ── Catalyst-specific assessment ────────────────────────────────────
+        if ctype == CATALYST_METAL_FREE:
+            parts.append(
+                "Metal-free catalyst: I_f/I_b not applicable. "
+                "ECSA via C_dl method. "
+                "CO poisoning pathway absent — different mechanism."
+            )
+            if i_f > 0:
+                parts.append(f"Peak current = {i_f:.3f} mA (after background subtraction)")
+
+        elif ctype == CATALYST_METAL_OXIDE:
+            parts.append(
+                "Metal oxide catalyst: oxidation proceeds via M(OH)x/MOOx redox mediation. "
+                "High onset expected (>1.3 V vs RHE in alkaline)."
+            )
+            if not np.isnan(ratio):
+                parts.append(f"I_f/I_b = {ratio:.2f}")
+
+        elif ctype == CATALYST_ALLOY:
+            if not np.isnan(ratio):
+                if ratio > 2.0:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance (bifunctional mechanism active)")
+                elif ratio > 1.0:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
+                else:
+                    parts.append(f"I_f/I_b={ratio:.2f} — CO poisoning detected — check alloy composition")
+
+        else:   # noble_metal
+            if not np.isnan(ratio):
+                if ratio > 2.0:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance")
+                elif ratio > 1.0:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
+                elif ratio > 0.5:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Moderate CO poisoning")
+                else:
+                    parts.append(f"I_f/I_b={ratio:.2f} — Severe CO poisoning")
+
+        # ── Electrolyte-specific note ───────────────────────────────────────
+        if el.compound == BASE_Na2CO3:
+            parts.append("Na2CO3 electrolyte: mildly alkaline (pH ~11.6) — slower OH- supply than KOH/NaOH")
+        elif el.compound == ACID_HCl:
+            parts.append("HCl electrolyte: Cl- may adsorb on Pt/Pd — check for chloride poisoning")
+        elif el.compound == ACID_HNO3:
+            parts.append("HNO3 electrolyte: oxidising acid — may affect catalyst surface")
+
+        # ── Concentration note ──────────────────────────────────────────────
+        if el.is_acidic() and conc > 1.0:
+            parts.append(f"High acid concentration ({conc} M) may suppress OH_ads formation")
+        elif el.is_alkaline() and conc < 0.1:
+            parts.append(f"Low base concentration ({conc} M) — insufficient OH- supply; higher Tafel slope expected")
+
         return " | ".join(parts)
+
+    # ── Utilities ─────────────────────────────────────────────────────────────
+
+    @classmethod
+    def for_noble_metal(
+        cls,
+        electrolyte_compound   : str   = "H2SO4",
+        concentration          : float = 0.5,
+        **kwargs,
+    ) -> "CVAnalyzer":
+        """Convenience constructor for Pt, Pd, Au, Rh catalysts."""
+        media = "alkaline" if electrolyte_compound in (BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3) else "acidic"
+        el    = ElectrolyteInfo(media=media, compound=electrolyte_compound, concentration=concentration)
+        return cls(electrolyte=el, catalyst_type=CATALYST_NOBLE_METAL, **kwargs)
+
+    @classmethod
+    def for_alloy(
+        cls,
+        electrolyte_compound   : str   = "H2SO4",
+        concentration          : float = 0.5,
+        **kwargs,
+    ) -> "CVAnalyzer":
+        """Convenience constructor for PtRu, PtSn, PdAu, PtCu catalysts."""
+        media = "alkaline" if electrolyte_compound in (BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3) else "acidic"
+        el    = ElectrolyteInfo(media=media, compound=electrolyte_compound, concentration=concentration)
+        return cls(electrolyte=el, catalyst_type=CATALYST_ALLOY, **kwargs)
+
+    @classmethod
+    def for_metal_free(
+        cls,
+        electrolyte_compound   : str   = "KOH",
+        concentration          : float = 1.0,
+        **kwargs,
+    ) -> "CVAnalyzer":
+        """
+        Convenience constructor for B4C, N-doped Carbon, CNT, rGO catalysts.
+
+        Automatically:
+          - Skips I_f/I_b calculation
+          - Applies capacitive background subtraction
+          - Uses derivative onset detection (sensitive to gentle slope)
+          - Reports C_dl for ECSA estimation
+        """
+        media = "alkaline" if electrolyte_compound in (BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3) else "acidic"
+        el    = ElectrolyteInfo(media=media, compound=electrolyte_compound, concentration=concentration)
+        return cls(electrolyte=el, catalyst_type=CATALYST_METAL_FREE, **kwargs)
+
+    @classmethod
+    def for_metal_oxide(
+        cls,
+        electrolyte_compound   : str   = "KOH",
+        concentration          : float = 1.0,
+        **kwargs,
+    ) -> "CVAnalyzer":
+        """Convenience constructor for NiO, Co3O4, Co2NiO4, MnO2 catalysts."""
+        media = "alkaline" if electrolyte_compound in (BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3) else "acidic"
+        el    = ElectrolyteInfo(media=media, compound=electrolyte_compound, concentration=concentration)
+        return cls(electrolyte=el, catalyst_type=CATALYST_METAL_OXIDE, **kwargs)
 
     @staticmethod
     def load_csv(filepath: str) -> tuple[np.ndarray, np.ndarray]:
@@ -406,8 +741,46 @@ class CVAnalyzer:
             try:
                 df = pd.read_csv(filepath, comment="#", encoding=enc,
                                  sep=None, engine="python")
-                c = df.columns.tolist()
+                c  = df.columns.tolist()
                 return df[c[0]].to_numpy(float), df[c[1]].to_numpy(float)
             except UnicodeDecodeError:
                 continue
         raise ValueError(f"Cannot read file: {filepath}")
+
+
+# ── Quick usage examples ──────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+
+    E = np.linspace(0.0, 1.2, 200)
+    I = np.sin(np.pi * E) * 5 + np.random.normal(0, 0.1, 200)
+
+    # ── Pt in H2SO4 (noble metal, acidic) ──────────────────────────────────
+    ana_pt = CVAnalyzer.for_noble_metal(
+        electrolyte_compound="H2SO4",
+        concentration=0.5,
+        scan_rate=50,
+        electrode_area=0.196,
+    )
+    result_pt = ana_pt.analyze(E, I)
+    print(result_pt.summary())
+
+    # ── B4C in KOH (metal-free, alkaline) ──────────────────────────────────
+    ana_b4c = CVAnalyzer.for_metal_free(
+        electrolyte_compound="KOH",
+        concentration=1.0,
+        scan_rate=50,
+        electrode_area=0.196,
+    )
+    result_b4c = ana_b4c.analyze(E, I)
+    print(result_b4c.summary())
+
+    # ── PtRu in KOH (alloy, alkaline) ──────────────────────────────────────
+    ana_ptru = CVAnalyzer.for_alloy(
+        electrolyte_compound="KOH",
+        concentration=1.0,
+        scan_rate=50,
+        electrode_area=0.196,
+    )
+    result_ptru = ana_ptru.analyze(E, I)
+    print(result_ptru.summary())
