@@ -251,8 +251,8 @@ with st.sidebar:
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1,tab2,tab3,tab4,tab5 = st.tabs([
-    "📈 CV Analysis","📉 LSV Analysis","🔬 EIS Analysis","🤖 EIS-GPT","🔗 Correlation"
+tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
+    "📈 CV Analysis","📉 LSV Analysis","🔬 EIS Analysis","🤖 EIS-GPT","🔗 Correlation","⚗️ K-L Analysis"
 ])
 
 
@@ -929,3 +929,169 @@ with tab5:
                 st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
             except Exception as e:
                 st.error(f"Error: {e}")
+
+
+# ══════════════════ K-L Analysis ═════════════════════════════════════════════
+with tab6:
+    st.markdown('<p class="section-title">Koutecky-Levich Analysis — RDE</p>', unsafe_allow_html=True)
+    st.info(
+        "Upload LSV files measured at **different rotation speeds** (400, 900, 1600, 2500 rpm). "
+        "The K-L plot separates **kinetic current (j_k)** from mass-transport limitation "
+        "and determines the **number of electrons (n)** transferred per alcohol molecule."
+    )
+
+    kl_col1, kl_col2 = st.columns([1, 1])
+
+    with kl_col1:
+        st.markdown('<p class="section-title">Alcohol & Electrolyte</p>', unsafe_allow_html=True)
+        kl_alcohol   = st.selectbox("Alcohol", ["ethanol","methanol","2-propanol","ethylene_glycol","glycerol"], key="kl_alc")
+        kl_conc      = st.number_input("Alcohol concentration (M)", value=1.0, step=0.1, min_value=0.01, key="kl_conc")
+        kl_temp      = st.number_input("Temperature (°C)", value=25, min_value=0, max_value=100, key="kl_temp")
+        kl_pot       = st.number_input("Analysis potential (V vs RHE)", value=0.5, step=0.01, key="kl_pot")
+        kl_area      = st.number_input("Electrode area (cm²)", value=0.196, step=0.001, min_value=0.001, key="kl_area")
+        st.caption("Standard RDE electrode: 0.196 cm² (5 mm diameter)")
+
+    with kl_col2:
+        st.markdown('<p class="section-title">Upload RDE Files</p>', unsafe_allow_html=True)
+        st.caption("Upload one LSV file per rotation speed — name them clearly (e.g. lsv_400rpm.csv)")
+
+        kl_speeds  = []
+        kl_files   = []
+        for rpm_val in [400, 900, 1600, 2500]:
+            f = st.file_uploader(f"{rpm_val} rpm", type=CV_FORMATS, key=f"kl_{rpm_val}")
+            if f:
+                kl_files.append(f)
+                kl_speeds.append(float(rpm_val))
+
+        # Custom speed option
+        custom_rpm = st.number_input("Custom speed (rpm, optional)", value=0, step=100, key="kl_custom_rpm")
+        custom_file = st.file_uploader("Custom speed file", type=CV_FORMATS, key="kl_custom_f")
+        if custom_file and custom_rpm > 0:
+            kl_files.append(custom_file)
+            kl_speeds.append(float(custom_rpm))
+
+    st.divider()
+
+    if len(kl_files) >= 3:
+        st.success(f"✅ {len(kl_files)} rotation speeds loaded: {[int(s) for s in kl_speeds]} rpm")
+
+        if st.button("▶ Run Koutecky-Levich Analysis", type="primary"):
+            with st.spinner("Running K-L analysis..."):
+                try:
+                    from eisforge.analysis.koutecky_levich import KLAnalyzer
+
+                    pots_kl, curs_kl = [], []
+                    for f in kl_files:
+                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        pots_kl.append(p)
+                        curs_kl.append(c)
+
+                    kl_ana = KLAnalyzer(
+                        alcohol=kl_alcohol,
+                        electrolyte=elec_compound_key,
+                        concentration_M=kl_conc,
+                        temperature_C=float(kl_temp),
+                        catalyst_type=catalyst_type,
+                    )
+
+                    kl_result = kl_ana.analyze(
+                        rotation_speeds_rpm=kl_speeds,
+                        potentials=pots_kl,
+                        currents=curs_kl,
+                        electrode_area=kl_area,
+                        analysis_potential=kl_pot,
+                    )
+                    st.session_state["kl_result"] = kl_result
+                    st.success("✅ K-L analysis complete!")
+                except Exception as e:
+                    st.error(f"K-L error: {e}")
+    elif kl_files:
+        st.warning(f"Upload at least 3 rotation speeds. Currently: {len(kl_files)}")
+    else:
+        st.info("Upload LSV files at 3+ rotation speeds to begin.")
+
+    if "kl_result" in st.session_state:
+        kl_r = st.session_state["kl_result"]
+        best = kl_r.best_result
+        if best:
+            st.divider()
+            st.markdown("### Results")
+
+            # ── Key metrics ────────────────────────────────────────────────
+            m1,m2,m3,m4 = st.columns(4)
+            m1.metric("n electrons",    f"{best.n_electrons:.2f}")
+            m2.metric("j_kinetic",      f"{best.j_kinetic:.4f} mA/cm²")
+            m3.metric("K-L R²",         f"{best.r_squared:.4f}")
+            m4.metric("Mass-transport", f"{best.diffusion_controlled_fraction:.0%}")
+
+            st.info(f"**Interpretation:** {best.interpretation}")
+
+            # ── K-L plot ───────────────────────────────────────────────────
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            fig_kl = make_subplots(rows=1, cols=2,
+                                   subplot_titles=("Koutecky-Levich Plot", "j_kinetic vs Potential"))
+
+            # K-L: 1/j vs 1/√ω
+            inv_sqw = [1.0 / np.sqrt(rpm * 2 * np.pi / 60.0) for rpm in best.rotation_speeds_rpm]
+            inv_j   = [1.0 / j if abs(j) > 1e-10 else None for j in best.j_measured]
+            valid_pts = [(x, y) for x, y in zip(inv_sqw, inv_j) if y is not None]
+
+            if valid_pts:
+                x_kl = [p[0] for p in valid_pts]
+                y_kl = [p[1] for p in valid_pts]
+
+                fig_kl.add_trace(go.Scatter(
+                    x=x_kl, y=y_kl, mode="markers",
+                    name="1/j vs 1/√ω",
+                    marker=dict(color="#2563eb", size=10, symbol="circle"),
+                ), row=1, col=1)
+
+                # Fit line
+                x_fit = np.linspace(min(x_kl)*0.9, max(x_kl)*1.1, 50)
+                from scipy.stats import linregress
+                if len(x_kl) >= 2:
+                    sl, ic, _, _, _ = linregress(x_kl, y_kl)
+                    fig_kl.add_trace(go.Scatter(
+                        x=x_fit, y=sl*x_fit + ic, mode="lines",
+                        name=f"K-L fit (R²={best.r_squared:.4f})",
+                        line=dict(color="#dc2626", dash="dash", width=2),
+                    ), row=1, col=1)
+
+                    # Mark intercept (1/j_k)
+                    if abs(best.intercept) > 1e-12:
+                        fig_kl.add_hline(y=best.intercept, line_dash="dot",
+                                         line_color="#d97706",
+                                         annotation_text=f"1/j_k = {best.intercept:.4f}",
+                                         annotation_font=dict(color="#d97706"),
+                                         row=1, col=1)
+
+            # j_kinetic vs potential
+            if len(kl_r.potentials_V) > 1:
+                fig_kl.add_trace(go.Scatter(
+                    x=kl_r.potentials_V, y=kl_r.j_kinetic_arr,
+                    mode="lines+markers",
+                    name="j_kinetic",
+                    line=dict(color="#7c3aed", width=2),
+                    marker=dict(size=8),
+                ), row=1, col=2)
+
+            fig_kl.update_xaxes(title_text="1/√ω (s^0.5/rad^0.5)", row=1, col=1)
+            fig_kl.update_yaxes(title_text="1/j (cm²/mA)", row=1, col=1)
+            fig_kl.update_xaxes(title_text="Potential (V vs RHE)", row=1, col=2)
+            fig_kl.update_yaxes(title_text="j_kinetic (mA/cm²)", row=1, col=2)
+            fig_kl.update_layout(**PLOTLY_LAYOUT, height=450,
+                                 title=f"K-L Analysis — {kl_alcohol} | {catalyst or 'Catalyst'}")
+            st.plotly_chart(fig_kl, use_container_width=True)
+
+            # ── Publication table ──────────────────────────────────────────
+            st.markdown("#### Publication-Ready Table")
+            st.dataframe(kl_r.to_dataframe(), use_container_width=True, hide_index=True)
+
+            col_md, col_tex = st.columns(2)
+            with col_md:
+                st.markdown("**Markdown**")
+                st.code(kl_r.to_markdown_table(), language="markdown")
+            with col_tex:
+                st.markdown("**LaTeX**")
+                st.code(kl_r.to_latex_table(), language="latex")
