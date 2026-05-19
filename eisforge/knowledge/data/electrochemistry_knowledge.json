@@ -1,11 +1,29 @@
 {
   "_metadata": {
-    "title": "EISForge Literature Knowledge Base",
+    "version": "2.0",
     "author": "Hoda Jafari",
-    "version": "1.0.0",
     "date": "May 2026",
-    "description": "Curated electrochemical parameters from peer-reviewed literature",
-    "note": "All values are literature ranges. Actual values depend on experimental conditions."
+    "description": "Comprehensive EIS/CV/LSV parameter database for AOR catalysts",
+    "categories": [
+      "Pure metals",
+      "Binary alloys",
+      "Ternary alloys",
+      "Metal/Carbon support",
+      "Metal/Graphene",
+      "Metal/Pseudo-graphene (g-C3N4, MXene, N-doped graphene)",
+      "Metal oxides and hydroxides",
+      "Other electrochemical systems"
+    ],
+    "sources": [
+      "Lamy et al., Electrochim. Acta 47 (2002) 3701",
+      "Antolini, J. Power Sources 170 (2007) 1",
+      "Xu et al., J. Power Sources 196 (2011) 4419",
+      "Jiang et al., ACS Catal. 5 (2015) 438",
+      "Nosheen et al., Nano Lett. 12 (2012) 3584",
+      "Huang et al., Angew. Chem. 131 (2019) 8992",
+      "Demir et al., Electrochim. Acta 220 (2016) 405",
+      "Moghaddam et al., J. Mater. Chem. A 9 (2021) 1"
+    ]
   },
 
   "systems": {
@@ -13,51 +31,43 @@
     "AOR_Pt": {
       "system_type": "AOR",
       "catalyst": "Pt",
-      "variants": ["Pt/C", "Pt-black", "Pt bulk", "Pt nanoparticles"],
+      "category": "Pure metal",
+      "variants": ["Pt/C", "Pt-black", "Pt bulk", "Pt nanoparticles", "Pt NPs"],
       "alcohols": ["methanol", "ethanol", "ethylene_glycol", "glycerol"],
       "electrolytes": {
         "acidic": {
           "examples": ["0.5M H2SO4", "0.1M HClO4"],
           "EIS_parameters": {
-            "R_solution": {"min": 1.0,  "max": 15.0,  "unit": "Ω",          "note": "depends on electrolyte concentration"},
-            "R_ct":       {"min": 20.0, "max": 2000.0,"unit": "Ω",          "note": "strongly potential-dependent"},
-            "CPE_Q":      {"min": 1e-5, "max": 5e-3,  "unit": "F·s^(n-1)", "note": "related to ECSA"},
-            "CPE_n":      {"min": 0.80, "max": 0.95,  "unit": "dimensionless"},
-            "Warburg_sigma": {"min": 10.0, "max": 300.0, "unit": "Ω·s^-0.5", "note": "present at low concentrations"}
+            "R_solution": {"min": 1.0, "max": 15.0, "unit": "Ohm"},
+            "R_ct": {"min": 20.0, "max": 2000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-5, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
           },
           "CV_parameters": {
-            "E_onset_methanol":       {"min": 0.45, "max": 0.65, "unit": "V vs RHE"},
-            "E_onset_ethanol":        {"min": 0.40, "max": 0.60, "unit": "V vs RHE"},
-            "If_Ib_ratio":            {"min": 0.5,  "max": 1.2,  "note": "Pt susceptible to CO poisoning"},
-            "E_forward_peak_methanol":{"min": 0.65, "max": 0.90, "unit": "V vs RHE"},
-            "E_backward_peak":        {"min": 0.40, "max": 0.60, "unit": "V vs RHE"}
+            "E_onset_ethanol": {"min": 0.40, "max": 0.65, "unit": "V vs RHE"},
+            "E_onset_methanol": {"min": 0.45, "max": 0.65, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 0.5, "max": 1.2},
+            "E_forward_peak": {"min": 0.65, "max": 0.90, "unit": "V vs RHE"}
           },
           "recommended_circuit": "R0-p(R1,CPE1)-W1",
-          "alternative_circuits": ["R0-p(R1,CPE1)-p(R2,CPE2)", "R0-p(R1,CPE1)"],
-          "CO_poisoning_risk": "HIGH",
-          "references": [
-            "Antolini, J. Power Sources 170 (2007) 1-12",
-            "Lamy et al., Electrochim. Acta 47 (2002) 3701"
-          ]
+          "CO_poisoning": "HIGH",
+          "initial_guess": {"R0": 10.0, "R1": 200.0, "CPE_Q": 1e-4, "CPE_n": 0.88, "W": 50.0}
         },
         "alkaline": {
-          "examples": ["1M KOH", "1M NaOH"],
+          "examples": ["1M KOH", "0.1M NaOH"],
           "EIS_parameters": {
-            "R_solution": {"min": 0.5,  "max": 8.0,   "unit": "Ω"},
-            "R_ct":       {"min": 5.0,  "max": 500.0, "unit": "Ω",          "note": "lower than acidic"},
-            "CPE_Q":      {"min": 5e-5, "max": 1e-2,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.78, "max": 0.95,  "unit": "dimensionless"},
-            "Warburg_sigma": {"min": 5.0, "max": 150.0, "unit": "Ω·s^-0.5"}
+            "R_solution": {"min": 0.5, "max": 8.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 500.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-5, "max": 1e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.95}
           },
           "CV_parameters": {
-            "E_onset_methanol": {"min": 0.20, "max": 0.40, "unit": "V vs RHE"},
-            "E_onset_ethanol":  {"min": 0.15, "max": 0.35, "unit": "V vs RHE"},
-            "If_Ib_ratio":      {"min": 0.8,  "max": 2.0,  "note": "better than acidic"},
-            "E_forward_peak":   {"min": 0.60, "max": 0.80, "unit": "V vs RHE"}
+            "E_onset_ethanol": {"min": 0.20, "max": 0.45, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 2.5}
           },
-          "recommended_circuit": "R0-p(R1,CPE1)-W1",
-          "CO_poisoning_risk": "MEDIUM",
-          "references": ["Spendelow & Wieckowski, Phys. Chem. Chem. Phys. 9 (2007) 2654"]
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "MODERATE",
+          "initial_guess": {"R0": 3.0, "R1": 50.0, "CPE_Q": 5e-4, "CPE_n": 0.88}
         }
       }
     },
@@ -65,48 +75,41 @@
     "AOR_Pd": {
       "system_type": "AOR",
       "catalyst": "Pd",
-      "variants": ["Pd/C", "Pd-black", "Pd nanoparticles"],
-      "alcohols": ["methanol", "ethanol", "ethylene_glycol", "glycerol"],
+      "category": "Pure metal",
+      "variants": ["Pd/C", "Pd-black", "Pd nanoparticles", "Pd NPs", "Pd bulk"],
+      "alcohols": ["ethanol", "glycerol", "ethylene_glycol"],
+      "note": "Pd is especially active for AOR in alkaline media",
       "electrolytes": {
         "acidic": {
           "EIS_parameters": {
-            "R_solution": {"min": 1.0,  "max": 15.0,  "unit": "Ω"},
-            "R_ct":       {"min": 50.0, "max": 5000.0,"unit": "Ω",          "note": "Pd less active than Pt in acid"},
-            "CPE_Q":      {"min": 1e-5, "max": 3e-3,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.75, "max": 0.92,  "unit": "dimensionless"},
-            "R_oxide":    {"min": 1.0,  "max": 50.0,  "unit": "Ω",          "note": "PdO film at high potential"},
-            "C_oxide":    {"min": 1e-4, "max": 5e-2,  "unit": "F",          "note": "oxide capacitance"}
+            "R_solution": {"min": 2.0, "max": 20.0, "unit": "Ohm"},
+            "R_ct": {"min": 50.0, "max": 5000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-6, "max": 1e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.75, "max": 0.92}
           },
           "CV_parameters": {
             "E_onset_ethanol": {"min": 0.50, "max": 0.75, "unit": "V vs RHE"},
-            "If_Ib_ratio":     {"min": 0.3,  "max": 0.8,  "note": "poor in acidic"},
-            "E_forward_peak":  {"min": 0.70, "max": 0.95, "unit": "V vs RHE"}
+            "If_Ib_ratio": {"min": 0.3, "max": 0.9}
           },
-          "recommended_circuit": "R0-p(R1,C1)-p(R2,CPE1)",
-          "note": "Pd shows oxide film arc at high frequencies in acidic",
-          "CO_poisoning_risk": "VERY HIGH"
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY HIGH",
+          "initial_guess": {"R0": 10.0, "R1": 500.0, "CPE_Q": 1e-5, "CPE_n": 0.85}
         },
         "alkaline": {
           "EIS_parameters": {
-            "R_solution": {"min": 0.5,  "max": 8.0,   "unit": "Ω"},
-            "R_ct":       {"min": 3.0,  "max": 200.0, "unit": "Ω",          "note": "Pd very active in alkaline!"},
-            "CPE_Q":      {"min": 1e-4, "max": 2e-2,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.80, "max": 0.96,  "unit": "dimensionless"},
-            "R_oxide":    {"min": 0.5,  "max": 20.0,  "unit": "Ω"},
-            "C_oxide":    {"min": 5e-4, "max": 0.1,   "unit": "F"}
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 200.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
           },
           "CV_parameters": {
-            "E_onset_ethanol":       {"min": 0.10, "max": 0.30, "unit": "V vs RHE"},
-            "E_onset_ethylene_glycol":{"min": 0.05, "max": 0.25, "unit": "V vs RHE"},
-            "If_Ib_ratio":           {"min": 1.5,  "max": 4.0,  "note": "excellent in alkaline!"},
-            "E_forward_peak":        {"min": 0.55, "max": 0.75, "unit": "V vs RHE"}
+            "E_onset_ethanol": {"min": 0.10, "max": 0.35, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.5, "max": 4.0},
+            "note": "Very active in alkaline — low onset potential"
           },
-          "recommended_circuit": "R0-p(R1,C1)-p(R2,CPE1)",
-          "CO_poisoning_risk": "LOW",
-          "references": [
-            "Xu et al., J. Power Sources 196 (2011) 4419",
-            "Zhao et al., J. Power Sources 184 (2008) 206"
-          ]
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 30.0, "CPE_Q": 5e-4, "CPE_n": 0.88}
         }
       }
     },
@@ -114,29 +117,43 @@
     "AOR_PtRu": {
       "system_type": "AOR",
       "catalyst": "PtRu",
-      "variants": ["PtRu/C", "PtRu alloy", "PtRu (1:1)", "PtRu (3:1)"],
-      "note": "Best catalyst for methanol oxidation in acidic — bifunctional mechanism",
+      "category": "Binary alloy",
+      "variants": ["PtRu/C", "PtRu-black", "PtRu (1:1)", "PtRu (3:1)", "PtRu (1:3)", "PtRu NPs"],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "Bifunctional mechanism — Ru provides OH for CO oxidation",
       "electrolytes": {
         "acidic": {
           "EIS_parameters": {
-            "R_solution": {"min": 1.0,  "max": 12.0,  "unit": "Ω"},
-            "R_ct":       {"min": 10.0, "max": 500.0, "unit": "Ω",  "note": "much lower than pure Pt!"},
-            "CPE_Q":      {"min": 2e-5, "max": 8e-3,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.78, "max": 0.93,  "unit": "dimensionless"},
-            "Warburg_sigma": {"min": 5.0, "max": 100.0, "unit": "Ω·s^-0.5"}
+            "R_solution": {"min": 1.0, "max": 10.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 500.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-5, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.75, "max": 0.92},
+            "R_film": {"min": 5.0, "max": 100.0, "unit": "Ohm", "note": "Ru oxide film"}
           },
           "CV_parameters": {
-            "E_onset_methanol": {"min": 0.25, "max": 0.40, "unit": "V vs RHE", "note": "0.2V lower than pure Pt!"},
-            "If_Ib_ratio":      {"min": 1.5,  "max": 3.5,  "note": "highly CO-tolerant"},
-            "E_forward_peak":   {"min": 0.55, "max": 0.75, "unit": "V vs RHE"}
+            "E_onset_methanol": {"min": 0.25, "max": 0.45, "unit": "V vs RHE"},
+            "E_onset_ethanol": {"min": 0.30, "max": 0.55, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.0},
+            "note": "Much better CO tolerance than Pt alone"
           },
-          "recommended_circuit": "R0-p(R1,CPE1)-W1",
-          "CO_poisoning_risk": "LOW",
-          "mechanism": "Bifunctional: Pt oxidizes CH3OH, Ru provides OH for CO removal",
-          "references": [
-            "Gasteiger et al., J. Phys. Chem. 97 (1993) 12020",
-            "Liu et al., J. Power Sources 175 (2008) 159"
-          ]
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 5.0, "R1": 50.0, "CPE_Q1": 1e-4, "CPE_n1": 0.85, "R2": 100.0, "CPE_Q2": 5e-5, "CPE_n2": 0.80}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 100.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 1e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.10, "max": 0.30, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 5.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 2.0, "R1": 20.0, "CPE_Q": 5e-4, "CPE_n": 0.88}
         }
       }
     },
@@ -144,143 +161,574 @@
     "AOR_PtSn": {
       "system_type": "AOR",
       "catalyst": "PtSn",
-      "variants": ["PtSn/C", "Pt3Sn/C", "PtSn alloy"],
-      "note": "Best catalyst for ethanol oxidation — promotes C-C bond breaking",
+      "category": "Binary alloy",
+      "variants": ["PtSn/C", "PtSn NPs", "PtSn (1:1)", "PtSn (3:1)"],
+      "alcohols": ["ethanol", "ethylene_glycol"],
+      "note": "Sn promotes C-C bond cleavage in ethanol oxidation",
       "electrolytes": {
         "acidic": {
           "EIS_parameters": {
-            "R_solution": {"min": 1.0,  "max": 12.0,  "unit": "Ω"},
-            "R_ct":       {"min": 15.0, "max": 600.0, "unit": "Ω"},
-            "CPE_Q":      {"min": 1e-5, "max": 5e-3,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.78, "max": 0.93,  "unit": "dimensionless"}
+            "R_solution": {"min": 1.0, "max": 15.0, "unit": "Ohm"},
+            "R_ct": {"min": 10.0, "max": 1000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-5, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.70, "max": 0.90}
           },
           "CV_parameters": {
-            "E_onset_ethanol": {"min": 0.25, "max": 0.45, "unit": "V vs RHE"},
-            "If_Ib_ratio":     {"min": 1.2,  "max": 2.8},
-            "E_forward_peak":  {"min": 0.55, "max": 0.75, "unit": "V vs RHE"}
+            "E_onset_ethanol": {"min": 0.30, "max": 0.55, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.5, "max": 4.0}
           },
-          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
-          "CO_poisoning_risk": "LOW-MEDIUM"
+          "recommended_circuit": "R0-p(R1,CPE1)-W1",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 8.0, "R1": 100.0, "CPE_Q": 5e-5, "CPE_n": 0.82, "W": 40.0}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 3.0, "max": 150.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 1e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.93}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.15, "max": 0.35, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 5.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 2.0, "R1": 30.0, "CPE_Q": 1e-3, "CPE_n": 0.86}
         }
       }
     },
 
-    "Battery_LIB": {
-      "system_type": "Battery",
-      "chemistry": "Lithium-Ion",
-      "variants": ["LFP", "NMC", "NCA", "LCO", "Graphite anode"],
+    "AOR_PdAu": {
+      "system_type": "AOR",
+      "catalyst": "PdAu",
+      "category": "Binary alloy",
+      "variants": ["PdAu/C", "PdAu NPs", "Pd3Au/C", "PdAu (1:1)"],
+      "alcohols": ["ethanol", "glycerol", "methanol"],
+      "note": "Au modifies Pd electronic structure; excellent alkaline activity",
       "electrolytes": {
-        "organic_carbonate": {
-          "examples": ["1M LiPF6 in EC:DMC", "1M LiPF6 in EC:DEC"],
+        "acidic": {
           "EIS_parameters": {
-            "R_ohmic":    {"min": 0.5,  "max": 10.0,  "unit": "Ω",   "note": "electrolyte + contacts"},
-            "R_SEI":      {"min": 2.0,  "max": 50.0,  "unit": "Ω",   "note": "SEI layer resistance"},
-            "C_SEI":      {"min": 1e-6, "max": 1e-4,  "unit": "F",   "note": "SEI capacitance"},
-            "R_ct":       {"min": 5.0,  "max": 200.0, "unit": "Ω",   "note": "charge transfer at electrode"},
-            "CPE_dl":     {"min": 1e-5, "max": 1e-3,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.70, "max": 0.95},
-            "Warburg_sigma": {"min": 20.0, "max": 500.0, "unit": "Ω·s^-0.5", "note": "Li+ diffusion in electrode"}
+            "R_solution": {"min": 2.0, "max": 20.0, "unit": "Ohm"},
+            "R_ct": {"min": 30.0, "max": 3000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-6, "max": 1e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.75, "max": 0.92}
           },
-          "recommended_circuit": "R0-p(R1,C1)-p(R2,CPE1)-W1",
-          "SOH_indicators": {
-            "R_ct_increase_pct_per_cycle": {"min": 0.01, "max": 0.5, "note": "aging indicator"},
-            "Warburg_increase": "indicates reduced Li diffusivity with aging"
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.45, "max": 0.70, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 0.5, "max": 1.5}
           },
-          "references": ["Osaka et al., J. Electrochem. Soc. 150 (2003) A334"]
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "MODERATE",
+          "initial_guess": {"R0": 10.0, "R1": 300.0, "CPE_Q": 1e-5, "CPE_n": 0.84}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 100.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.05, "max": 0.30, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 6.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 2.0, "R1": 20.0, "CPE_Q": 1e-3, "CPE_n": 0.90}
+        }
+      }
+    },
+
+    "AOR_PdNi": {
+      "system_type": "AOR",
+      "catalyst": "PdNi",
+      "category": "Binary alloy",
+      "variants": ["PdNi/C", "PdNi NPs", "Pd3Ni/C", "PdNi (1:1)"],
+      "alcohols": ["ethanol", "methanol", "glycerol"],
+      "note": "Ni promotes OH adsorption in alkaline media",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 150.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.92}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.10, "max": 0.35, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 5.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 30.0, "CPE_Q1": 5e-4, "CPE_n1": 0.86, "R2": 50.0, "CPE_Q2": 1e-4, "CPE_n2": 0.80}
+        }
+      }
+    },
+
+    "AOR_NiCo": {
+      "system_type": "AOR",
+      "catalyst": "NiCo",
+      "category": "Binary alloy (non-precious)",
+      "variants": ["NiCo/C", "NiCo alloy", "NiCo2O4", "NiCo LDH", "Ni3Co/C"],
+      "alcohols": ["methanol", "ethanol", "glycerol"],
+      "note": "Non-precious bimetallic — cost-effective for alkaline AOR",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 500.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 1e-1, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.70, "max": 0.90},
+            "R_film": {"min": 2.0, "max": 50.0, "unit": "Ohm", "note": "oxide layer"}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.20, "max": 0.50, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "MODERATE",
+          "initial_guess": {"R0": 2.0, "R1": 50.0, "CPE_Q1": 5e-3, "CPE_n1": 0.80, "R2": 100.0, "CPE_Q2": 1e-3, "CPE_n2": 0.75}
+        }
+      }
+    },
+
+    "AOR_Pt_graphene": {
+      "system_type": "AOR",
+      "catalyst": "Pt/graphene",
+      "category": "Metal/Graphene",
+      "variants": [
+        "Pt/graphene", "Pt/rGO", "Pt/GO", "Pt NPs/graphene",
+        "Pt/N-graphene", "Pt/functionalized graphene"
+      ],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "Graphene support enhances electron transfer and Pt dispersion",
+      "electrolytes": {
+        "acidic": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 10.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 300.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-5, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.93},
+            "R_graphene": {"min": 2.0, "max": 30.0, "unit": "Ohm", "note": "graphene/solution interface"}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.35, "max": 0.60, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 0.8, "max": 2.0},
+            "note": "Lower onset than Pt/C due to better Pt dispersion"
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-W1",
+          "CO_poisoning": "MODERATE",
+          "initial_guess": {"R0": 5.0, "R1": 80.0, "CPE_Q": 5e-4, "CPE_n": 0.85, "W": 30.0}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 4.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 100.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.15, "max": 0.40, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.5, "max": 4.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 25.0, "CPE_Q": 5e-3, "CPE_n": 0.88}
+        }
+      }
+    },
+
+    "AOR_Pd_graphene": {
+      "system_type": "AOR",
+      "catalyst": "Pd/graphene",
+      "category": "Metal/Graphene",
+      "variants": [
+        "Pd/graphene", "Pd/rGO", "Pd NPs/graphene",
+        "Pd/N-rGO", "PdAu/graphene", "Pd/3D graphene"
+      ],
+      "alcohols": ["ethanol", "glycerol", "ethylene_glycol"],
+      "note": "Excellent alkaline AOR; graphene prevents Pd agglomeration",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.3, "max": 3.0, "unit": "Ohm"},
+            "R_ct": {"min": 1.0, "max": 80.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-4, "max": 1e-1, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.96}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.05, "max": 0.25, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.5, "max": 7.0},
+            "note": "Among best performance for alkaline ethanol oxidation"
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 1.5, "R1": 15.0, "CPE_Q": 5e-3, "CPE_n": 0.90}
+        }
+      }
+    },
+
+    "AOR_PtPd_graphene": {
+      "system_type": "AOR",
+      "catalyst": "PtPd/graphene",
+      "category": "Metal/Graphene",
+      "variants": ["PtPd/rGO", "PtPd/graphene", "Pt3Pd/rGO", "PtPd NPs/graphene"],
+      "alcohols": ["ethanol", "methanol"],
+      "electrolytes": {
+        "acidic": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 10.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 200.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.35, "max": 0.55, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-W1",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 5.0, "R1": 60.0, "CPE_Q": 5e-4, "CPE_n": 0.87, "W": 25.0}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 4.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 80.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.82, "max": 0.96}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.05, "max": 0.25, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.5, "max": 6.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 2.0, "R1": 20.0, "CPE_Q": 5e-3, "CPE_n": 0.90}
+        }
+      }
+    },
+
+    "AOR_Pt_C": {
+      "system_type": "AOR",
+      "catalyst": "Pt/C",
+      "category": "Metal/Carbon support",
+      "variants": [
+        "Pt/Vulcan XC-72", "Pt/carbon black", "Pt/activated carbon",
+        "Pt/CNT", "Pt/carbon nanotube", "Pt/mesoporous carbon", "Pt/C (20wt%)"
+      ],
+      "alcohols": ["methanol", "ethanol", "ethylene_glycol"],
+      "note": "Standard benchmark catalyst; carbon support improves dispersion",
+      "electrolytes": {
+        "acidic": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 12.0, "unit": "Ohm"},
+            "R_ct": {"min": 10.0, "max": 800.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-5, "max": 5e-3, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.93}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.40, "max": 0.65, "unit": "V vs RHE"},
+            "E_onset_ethanol": {"min": 0.45, "max": 0.68, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 0.5, "max": 1.3}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-W1",
+          "CO_poisoning": "HIGH",
+          "initial_guess": {"R0": 8.0, "R1": 150.0, "CPE_Q": 1e-4, "CPE_n": 0.86, "W": 40.0}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 3.0, "max": 200.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-5, "max": 1e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.20, "max": 0.45, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 2.5}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "MODERATE",
+          "initial_guess": {"R0": 2.0, "R1": 40.0, "CPE_Q": 5e-4, "CPE_n": 0.88}
+        }
+      }
+    },
+
+    "AOR_Pd_C": {
+      "system_type": "AOR",
+      "catalyst": "Pd/C",
+      "category": "Metal/Carbon support",
+      "variants": [
+        "Pd/Vulcan XC-72", "Pd/carbon black", "Pd/CNT",
+        "Pd/activated carbon", "Pd/C (10wt%)", "Pd/C (20wt%)"
+      ],
+      "alcohols": ["ethanol", "glycerol", "ethylene_glycol"],
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.3, "max": 4.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 150.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.80, "max": 0.95}
+          },
+          "CV_parameters": {
+            "E_onset_ethanol": {"min": 0.10, "max": 0.35, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.5, "max": 4.5}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 25.0, "CPE_Q": 5e-3, "CPE_n": 0.88}
+        }
+      }
+    },
+
+    "AOR_N_graphene": {
+      "system_type": "AOR",
+      "catalyst": "N-doped graphene",
+      "category": "Pseudo-graphene / Graphene-like",
+      "variants": [
+        "N-graphene", "N-rGO", "N-doped graphene", "N-rGO",
+        "Pd/N-graphene", "Pt/N-rGO", "Metal-N-graphene"
+      ],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "N-doping creates active sites; enhances metal-support interaction",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 500.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 1e-1, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.70, "max": 0.90},
+            "R_sheet": {"min": 3.0, "max": 50.0, "unit": "Ohm", "note": "graphene sheet resistance"}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.15, "max": 0.45, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.5, "max": 4.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 3.0, "R1": 60.0, "CPE_Q1": 5e-3, "CPE_n1": 0.82, "R2": 100.0, "CPE_Q2": 1e-3, "CPE_n2": 0.75}
+        }
+      }
+    },
+
+    "AOR_gC3N4": {
+      "system_type": "AOR",
+      "catalyst": "g-C3N4",
+      "category": "Pseudo-graphene / Graphene-like",
+      "variants": [
+        "g-C3N4", "Pt/g-C3N4", "Pd/g-C3N4", "NiCo/g-C3N4",
+        "g-C3N4 nanosheet", "porous g-C3N4", "metal-g-C3N4 composite"
+      ],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "Graphitic carbon nitride; high N content; semiconductor support; visible light active",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 10.0, "unit": "Ohm"},
+            "R_ct": {"min": 10.0, "max": 1000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-5, "max": 1e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.65, "max": 0.88},
+            "R_semiconductor": {"min": 10.0, "max": 200.0, "unit": "Ohm", "note": "g-C3N4 semiconductor resistance"}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.20, "max": 0.55, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "note": "Two arcs: high-f = charge transfer, low-f = semiconductor/support",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 5.0, "R1": 100.0, "CPE_Q1": 1e-4, "CPE_n1": 0.78, "R2": 300.0, "CPE_Q2": 1e-5, "CPE_n2": 0.70}
+        }
+      }
+    },
+
+    "AOR_MXene": {
+      "system_type": "AOR",
+      "catalyst": "MXene",
+      "category": "Pseudo-graphene / Graphene-like",
+      "variants": [
+        "Ti3C2Tx", "Pt/Ti3C2Tx", "Pd/MXene", "Ni/Ti3C2Tx",
+        "Ti3C2Tx MXene", "V2CTx", "Nb2CTx"
+      ],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "2D transition metal carbide; metallic conductivity; abundant surface terminations",
+      "electrolytes": {
+        "acidic": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 10.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 300.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.75, "max": 0.93},
+            "note": "MXene has very high double-layer capacitance"
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.30, "max": 0.55, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 5.0, "R1": 80.0, "CPE_Q": 5e-3, "CPE_n": 0.85}
+        },
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 2.0, "max": 100.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 5e-4, "max": 1e-1, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.78, "max": 0.94}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.10, "max": 0.35, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 5.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)",
+          "CO_poisoning": "VERY LOW",
+          "initial_guess": {"R0": 2.0, "R1": 25.0, "CPE_Q": 1e-2, "CPE_n": 0.88}
+        }
+      }
+    },
+
+    "AOR_NP_graphene": {
+      "system_type": "AOR",
+      "catalyst": "NP-doped graphene",
+      "category": "Pseudo-graphene / Graphene-like",
+      "variants": [
+        "N,P-graphene", "N,P-rGO", "N,P co-doped graphene",
+        "Pd/N,P-graphene", "Pt/N,P-rGO"
+      ],
+      "alcohols": ["methanol", "ethanol"],
+      "note": "Co-doping with N and P creates stronger active sites; better than single-doped",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 3.0, "max": 300.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-4, "max": 5e-2, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.72, "max": 0.90}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.10, "max": 0.40, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 2.0, "max": 5.0}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 50.0, "CPE_Q1": 5e-3, "CPE_n1": 0.82, "R2": 80.0, "CPE_Q2": 1e-3, "CPE_n2": 0.75}
+        }
+      }
+    },
+
+    "AOR_NiCoFe_LDH": {
+      "system_type": "AOR",
+      "catalyst": "NiCoFe-LDH",
+      "category": "Metal hydroxide / LDH",
+      "variants": [
+        "NiCoFe-LDH", "Ni(OH)2", "Co(OH)2", "NiFe-LDH",
+        "NiCo-LDH", "Pd/NiFe-LDH", "NiCoFe LDH nanosheet"
+      ],
+      "alcohols": ["methanol", "ethanol", "glycerol"],
+      "note": "Layered double hydroxide — excellent alkaline activity; CO-tolerant",
+      "electrolytes": {
+        "alkaline": {
+          "EIS_parameters": {
+            "R_solution": {"min": 0.5, "max": 5.0, "unit": "Ohm"},
+            "R_ct": {"min": 3.0, "max": 300.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-3, "max": 5e-1, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.65, "max": 0.88},
+            "R_LDH": {"min": 5.0, "max": 80.0, "unit": "Ohm", "note": "LDH interlayer resistance"}
+          },
+          "CV_parameters": {
+            "E_onset_methanol": {"min": 0.15, "max": 0.45, "unit": "V vs RHE"},
+            "If_Ib_ratio": {"min": 1.0, "max": 3.5}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)",
+          "CO_poisoning": "LOW",
+          "initial_guess": {"R0": 2.0, "R1": 40.0, "CPE_Q1": 1e-2, "CPE_n1": 0.78, "R2": 60.0, "CPE_Q2": 5e-3, "CPE_n2": 0.72}
+        }
+      }
+    },
+
+    "Battery_LiIon": {
+      "system_type": "Battery",
+      "catalyst": "Li-ion",
+      "category": "Battery",
+      "variants": ["LFP", "NMC", "NCA", "LCO"],
+      "electrolytes": {
+        "organic": {
+          "EIS_parameters": {
+            "R_solution": {"min": 1.0, "max": 30.0, "unit": "Ohm"},
+            "R_sei": {"min": 2.0, "max": 50.0, "unit": "Ohm"},
+            "R_ct": {"min": 5.0, "max": 200.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-6, "max": 1e-4, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.75, "max": 0.95}
+          },
+          "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)-W1",
+          "initial_guess": {"R0": 5.0, "R1": 10.0, "CPE_Q1": 1e-5, "CPE_n1": 0.85, "R2": 50.0, "CPE_Q2": 1e-4, "CPE_n2": 0.80, "W": 80.0}
         }
       }
     },
 
     "Corrosion_Steel": {
       "system_type": "Corrosion",
-      "material": "Carbon Steel",
-      "variants": ["mild steel", "stainless steel 304", "stainless steel 316"],
+      "catalyst": "Carbon steel",
+      "category": "Corrosion",
       "electrolytes": {
         "NaCl": {
-          "examples": ["3.5% NaCl", "0.1M NaCl"],
           "EIS_parameters": {
-            "R_solution": {"min": 1.0,  "max": 50.0,  "unit": "Ω"},
-            "R_ct":       {"min": 100.0,"max": 1e6,   "unit": "Ω",   "note": "high = passive, low = active corrosion"},
-            "CPE_Q":      {"min": 1e-6, "max": 1e-3,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.60, "max": 0.90},
-            "R_film":     {"min": 10.0, "max": 10000.0,"unit": "Ω",  "note": "passive oxide film"},
-            "C_film":     {"min": 1e-7, "max": 1e-4,  "unit": "F"}
+            "R_solution": {"min": 10.0, "max": 100.0, "unit": "Ohm"},
+            "R_ct": {"min": 100.0, "max": 50000.0, "unit": "Ohm"},
+            "CPE_Q": {"min": 1e-6, "max": 1e-4, "unit": "F·s^(n-1)"},
+            "CPE_n": {"min": 0.70, "max": 0.90}
           },
           "recommended_circuit": "R0-p(R1,CPE1)",
-          "alternative_circuits": ["R0-p(R1,C1)-p(R2,CPE1)"],
-          "corrosion_rate_indicators": {
-            "R_ct_low":  "< 1000 Ω → active corrosion",
-            "R_ct_high": "> 100000 Ω → passive/protected"
-          }
-        }
-      }
-    },
-
-    "FuelCell_PEMFC": {
-      "system_type": "Fuel Cell",
-      "type": "PEMFC",
-      "electrolyte": "Nafion membrane",
-      "EIS_parameters": {
-        "R_ohmic":    {"min": 0.05, "max": 0.3,   "unit": "Ω·cm²", "note": "membrane + contacts"},
-        "R_ct_anode": {"min": 0.01, "max": 0.1,   "unit": "Ω·cm²"},
-        "R_ct_cathode":{"min": 0.1, "max": 1.0,   "unit": "Ω·cm²", "note": "ORR is limiting"},
-        "CPE_n":      {"min": 0.75, "max": 0.95},
-        "Warburg":    {"min": 0.05, "max": 0.5,   "unit": "Ω·cm²", "note": "mass transport limitation"}
-      },
-      "recommended_circuit": "R0-p(R1,CPE1)-p(R2,CPE2)-W1",
-      "references": ["Orazem & Tribollet, Electrochemical Impedance Spectroscopy (2008)"]
-    },
-
-    "Biosensor": {
-      "system_type": "Biosensor",
-      "variants": ["DNA biosensor", "enzyme biosensor", "immunosensor"],
-      "electrolytes": {
-        "PBS": {
-          "examples": ["PBS pH 7.4", "0.1M KCl + PBS"],
-          "EIS_parameters": {
-            "R_solution": {"min": 10.0, "max": 200.0, "unit": "Ω"},
-            "R_ct":       {"min": 100.0,"max": 1e7,   "unit": "Ω",  "note": "increases upon target binding!"},
-            "CPE_Q":      {"min": 1e-7, "max": 1e-4,  "unit": "F·s^(n-1)"},
-            "CPE_n":      {"min": 0.70, "max": 0.95},
-            "Warburg_sigma": {"min": 50.0,"max": 5000.0,"unit": "Ω·s^-0.5"}
-          },
-          "recommended_circuit": "R0-p(R1,CPE1)-W1",
-          "detection_principle": "R_ct increases proportionally to target concentration",
-          "redox_probe": "5mM Fe(CN)6 3-/4-"
+          "initial_guess": {"R0": 30.0, "R1": 1000.0, "CPE_Q": 1e-5, "CPE_n": 0.80}
         }
       }
     }
   },
 
   "circuit_descriptions": {
-    "R0-p(R1,C1)": {
-      "name": "Simple Randles",
-      "elements": {"R0": "solution resistance", "R1": "charge transfer resistance", "C1": "ideal double layer capacitance"},
-      "suitable_for": ["fresh catalysts", "simple interfaces", "preliminary analysis"],
-      "nyquist_shape": "single semicircle"
-    },
     "R0-p(R1,CPE1)": {
-      "name": "Randles with CPE",
-      "elements": {"R0": "solution resistance", "R1": "charge transfer resistance", "CPE1_Q": "CPE prefactor", "CPE1_n": "CPE exponent (0.5-1)"},
-      "suitable_for": ["rough surfaces", "polycrystalline electrodes", "most real systems"],
-      "nyquist_shape": "depressed semicircle"
+      "name": "Randles cell with CPE",
+      "n_params": 4,
+      "param_names": ["R0", "R1", "CPE1_Q", "CPE1_n"],
+      "interpretation": "R0=electrolyte, R1=charge transfer, CPE=double layer",
+      "use_when": "Single depressed semicircle, uniform surface",
+      "param_bounds": {
+        "R0": [0, "inf"],
+        "R1": [0, "inf"],
+        "CPE1_Q": [0, "inf"],
+        "CPE1_n": [0, 1]
+      }
     },
     "R0-p(R1,CPE1)-W1": {
-      "name": "Randles + Warburg",
-      "elements": {"W1": "semi-infinite Warburg (diffusion)"},
-      "suitable_for": ["diffusion-limited reactions", "low substrate concentration", "fast kinetics"],
-      "nyquist_shape": "depressed semicircle + 45° Warburg tail"
+      "name": "Randles cell with Warburg",
+      "n_params": 5,
+      "param_names": ["R0", "R1", "CPE1_Q", "CPE1_n", "W1"],
+      "interpretation": "R0=electrolyte, R1=charge transfer, CPE=double layer, W=diffusion",
+      "use_when": "Semicircle + low-frequency linear tail (45°)",
+      "param_bounds": {
+        "R0": [0, "inf"],
+        "R1": [0, "inf"],
+        "CPE1_Q": [0, "inf"],
+        "CPE1_n": [0, 1],
+        "W1": [0, "inf"]
+      }
     },
     "R0-p(R1,CPE1)-p(R2,CPE2)": {
-      "name": "Two Time Constants",
-      "elements": {"R2": "second process resistance", "CPE2": "second process capacitance"},
-      "suitable_for": ["CO poisoning in AOR", "SEI + charge transfer in batteries", "oxide film + reaction"],
-      "nyquist_shape": "two overlapping semicircles"
-    },
-    "R0-p(R1,C1)-p(R2,CPE1)": {
-      "name": "Oxide Film + Reaction",
-      "suitable_for": ["Pd in alkaline AOR", "passive metals", "filmed electrodes"],
-      "nyquist_shape": "small high-f arc + large low-f arc"
+      "name": "Two time-constant model",
+      "n_params": 7,
+      "param_names": ["R0", "R1", "CPE1_Q", "CPE1_n", "R2", "CPE2_Q", "CPE2_n"],
+      "interpretation": "Two overlapping processes (e.g. charge transfer + adsorption/film)",
+      "use_when": "Two partially overlapping arcs, If/Ib < 1",
+      "param_bounds": {
+        "R0": [0, "inf"],
+        "R1": [0, "inf"],
+        "CPE1_Q": [0, "inf"],
+        "CPE1_n": [0, 1],
+        "R2": [0, "inf"],
+        "CPE2_Q": [0, "inf"],
+        "CPE2_n": [0, 1]
+      }
     }
   }
 }
