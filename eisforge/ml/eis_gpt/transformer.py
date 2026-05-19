@@ -1,40 +1,43 @@
 """
-EIS-GPT Transformer — مغز اصلی EISForge.
+EIS-GPT Transformer — the core prediction engine of EISForge.
+Author: Hoda Jafari | May 2026
 
-معماری:
---------
-                    طیف EIS خام
-                         ↓
-                   EISTokenizer
-                         ↓
-              Transformer Encoder (6 لایه)
-              (Self-Attention + FFN + LayerNorm)
-                         ↓
-                 [CLS] token vector
-                    ↙          ↘
-          CircuitHead        ParameterHead
-          (پیش‌بینی مدار)   (پیش‌بینی پارامترها)
-               ↓                    ↓
-        توزیع احتمال          مقادیر + عدم‌قطعیت
-        روی 5 مدار           برای هر پارامتر
+Architecture:
+-------------
+                    Raw EIS spectrum
+                          ↓
+                    EISTokenizer
+                          ↓
+               Transformer Encoder (6 layers)
+               (Self-Attention + FFN + LayerNorm)
+                          ↓
+                  [CLS] token vector
+                   ↙              ↘
+         CircuitHead          ParameterHead
+     (circuit topology)   (parameter values)
+            ↓                      ↓
+    Probability over         μ + σ per parameter
+      5 circuits             (aleatoric uncertainty)
 
-چرا Transformer و نه CNN؟
---------------------------
-CNN به طیف EIS مثل یک تصویر نگاه می‌کند — محلی.
-Transformer با Self-Attention می‌تواند رابطه بین
-فرکانس 100 kHz و فرکانس 10 mHz را مستقیم یاد بگیرد.
-این دقیقاً همان چیزی است که فیزیک EIS نیاز دارد:
-Warburg در فرکانس پایین با R_ct در فرکانس میانی مرتبط است.
+Why Transformer and not CNN?
+-----------------------------
+A CNN treats the EIS spectrum like a local image.
+A Transformer with Self-Attention can directly learn the
+relationship between 100 kHz and 10 mHz — exactly what EIS
+physics requires: the Warburg element at low frequency is
+correlated with R_ct at mid frequency.
 
-Uncertainty Quantification:
-----------------------------
-به جای یک جواب قطعی، مدل:
-  - میانگین (μ) پارامتر را پیش‌بینی می‌کند
-  - انحراف معیار (σ) را هم پیش‌بینی می‌کند
-  - این یعنی بازه اطمینان برای هر پارامتر
+Uncertainty Quantification (two types):
+-----------------------------------------
+  Aleatoric uncertainty (σ head):
+      Irreducible noise in the data itself.
+      Model predicts μ AND σ for each parameter.
+      High σ → noisy or poorly conditioned spectrum.
 
-نویسنده: Hoda Jafari
-تاریخ: May 2026
+  Epistemic uncertainty (MC Dropout):
+      Model's lack of knowledge — reducible with more data.
+      See eisforge/ml/uncertainty/mc_dropout.py.
+      High epistemic → Active Learning should query the user.
 """
 
 from __future__ import annotations
@@ -285,6 +288,73 @@ class EISForgeModel(nn.Module):
             "param_mu":         param_mu,
             "param_sigma":      param_sigma,
             "cls_features":     cls_output,
+        }
+
+    @torch.no_grad()
+    def mc_predict(
+        self,
+        freq     : torch.Tensor,
+        z_real   : torch.Tensor,
+        z_imag   : torch.Tensor,
+        n_samples: int = 50,
+    ) -> dict:
+        """
+        Monte Carlo Dropout prediction with epistemic uncertainty.
+
+        Unlike predict() which calls self.eval() (dropout OFF),
+        this method keeps dropout ACTIVE to produce stochastic outputs.
+        Running N passes and measuring variance gives epistemic uncertainty.
+
+        Use this method when you need to know HOW CONFIDENT the model is,
+        not just WHAT it predicts.
+
+        Parameters
+        ----------
+        freq, z_real, z_imag : Tensor (1, N)
+        n_samples : int
+            Number of stochastic forward passes. Default: 50.
+
+        Returns
+        -------
+        dict with all fields from predict() PLUS:
+            'epistemic_score'  : float — overall epistemic uncertainty
+            'aleatoric_score'  : float — overall aleatoric uncertainty
+            'should_query'     : bool  — True if model recommends human label
+            'confidence_pct'   : int   — confidence as percentage (0-100)
+            'circuit_probs_std': ndarray — std across MC samples per circuit
+            'param_epistemic'  : ndarray — epistemic std per parameter
+        """
+        from eisforge.ml.uncertainty.mc_dropout import mc_dropout_predict
+        result = mc_dropout_predict(self, freq, z_real, z_imag, n_samples=n_samples)
+
+        import numpy as np
+        param_values = np.exp(result.param_mu_mean)
+        param_errors = param_values * result.param_aleatoric_std
+
+        parameters = {
+            f"param_{i}": {
+                "value"          : float(param_values[i]),
+                "uncertainty_al" : float(param_errors[i]),
+                "uncertainty_ep" : float(result.param_epistemic_std[i]),
+            }
+            for i in range(MAX_PARAMS)
+        }
+
+        return {
+            "predicted_circuit" : result.predicted_circuit,
+            "confidence"        : result.confidence,
+            "top3"              : [
+                {"circuit": CIRCUIT_NAMES[i], "probability": float(result.circuit_probs_mean[i])}
+                for i in result.circuit_probs_mean.argsort()[::-1][:3]
+            ],
+            "parameters"        : parameters,
+            "epistemic_score"   : result.epistemic_score,
+            "aleatoric_score"   : result.aleatoric_score,
+            "should_query"      : result.should_query(threshold=0.15),
+            "confidence_pct"    : result.confidence_pct(threshold=0.15),
+            "confidence_label"  : result.confidence_label(threshold=0.15),
+            "circuit_probs_std" : result.circuit_probs_std,
+            "param_epistemic"   : result.param_epistemic_std,
         }
 
     @torch.no_grad()
