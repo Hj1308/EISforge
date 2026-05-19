@@ -1,21 +1,30 @@
 """
-CV Analyzer — تحلیل خودکار ولتامتری چرخه‌ای برای AOR.
-نویسنده: Hoda Jafari | May 2026
+CV Analyzer — Automatic Cyclic Voltammetry Analysis for AOR.
+Author: Hoda Jafari | May 2026
+
+Extracted parameters:
+    - E_onset (V)
+    - I_f, I_b (mA) and j_f, j_b (mA/cm²)
+    - I_f/I_b ratio
+    - Automatic interpretation
 """
+
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from typing import Optional
+
 import numpy as np
 import pandas as pd
-from scipy.signal import savgol_filter
-from scipy.ndimage import gaussian_filter1d
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class CVAnalysisResult:
+    """Results of complete CV analysis."""
+
     e_onset: float
     e_onset_method: str
     e_forward_peak: float
@@ -24,10 +33,15 @@ class CVAnalysisResult:
     i_backward_peak: float
     if_ib_ratio: float
     baseline_current: float
-    j_forward_peak: float = 0.0       # mA/cm² هندسی
+
+    # Geometric current density (mA/cm²)
+    j_forward_peak: float = 0.0
     j_backward_peak: float = 0.0
-    j_specific_forward: float = 0.0   # mA/cm²_Pt (ECSA)
+
+    # ECSA-normalized current density (mA/cm²_metal)
+    j_specific_forward: float = 0.0
     j_specific_backward: float = 0.0
+
     scan_rate: float = 50.0
     electrode_area: float = 1.0
     ecsa: float = 0.0
@@ -37,48 +51,58 @@ class CVAnalysisResult:
 
     def summary(self) -> str:
         lines = [
-            "═" * 62,
-            "  📊 نتایج تحلیل CV — EISForge",
-            "═" * 62,
+            "=" * 62,
+            "  CV Analysis Results — EISForge",
+            "=" * 62,
             f"  E_onset          = {self.e_onset:.4f} V  ({self.e_onset_method})",
             f"  E_forward_peak   = {self.e_forward_peak:.4f} V",
             f"  E_backward_peak  = {self.e_backward_peak:.4f} V",
-            "─" * 62,
-            f"  I_f              = {self.i_forward_peak:.4f} mA",
-            f"  I_b              = {self.i_backward_peak:.4f} mA",
+            "-" * 62,
+            f"  I_f (absolute)   = {self.i_forward_peak:.4f} mA",
+            f"  I_b (absolute)   = {self.i_backward_peak:.4f} mA",
             f"  I_f/I_b          = {self.if_ib_ratio:.3f}",
-            "─" * 62,
-            f"  j_f (هندسی)      = {self.j_forward_peak:.4f} mA/cm²",
-            f"  j_b (هندسی)      = {self.j_backward_peak:.4f} mA/cm²",
+            "-" * 62,
+            f"  j_f (geometric)  = {self.j_forward_peak:.4f} mA/cm2",
+            f"  j_b (geometric)  = {self.j_backward_peak:.4f} mA/cm2",
         ]
         if self.ecsa > 0:
             lines += [
-                f"  j_f (ECSA)       = {self.j_specific_forward:.4f} mA/cm²_Pt",
-                f"  j_b (ECSA)       = {self.j_specific_backward:.4f} mA/cm²_Pt",
-                f"  ECSA             = {self.ecsa:.4f} cm²_Pt",
+                f"  j_f (ECSA)       = {self.j_specific_forward:.4f} mA/cm2_Pt",
+                f"  j_b (ECSA)       = {self.j_specific_backward:.4f} mA/cm2_Pt",
+                f"  ECSA             = {self.ecsa:.4f} cm2_Pt",
             ]
         lines += [
-            f"  سرعت scan        = {self.scan_rate} mV/s",
-            f"  مساحت الکترود    = {self.electrode_area} cm²",
-            "─" * 62,
-            f"  تفسیر: {self.interpretation}",
-            "═" * 62,
+            f"  Scan rate        = {self.scan_rate} mV/s",
+            f"  Electrode area   = {self.electrode_area} cm2",
+            "-" * 62,
+            f"  Interpretation: {self.interpretation}",
+            "=" * 62,
         ]
         return "\n".join(lines)
 
 
 class CVAnalyzer:
     """
-    تحلیلگر خودکار CV برای AOR.
+    Automatic CV analyzer for AOR.
 
     Parameters
     ----------
-    scan_rate : float         سرعت scan (mV/s)
-    electrode_area : float    مساحت هندسی الکترود (cm²)
-    ecsa : float              ECSA (cm²_Pt) — اختیاری
-    onset_method : str        روش E_onset: tangent/threshold/derivative
-    electrolyte : str         acidic یا alkaline
-    catalyst_loading : float  بارگذاری کاتالیست (mg/cm²)
+    scan_rate : float
+        Scan rate in mV/s (default: 50).
+    electrode_area : float
+        Geometric electrode area in cm² (default: 1.0).
+    ecsa : float
+        Electrochemically active surface area in cm²_Pt (default: 0).
+    onset_method : str
+        E_onset detection method: 'tangent', 'threshold', or 'derivative'.
+    onset_threshold : float
+        Current threshold fraction of I_f peak for threshold method.
+    smoothing : bool
+        Apply Savitzky-Golay smoothing to remove noise (default: True).
+    electrolyte : str
+        'acidic' or 'alkaline'.
+    catalyst_loading : float
+        Catalyst loading in mg/cm².
     """
 
     def __init__(
@@ -88,7 +112,7 @@ class CVAnalyzer:
         ecsa: float = 0.0,
         onset_method: str = "tangent",
         onset_threshold: float = 0.05,
-        smoothing_window: int = 11,
+        smoothing: bool = True,
         electrolyte: str = "acidic",
         catalyst_loading: float = 0.0,
     ) -> None:
@@ -97,121 +121,290 @@ class CVAnalyzer:
         self.ecsa             = ecsa
         self.onset_method     = onset_method
         self.onset_threshold  = onset_threshold
-        self.smoothing_window = smoothing_window
+        self.smoothing        = smoothing
         self.electrolyte      = electrolyte
         self.catalyst_loading = catalyst_loading
 
-    def analyze(self, potential: np.ndarray, current: np.ndarray) -> CVAnalysisResult:
-        if len(potential) < 10:
-            raise ValueError(f"داده کم: {len(potential)} نقطه.")
+    def analyze(
+        self,
+        potential: np.ndarray,
+        current: np.ndarray,
+    ) -> CVAnalysisResult:
+        """
+        Perform complete CV analysis.
 
-        current_smooth = self._smooth(current)
-        fwd_mask, bwd_mask = self._split_scans(potential)
+        Parameters
+        ----------
+        potential : np.ndarray
+            Potential array (V), must include both forward and backward scan.
+        current : np.ndarray
+            Current array (mA).
 
-        e_fwd = potential[fwd_mask];  i_fwd = current_smooth[fwd_mask]
-        e_bwd = potential[bwd_mask];  i_bwd = current_smooth[bwd_mask]
+        Returns
+        -------
+        CVAnalysisResult
+        """
+        potential = np.asarray(potential, dtype=float)
+        current   = np.asarray(current,   dtype=float)
 
+        if len(potential) < 6:
+            raise ValueError(
+                f"Insufficient data: {len(potential)} points. Minimum 6 required."
+            )
+
+        # ── Optional smoothing ────────────────────────────────────────────────
+        if self.smoothing:
+            current = self._smooth(current)
+
+        # ── Split forward / backward scan ─────────────────────────────────────
+        fwd_mask, bwd_mask = self._split_scans(potential, current)
+
+        e_fwd = potential[fwd_mask];  i_fwd = current[fwd_mask]
+        e_bwd = potential[bwd_mask];  i_bwd = current[bwd_mask]
+
+        # If split fails, use first/second half
         if len(e_fwd) < 3 or len(e_bwd) < 3:
-            raise ValueError("نمی‌توان scan رفت/برگشت را تفکیک کرد.")
+            mid = len(potential) // 2
+            e_fwd, i_fwd = potential[:mid], current[:mid]
+            e_bwd, i_bwd = potential[mid:], current[mid:]
+            logger.warning(
+                "Could not detect scan direction automatically. "
+                "Splitting data at midpoint."
+            )
 
+        # ── Forward peak (I_f) ────────────────────────────────────────────────
         i_f_idx = int(np.argmax(i_fwd))
+        i_f = float(i_fwd[i_f_idx])
+        e_f = float(e_fwd[i_f_idx])
+
+        # ── Backward peak (I_b) ───────────────────────────────────────────────
         i_b_idx = int(np.argmax(i_bwd))
+        i_b = float(i_bwd[i_b_idx])
+        e_b = float(e_bwd[i_b_idx])
 
-        i_f = float(i_fwd[i_f_idx]);  e_f = float(e_fwd[i_f_idx])
-        i_b = float(i_bwd[i_b_idx]);  e_b = float(e_bwd[i_b_idx])
-
+        # ── E_onset ───────────────────────────────────────────────────────────
         e_onset, baseline = self._detect_onset(e_fwd, i_fwd, i_f)
+
+        # ── I_f / I_b ratio ───────────────────────────────────────────────────
         ratio = i_f / i_b if i_b > 1e-10 else float("nan")
 
-        # نرمال‌سازی
+        # ── Current density normalization ─────────────────────────────────────
         j_f      = i_f / self.electrode_area
         j_b      = i_b / self.electrode_area
         j_spec_f = i_f / self.ecsa if self.ecsa > 0 else 0.0
         j_spec_b = i_b / self.ecsa if self.ecsa > 0 else 0.0
 
         return CVAnalysisResult(
-            e_onset=e_onset, e_onset_method=self.onset_method,
-            e_forward_peak=e_f, e_backward_peak=e_b,
-            i_forward_peak=i_f, i_backward_peak=i_b,
-            if_ib_ratio=ratio, baseline_current=baseline,
-            j_forward_peak=j_f, j_backward_peak=j_b,
-            j_specific_forward=j_spec_f, j_specific_backward=j_spec_b,
-            scan_rate=self.scan_rate, electrode_area=self.electrode_area,
-            ecsa=self.ecsa, catalyst_loading=self.catalyst_loading,
+            e_onset=e_onset,
+            e_onset_method=self.onset_method,
+            e_forward_peak=e_f,
+            e_backward_peak=e_b,
+            i_forward_peak=i_f,
+            i_backward_peak=i_b,
+            if_ib_ratio=ratio,
+            baseline_current=baseline,
+            j_forward_peak=j_f,
+            j_backward_peak=j_b,
+            j_specific_forward=j_spec_f,
+            j_specific_backward=j_spec_b,
+            scan_rate=self.scan_rate,
+            electrode_area=self.electrode_area,
+            ecsa=self.ecsa,
+            catalyst_loading=self.catalyst_loading,
             interpretation=self._interpret(e_onset, i_f, i_b, ratio),
             electrolyte=self.electrolyte,
         )
 
-    def _smooth(self, current):
-        w = min(self.smoothing_window, len(current) // 3)
-        if w % 2 == 0: w += 1
-        if w < 5: return current.copy()
-        try:    return savgol_filter(current, window_length=w, polyorder=3)
-        except: return gaussian_filter1d(current, sigma=2)
+    # ── Scan splitting ────────────────────────────────────────────────────────
 
     @staticmethod
-    def _split_scans(potential):
-        peak = int(np.argmax(potential))
-        fwd = np.zeros(len(potential), dtype=bool)
-        bwd = np.zeros(len(potential), dtype=bool)
-        fwd[:peak + 1] = True
-        bwd[peak + 1:] = True
+    def _split_scans(
+        potential: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Split CV data into forward (anodic) and backward (cathodic) scans.
+
+        Strategy:
+            1. Find the potential maximum → end of forward scan
+            2. Points before maximum = forward scan
+            3. Points after maximum = backward scan
+
+        Handles both positive-going and negative-going scans.
+        """
+        n = len(potential)
+
+        # Find the turning point (maximum potential for anodic-first scan)
+        peak_idx = int(np.argmax(potential))
+
+        # Edge case: turning point at very start or end
+        if peak_idx < 2:
+            peak_idx = n // 2
+        elif peak_idx > n - 3:
+            peak_idx = n // 2
+
+        fwd = np.zeros(n, dtype=bool)
+        bwd = np.zeros(n, dtype=bool)
+        fwd[:peak_idx + 1] = True
+        bwd[peak_idx + 1:] = True
+
         return fwd, bwd
 
-    def _detect_onset(self, potential, current, i_peak):
-        if self.onset_method == "tangent":    return self._tangent(potential, current, i_peak)
-        elif self.onset_method == "threshold": return self._threshold(potential, current, i_peak)
-        else:                                  return self._derivative(potential, current)
+    # ── E_onset detection ─────────────────────────────────────────────────────
 
-    def _tangent(self, potential, current, i_peak):
+    def _detect_onset(
+        self,
+        potential: np.ndarray,
+        current: np.ndarray,
+        i_peak: float,
+    ) -> tuple[float, float]:
+        """Detect E_onset using the selected method."""
+        if self.onset_method == "tangent":
+            return self._onset_tangent(potential, current, i_peak)
+        elif self.onset_method == "threshold":
+            return self._onset_threshold(potential, current, i_peak)
+        else:
+            return self._onset_derivative(potential, current)
+
+    def _onset_tangent(
+        self,
+        potential: np.ndarray,
+        current: np.ndarray,
+        i_peak: float,
+    ) -> tuple[float, float]:
+        """
+        Tangent intersection method for E_onset detection.
+
+        Most widely used in AOR literature (Lamy et al., 2002).
+        Finds intersection of baseline tangent and rising-slope tangent.
+        """
         n = len(potential)
-        bl_end = max(int(n * 0.2), 3)
+        bl_end  = max(int(n * 0.2), 3)
         baseline = float(np.mean(current[:bl_end]))
-        m1, b1 = np.polyfit(potential[:bl_end], current[:bl_end], 1)
-        peak_idx = int(np.argmax(current))
-        s, e = int(peak_idx * 0.6), int(peak_idx * 0.9)
-        if e <= s + 2: s, e = max(0, peak_idx - 5), peak_idx
-        try:
-            m2, b2 = np.polyfit(potential[s:e], current[s:e], 1)
-            denom = m2 - m1
-            if abs(denom) < 1e-10: return self._threshold(potential, current, i_peak)
-            onset = float(np.clip((b1 - b2) / denom, potential.min(), potential.max()))
-            return onset, baseline
-        except:
-            return self._threshold(potential, current, i_peak)
 
-    def _threshold(self, potential, current, i_peak):
-        baseline = float(np.mean(current[:max(int(len(current)*0.15), 3)]))
-        thresh = baseline + self.onset_threshold * i_peak
-        above = np.where(current > thresh)[0]
-        if len(above) == 0: return float(potential[len(potential)//2]), baseline
+        try:
+            m_bl, b_bl = np.polyfit(potential[:bl_end], current[:bl_end], 1)
+        except Exception:
+            return self._onset_threshold(potential, current, i_peak)
+
+        peak_idx = int(np.argmax(current))
+        s = int(peak_idx * 0.55)
+        e = int(peak_idx * 0.85)
+        if e <= s + 2:
+            s = max(0, peak_idx - max(int(n * 0.1), 3))
+            e = peak_idx
+
+        try:
+            m_rise, b_rise = np.polyfit(potential[s:e], current[s:e], 1)
+            denom = m_rise - m_bl
+            if abs(denom) < 1e-12:
+                return self._onset_threshold(potential, current, i_peak)
+            onset = float(np.clip(
+                (b_bl - b_rise) / denom,
+                potential.min(), potential.max(),
+            ))
+            return onset, baseline
+        except Exception:
+            return self._onset_threshold(potential, current, i_peak)
+
+    def _onset_threshold(
+        self,
+        potential: np.ndarray,
+        current: np.ndarray,
+        i_peak: float,
+    ) -> tuple[float, float]:
+        """Threshold method: first point where current exceeds baseline + X% of peak."""
+        n_bl = max(int(len(current) * 0.15), 3)
+        baseline = float(np.mean(current[:n_bl]))
+        threshold = baseline + self.onset_threshold * i_peak
+        above = np.where(current > threshold)[0]
+        if len(above) == 0:
+            return float(potential[len(potential) // 2]), baseline
         return float(potential[int(above[0])]), baseline
 
-    def _derivative(self, potential, current):
-        if len(current) < 5: return self._threshold(potential, current, float(np.max(current)))
-        d2 = np.gradient(np.gradient(current, potential), potential)
-        peak = int(np.argmax(current))
-        pre  = d2[:peak]
-        if len(pre) == 0: return float(potential[0]), float(current[0])
-        idx = int(np.argmax(pre))
-        return float(potential[idx]), float(np.mean(current[:max(idx, 1)]))
+    def _onset_derivative(
+        self,
+        potential: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[float, float]:
+        """Second derivative method: inflection point of current."""
+        if len(current) < 5:
+            return self._onset_threshold(potential, current, float(np.max(current)))
+        try:
+            d2i = np.gradient(np.gradient(current, potential), potential)
+            peak = int(np.argmax(current))
+            pre  = d2i[:peak]
+            if len(pre) == 0:
+                return float(potential[0]), float(current[0])
+            idx  = int(np.argmax(pre))
+            return float(potential[idx]), float(np.mean(current[:max(idx, 1)]))
+        except Exception:
+            return self._onset_threshold(potential, current, float(np.max(current)))
 
-    def _interpret(self, e_onset, i_f, i_b, ratio) -> str:
+    # ── Smoothing ─────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _smooth(current: np.ndarray) -> np.ndarray:
+        """Apply Savitzky-Golay filter to remove instrumental noise."""
+        try:
+            from scipy.signal import savgol_filter
+            w = min(11, len(current) // 4)
+            if w < 5:
+                return current.copy()
+            if w % 2 == 0:
+                w += 1
+            return savgol_filter(current, window_length=w, polyorder=3)
+        except Exception:
+            try:
+                from scipy.ndimage import gaussian_filter1d
+                return gaussian_filter1d(current, sigma=2)
+            except Exception:
+                return current.copy()
+
+    # ── Interpretation ────────────────────────────────────────────────────────
+
+    def _interpret(
+        self,
+        e_onset: float,
+        i_f: float,
+        i_b: float,
+        ratio: float,
+    ) -> str:
+        """Automatic interpretation of CV results for AOR."""
         parts = []
-        if np.isnan(ratio):       parts.append("⚠️ I_f/I_b محاسبه نشد")
-        elif ratio > 2.0:         parts.append(f"✅ I_f/I_b={ratio:.2f} مقاومت عالی به CO")
-        elif ratio > 1.0:         parts.append(f"✅ I_f/I_b={ratio:.2f} مقاومت خوب به CO")
-        elif ratio > 0.5:         parts.append(f"⚠️ I_f/I_b={ratio:.2f} مسمومیت CO متوسط")
-        else:                     parts.append(f"❌ I_f/I_b={ratio:.2f} مسمومیت شدید CO")
 
-        thr_lo, thr_hi = (0.4, 0.6) if self.electrolyte == "acidic" else (0.2, 0.4)
-        if e_onset < thr_lo:      parts.append(f"✅ E_onset={e_onset:.3f}V عالی")
-        elif e_onset < thr_hi:    parts.append(f"⚠️ E_onset={e_onset:.3f}V متوسط")
-        else:                     parts.append(f"❌ E_onset={e_onset:.3f}V بالا")
+        # I_f/I_b interpretation
+        if np.isnan(ratio):
+            parts.append("I_f/I_b: not calculable")
+        elif ratio > 2.0:
+            parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance")
+        elif ratio > 1.0:
+            parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
+        elif ratio > 0.5:
+            parts.append(f"I_f/I_b={ratio:.2f} — Moderate CO poisoning")
+        else:
+            parts.append(f"I_f/I_b={ratio:.2f} — Severe CO poisoning")
+
+        # E_onset interpretation
+        lo, hi = (0.4, 0.6) if self.electrolyte == "acidic" else (0.2, 0.4)
+        if e_onset < lo:
+            parts.append(f"E_onset={e_onset:.3f}V — Excellent activity")
+        elif e_onset < hi:
+            parts.append(f"E_onset={e_onset:.3f}V — Moderate activity")
+        else:
+            parts.append(f"E_onset={e_onset:.3f}V — High overpotential")
+
         return " | ".join(parts)
 
     @staticmethod
-    def load_csv(filepath: str):
-        df = pd.read_csv(filepath, comment="#")
-        cols = df.columns.tolist()
-        return df[cols[0]].to_numpy(), df[cols[1]].to_numpy()
+    def load_csv(filepath: str) -> tuple[np.ndarray, np.ndarray]:
+        """Load CV data from CSV file."""
+        for enc in ["latin-1", "cp1252", "utf-8"]:
+            try:
+                df = pd.read_csv(filepath, comment="#", encoding=enc,
+                                 sep=None, engine="python")
+                c = df.columns.tolist()
+                return df[c[0]].to_numpy(float), df[c[1]].to_numpy(float)
+            except UnicodeDecodeError:
+                continue
+        raise ValueError(f"Cannot read file: {filepath}")

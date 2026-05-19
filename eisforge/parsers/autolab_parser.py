@@ -1,203 +1,255 @@
 """
-Autolab IDF Parser — پارسر فایل‌های Metrohm Autolab (.idf).
+Autolab IDF Parser — Comprehensive support for CV, LSV, and EIS.
+Author: Hoda Jafari | May 2026
 
-نویسنده: Hoda Jafari
-تاریخ: May 2026
+Recognized Autolab methods:
+    - CyclicVoltammetry → CV
+    - LinearSweep / LSV → LSV (same parsing as CV)
+    - EIS / FRA / Impedance → EIS
 
-فرمت فایل .idf:
----------------
-فایل‌های IDF (Instrument Data File) از نرم‌افزار NOVA
-خروجی می‌گیرند. ساختار کلی:
-
-[Header]
-Date=...
-Technique=EIS
-...
-
-[FRA]
-Frequency  Zreal  Zimag  Zmod  Phase
-...داده‌ها...
-
-نکته: برخی نسخه‌های NOVA فرمت کمی متفاوت دارند.
-این پارسر با NOVA 1.x و 2.x سازگار است.
+Column auto-detection:
+    EIS: frequency column = widest log range + monotonic
+         Z_real = positive median; Z_imag = negative median
+    CV/LSV: col 0 = potential, col 1 = current (in Amperes)
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
 from eisforge.parsers.base_parser import BaseEISParser, EISDataset
 
+_ENCODINGS = ["latin-1", "cp1252", "utf-8"]
+
+# Method classification
+_CV_METHODS  = ("cyclic", "voltammetry", "linearsweep", "linear sweep",
+                "lsv", "sweep", "chronoamperometry")
+_EIS_METHODS = ("eis", "fra", "impedance", "frequency")
+
 
 class AutolabIDFParser(BaseEISParser):
-    """
-    پارسر فایل‌های Autolab .idf از نرم‌افزار NOVA.
-
-    سازگار با:
-        - NOVA 1.x (.idf)
-        - NOVA 2.x (.idf)
-        - خروجی FRA32M و FRA2
-    """
-
-    # بخش‌هایی که داده EIS در آن‌هاست
-    _DATA_SECTIONS = ["[FRA]", "[EIS]", "[EISDATA]", "[DATA]"]
+    """Parser for Autolab .idf files (CV, LSV, EIS)."""
 
     def parse(self, filepath: Path | str) -> EISDataset:
-        """
-        پارس فایل .idf و برگشت EISDataset.
-        """
         filepath = self._resolve_path(filepath)
-        metadata: dict = {
-            "source_format": "Autolab IDF",
-            "filename": filepath.name,
-        }
+        content  = self._read_file(filepath)
+        lines    = content.splitlines()
 
-        with filepath.open("r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
+        metadata = self._parse_header(lines, filepath)
+        method   = metadata.get("method", "").lower().replace(" ", "")
 
-        lines = content.splitlines()
-
-        # ── استخراج metadata از header ────────────────────────────────────────
-        self._parse_header(lines, metadata)
-
-        # ── پیدا کردن بخش داده ───────────────────────────────────────────────
-        data_start = self._find_data_section(lines)
-
+        data_start, n_points = self._find_data_block(lines)
         if data_start is None:
-            # تلاش برای پارس مستقیم به عنوان داده عددی
-            data_start = self._find_numeric_start(lines)
+            raise ValueError(f"No data block in: {filepath.name}")
 
-        if data_start is None:
-            raise ValueError(
-                f"بخش داده EIS در فایل پیدا نشد: {filepath}\n"
-                "مطمئن شوید فایل از نوع EIS/FRA است."
-            )
+        raw_data = self._read_data_block(lines, data_start, n_points)
+        if raw_data is None or len(raw_data) == 0:
+            raise ValueError(f"No numeric data in: {filepath.name}")
 
-        # ── پارس داده‌های عددی ────────────────────────────────────────────────
-        freq_list, zre_list, zim_list = [], [], []
+        # ── Route by method ───────────────────────────────────────────────────
+        if any(m in method for m in _EIS_METHODS):
+            return self._parse_eis(raw_data, metadata, filepath)
 
-        # تشخیص ستون‌ها از header خط داده
-        col_line = lines[data_start].strip().lower()
-        freq_col, zre_col, zim_col = self._detect_columns(col_line)
+        if any(m in method for m in _CV_METHODS):
+            return self._parse_cv(raw_data, metadata, filepath, method)
 
-        for line in lines[data_start + 1:]:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("["):
-                break
-            if stripped.startswith("#") or stripped.startswith(";"):
-                continue
+        # ── Auto-detect when method is unknown ────────────────────────────────
+        if self._looks_like_eis(raw_data):
+            return self._parse_eis(raw_data, metadata, filepath)
+        return self._parse_cv(raw_data, metadata, filepath, method)
 
-            # جداکننده: tab، کاما، یا فاصله
-            parts = re.split(r"[\t,;]+|\s{2,}", stripped)
-            parts = [p.strip() for p in parts if p.strip()]
+    # ── EIS Parsing ───────────────────────────────────────────────────────────
 
-            if len(parts) <= max(freq_col, zre_col, zim_col):
-                continue
+    def _parse_eis(self, raw_data, metadata, filepath) -> EISDataset:
+        if raw_data.shape[1] < 3:
+            raise ValueError(f"EIS file needs ≥3 columns. Got {raw_data.shape[1]}.")
 
-            try:
-                freq = float(parts[freq_col].replace(",", "."))
-                zre  = float(parts[zre_col].replace(",", "."))
-                zim  = float(parts[zim_col].replace(",", "."))
+        freq_col   = self._find_frequency_column(raw_data)
+        other_cols = [c for c in range(raw_data.shape[1]) if c != freq_col][:2]
+        col_a, col_b = other_cols
 
-                if freq <= 0:
-                    continue
+        if np.median(raw_data[:, col_a]) > np.median(raw_data[:, col_b]):
+            zre_col, zim_col = col_a, col_b
+        else:
+            zre_col, zim_col = col_b, col_a
 
-                freq_list.append(freq)
-                zre_list.append(zre)
-                # Autolab: Zimag معمولاً منفی برای خازنی → نگیت می‌کنیم
-                zim_list.append(-zim)
+        freq   = raw_data[:, freq_col]
+        z_real = raw_data[:, zre_col]
+        z_imag = raw_data[:, zim_col]
 
-            except (ValueError, IndexError):
-                continue
+        # Convert Autolab Im(Z) (negative) → -Im(Z) (positive for capacitive)
+        if np.median(z_imag) < 0:
+            z_imag = -z_imag
 
-        if not freq_list:
-            raise ValueError(f"هیچ داده عددی در فایل پیدا نشد: {filepath}")
+        valid = freq > 0
+        freq, z_real, z_imag = freq[valid], z_real[valid], z_imag[valid]
+
+        metadata["data_type"]     = "EIS"
+        metadata["detected_cols"] = f"freq=col{freq_col}, Z'=col{zre_col}, Z''=col{zim_col}"
+        metadata["n_points"]      = len(freq)
 
         dataset = EISDataset(
-            frequency=np.array(freq_list, dtype=np.float64),
-            z_real=np.array(zre_list, dtype=np.float64),
-            z_imag=np.array(zim_list, dtype=np.float64),
+            frequency=np.asarray(freq,   dtype=np.float64),
+            z_real=np.asarray(z_real,    dtype=np.float64),
+            z_imag=np.asarray(z_imag,    dtype=np.float64),
             metadata=metadata,
             source_file=filepath,
         )
         dataset.validate_shapes()
         return self._sort_by_frequency(dataset)
 
-    def _parse_header(self, lines: list[str], metadata: dict) -> None:
-        """استخراج metadata از header فایل IDF."""
-        header_patterns = {
-            r"date\s*[=:]\s*(.+)":        "date",
-            r"time\s*[=:]\s*(.+)":        "time",
-            r"title\s*[=:]\s*(.+)":       "title",
-            r"operator\s*[=:]\s*(.+)":    "operator",
-            r"e_dc\s*[=:]\s*(.+)":        "dc_potential_V",
-            r"e_ac\s*[=:]\s*(.+)":        "ac_amplitude_V",
-            r"f_low\s*[=:]\s*(.+)":       "f_low_Hz",
-            r"f_high\s*[=:]\s*(.+)":      "f_high_Hz",
-            r"n_points\s*[=:]\s*(.+)":    "n_points",
-            r"technique\s*[=:]\s*(.+)":   "technique",
-        }
-        for line in lines[:50]:  # فقط ۵۰ خط اول
-            stripped = line.strip().lower()
-            for pattern, key in header_patterns.items():
-                m = re.match(pattern, stripped)
-                if m:
-                    metadata[key] = m.group(1).strip()
+    # ── CV / LSV Parsing ──────────────────────────────────────────────────────
 
-    def _find_data_section(self, lines: list[str]) -> int | None:
-        """پیدا کردن شروع بخش داده."""
-        for i, line in enumerate(lines):
-            stripped = line.strip().upper()
-            if any(stripped.startswith(sec) for sec in self._DATA_SECTIONS):
-                # خط بعدی header ستون‌هاست
-                return i + 1
-        return None
+    def _parse_cv(self, raw_data, metadata, filepath, method) -> EISDataset:
+        """
+        Parse CV / LSV data.
+
+        Autolab columns:
+            col 0: Applied potential (V)
+            col 1: Current (A) — converted to mA
+            col 2: Measured potential (V) [optional]
+        """
+        potential = raw_data[:, 0]
+        current_a = raw_data[:, 1]
+        current_ma = current_a * 1000.0   # A → mA
+
+        # Tag data type for downstream code
+        if "linear" in method or "lsv" in method or "sweep" in method:
+            data_type = "LSV"
+        elif "chrono" in method:
+            data_type = "Chronoamperometry"
+        else:
+            data_type = "CV"
+
+        metadata["data_type"] = data_type
+        metadata["n_points"]  = len(potential)
+        metadata["current_unit_original"] = "A (auto-converted to mA)"
+
+        return EISDataset(
+            frequency=np.arange(len(potential), dtype=float),
+            z_real=potential,
+            z_imag=current_ma,
+            metadata=metadata,
+            source_file=filepath,
+        )
+
+    # ── Column Auto-Detection ─────────────────────────────────────────────────
 
     @staticmethod
-    def _find_numeric_start(lines: list[str]) -> int | None:
-        """
-        اگر بخش مشخصی پیدا نشد، اولین خطی که
-        با عدد شروع می‌شود را پیدا کن.
-        """
-        for i, line in enumerate(lines):
-            parts = line.strip().split()
-            if len(parts) >= 3:
+    def _find_frequency_column(data: np.ndarray) -> int:
+        """Find the frequency column = widest log range + most monotonic."""
+        best_col, best_score = 0, -1.0
+        for col in range(data.shape[1]):
+            values = data[:, col]
+            if not (values > 0).all():
+                continue
+            v_max, v_min = values.max(), values.min()
+            if v_min < 1e-15:
+                continue
+            log_range = np.log10(v_max / v_min)
+            diffs = np.diff(values)
+            mono  = max(np.sum(diffs > 0) / len(diffs),
+                        np.sum(diffs < 0) / len(diffs))
+            score = log_range * mono
+            if score > best_score:
+                best_score, best_col = score, col
+        return best_col
+
+    @staticmethod
+    def _looks_like_eis(data: np.ndarray) -> bool:
+        """EIS has at least one column spanning multiple log decades."""
+        if data.shape[1] < 3:
+            return False
+        for col in range(data.shape[1]):
+            values = data[:, col]
+            if (values > 0).all() and values.min() > 0:
+                if np.log10(values.max() / values.min()) > 2:
+                    return True
+        return False
+
+    # ── Header Parsing ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_header(lines, filepath) -> dict:
+        metadata = {
+            "source_format": "Autolab IDF",
+            "filename": filepath.name,
+        }
+        for line in lines[:200]:
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
                 try:
-                    float(parts[0])
-                    float(parts[1])
-                    float(parts[2])
-                    return i - 1  # یک خط قبل را به عنوان header بده
+                    key, val = line.split("=", 1)
+                    key = key.strip().lower().replace(" ", "_")
+                    val = val.strip()
+                    if key and val:
+                        metadata[key] = val
                 except ValueError:
                     continue
-        return None
+        return metadata
+
+    # ── Data Block Detection ──────────────────────────────────────────────────
 
     @staticmethod
-    def _detect_columns(header_line: str) -> tuple[int, int, int]:
-        """
-        تشخیص شماره ستون‌های frequency، Zreal، Zimag.
+    def _find_data_block(lines) -> tuple[Optional[int], Optional[int]]:
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.lower() == "primary_data":
+                for j in range(i + 1, min(i + 6, len(lines))):
+                    try:
+                        n = int(lines[j].strip())
+                        if 10 <= n <= 1000000:
+                            return j + 1, n
+                    except ValueError:
+                        continue
+            if re.match(r"^\d+\s*$", stripped):
+                try:
+                    n = int(stripped)
+                    if 10 <= n <= 1000000 and i + 1 < len(lines):
+                        next_parts = lines[i + 1].strip().split()
+                        if len(next_parts) >= 2:
+                            float(next_parts[0])
+                            float(next_parts[1])
+                            return i + 1, n
+                except (ValueError, IndexError):
+                    continue
+        return None, None
 
-        ستون‌های رایج در Autolab:
-            freq | zreal | zimag | zmod | phase | time
-        """
-        aliases_freq = ["freq", "frequency", "f(hz)", "f"]
-        aliases_zre  = ["zreal", "z'", "z_re", "re(z)", "zre", "real"]
-        aliases_zim  = ["zimag", "z''", "z_im", "im(z)", "zim", "imag", "-im(z)"]
+    @staticmethod
+    def _read_data_block(lines, data_start, n_points) -> Optional[np.ndarray]:
+        rows = []
+        max_lines = n_points if n_points else len(lines) - data_start
+        for line in lines[data_start: data_start + max_lines + 5]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.lower() in ("primary_data", "data objects"):
+                break
+            if re.match(r"^[a-zA-Z_]\w*\s*=", stripped):
+                break
+            parts = stripped.split()
+            try:
+                row = [float(p.replace(",", ".")) for p in parts]
+                if len(row) >= 2:
+                    rows.append(row)
+            except ValueError:
+                continue
+        if not rows:
+            return None
+        max_cols = max(len(r) for r in rows)
+        padded   = [r + [np.nan] * (max_cols - len(r)) for r in rows]
+        return np.array(padded, dtype=np.float64)
 
-        parts = re.split(r"[\t,;]+|\s{2,}", header_line)
-        parts = [p.strip() for p in parts if p.strip()]
-
-        freq_col, zre_col, zim_col = 0, 1, 2  # پیش‌فرض
-
-        for i, col in enumerate(parts):
-            col_clean = col.lower().replace(" ", "").replace("(", "").replace(")", "")
-            if any(a in col_clean for a in aliases_freq):
-                freq_col = i
-            elif any(a in col_clean for a in aliases_zre):
-                zre_col = i
-            elif any(a in col_clean for a in aliases_zim):
-                zim_col = i
-
-        return freq_col, zre_col, zim_col
+    def _read_file(self, filepath: Path) -> str:
+        for enc in _ENCODINGS:
+            try:
+                with filepath.open("r", encoding=enc, errors="strict") as f:
+                    return f.read()
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        with filepath.open("r", encoding="latin-1", errors="replace") as f:
+            return f.read()

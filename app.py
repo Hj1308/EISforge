@@ -7,6 +7,7 @@ Run: streamlit run app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
+import re
 import tempfile
 import os
 from pathlib import Path
@@ -105,6 +106,54 @@ E_REF_MAP = {
     "SCE": 0.241, "Hg/HgO (1M KOH)": 0.098, "NHE/SHE": 0.000,
 }
 UNIT_MAP = {"A": 1000.0, "mA": 1.0, "μA": 1e-3, "nA": 1e-6}
+
+
+# ── Smart bounds detection ────────────────────────────────────────────────────
+
+def smart_bounds_for_circuit(circuit_str: str, p0: list):
+    """
+    Build correct bounds based on circuit structure.
+
+    Elements and their parameter counts:
+        R, C, L, W           : 1 parameter (all in [0, inf])
+        CPE                  : 2 parameters: Q in [0, inf], n in [0, 1]
+        Wo, Ws (Warburg open): 2 parameters: A in [0, inf], B in [0, inf]
+        TLM, etc.            : variable
+    """
+    n_params = len(p0)
+    lower = [0.0] * n_params
+    upper = [np.inf] * n_params
+
+    # Tokenize circuit (find all element names like R0, R1, CPE1, W1, etc.)
+    tokens = re.findall(r"[A-Za-z]+\d+", circuit_str)
+
+    p_idx = 0
+    for tok in tokens:
+        if p_idx >= n_params:
+            break
+
+        # CPE: 2 params, second one (n) must be in [0,1]
+        if tok.upper().startswith("CPE"):
+            # First param (Q): [0, inf]
+            p_idx += 1
+            # Second param (n): [0, 1]
+            if p_idx < n_params:
+                upper[p_idx] = 1.0
+            p_idx += 1
+        # Wo, Ws (Warburg-open, Warburg-short): 2 params
+        elif tok.upper().startswith("WO") or tok.upper().startswith("WS"):
+            p_idx += 2
+        # G (Gerischer): 2 params
+        elif tok.upper().startswith("G") and len(tok) > 1 and tok[1].isdigit():
+            p_idx += 2
+        # T (transmission line): 4 params typically
+        elif tok.upper().startswith("T") and len(tok) > 1 and tok[1].isdigit():
+            p_idx += 4
+        # R, C, L, W: 1 param
+        else:
+            p_idx += 1
+
+    return (lower, upper)
 
 
 # ── File utilities ────────────────────────────────────────────────────────────
@@ -393,7 +442,6 @@ with tab2:
 with tab3:
     st.markdown('<p class="section-title">Electrochemical Impedance Spectroscopy</p>', unsafe_allow_html=True)
 
-    # ── Upload section ────────────────────────────────────────────────────────
     col1, col2 = st.columns([1, 1])
     with col1:
         eis_file = st.file_uploader("Upload EIS file", type=EIS_FORMATS, key="eis_up")
@@ -407,26 +455,48 @@ with tab3:
         circ = st.text_input("Equivalent circuit", value=lit_c,
                              help="e.g. R0-p(R1,CPE1) or R0-p(R1,CPE1)-W1")
         p0s  = st.text_input("Initial guess (comma-separated)", value=lit_g)
+        use_bounds = st.checkbox(
+            "Use smart bounds (recommended)", value=True,
+            help="Auto-detect CPE_n bounds [0,1] and resistor bounds [0,∞]",
+        )
 
     with col2:
         if eis_file:
-            try:
-                fr, zr, zi, meta = load_eis(eis_file)
-                st.success(f"✅ {len(fr)} raw points | {eis_file.name}")
+            current_file_id = f"{eis_file.name}_{eis_file.size}"
+            already_loaded  = st.session_state.get("eis_loaded_id") == current_file_id
 
-                if meta:
-                    with st.expander("📋 File Metadata"):
-                        for k, v in meta.items():
-                            st.text(f"{k}: {v}")
+            if not already_loaded:
+                try:
+                    fr, zr, zi, meta = load_eis(eis_file)
+                    st.session_state["eis_loaded_id"] = current_file_id
+                    st.session_state["eis_fr_raw"] = fr
+                    st.session_state["eis_zr_raw"] = zr
+                    st.session_state["eis_zi_raw"] = zi
+                    st.session_state["eis_meta"]   = meta
+                    st.session_state["eis_fr"] = fr.copy()
+                    st.session_state["eis_zr"] = zr.copy()
+                    st.session_state["eis_zi"] = zi.copy()
+                    st.session_state["preprocessed"] = False
+                    if "fit" in st.session_state:
+                        del st.session_state["fit"]
+                    st.success(f"✅ {len(fr)} raw points loaded | {eis_file.name}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                if st.session_state.get("preprocessed", False):
+                    n_now = len(st.session_state["eis_fr"])
+                    n_raw = len(st.session_state["eis_fr_raw"])
+                    st.success(f"✅ {n_now} points (preprocessed) | {n_raw} raw | {eis_file.name}")
+                else:
+                    n = len(st.session_state["eis_fr_raw"])
+                    st.success(f"✅ {n} raw points | {eis_file.name}")
 
-                st.session_state.update({
-                    "eis_fr_raw": fr, "eis_zr_raw": zr, "eis_zi_raw": zi,
-                    "eis_fr": fr, "eis_zr": zr, "eis_zi": zi,
-                })
-            except Exception as e:
-                st.error(f"Error: {e}")
+            if st.session_state.get("eis_meta"):
+                with st.expander("📋 File Metadata"):
+                    for k, v in st.session_state["eis_meta"].items():
+                        st.text(f"{k}: {v}")
 
-    # ── Preprocessing section ─────────────────────────────────────────────────
+    # ── Preprocessing ─────────────────────────────────────────────────────────
     if "eis_fr_raw" in st.session_state:
         st.divider()
         st.markdown('<p class="section-title">🧹 Data Preprocessing</p>', unsafe_allow_html=True)
@@ -434,18 +504,10 @@ with tab3:
         prep_col1, prep_col2, prep_col3, prep_col4 = st.columns(4)
 
         with prep_col1:
-            remove_inductive = st.checkbox(
-                "Remove inductive artifacts",
-                value=True,
-                help="Remove points where -Z'' < 0 (cable inductance)",
-            )
+            remove_inductive = st.checkbox("Remove inductive artifacts", value=True)
 
         with prep_col2:
-            remove_jumps = st.checkbox(
-                "Remove |Z| jumps",
-                value=True,
-                help="Remove points with sudden jumps in Z' or Z''",
-            )
+            remove_jumps = st.checkbox("Remove |Z| jumps", value=True)
             jump_threshold = st.slider(
                 "Jump threshold (%)", min_value=10, max_value=100, value=20, step=5,
                 disabled=not remove_jumps,
@@ -453,74 +515,81 @@ with tab3:
 
         with prep_col3:
             crop_freq = st.checkbox("Crop frequency range", value=False)
-            f_min_in = st.number_input("f_min (Hz)", value=0.01, format="%.4g",
-                                       disabled=not crop_freq)
-            f_max_in = st.number_input("f_max (Hz)", value=100000.0, format="%.4g",
-                                       disabled=not crop_freq)
+            f_min_in = st.number_input("f_min (Hz)", value=0.01, format="%.4g", disabled=not crop_freq)
+            f_max_in = st.number_input("f_max (Hz)", value=100000.0, format="%.4g", disabled=not crop_freq)
 
         with prep_col4:
-            drop_mains = st.checkbox(
-                "Drop mains noise",
-                value=False,
-                help="Remove 50/60 Hz mains and harmonics",
-            )
-            mains_freq = st.selectbox(
-                "Mains frequency", [50.0, 60.0], index=0, disabled=not drop_mains,
-                help="50 Hz: EU/Asia | 60 Hz: USA",
-            )
-            mains_tol = st.number_input(
-                "Tolerance (Hz)", value=0.5, step=0.1, disabled=not drop_mains,
-            )
+            drop_mains = st.checkbox("Drop mains noise", value=False)
+            mains_freq = st.selectbox("Mains (Hz)", [50.0, 60.0], index=0, disabled=not drop_mains)
+            mains_tol  = st.number_input("Tolerance (Hz)", value=0.5, step=0.1, disabled=not drop_mains)
 
-        if st.button("🧹 Apply Preprocessing", type="primary"):
-            try:
-                from eisforge.core.preprocessor import DataPreprocessor
-                from eisforge.parsers.base_parser import EISDataset
+        col_a, col_b = st.columns([1, 1])
+        with col_a:
+            if st.button("🧹 Apply Preprocessing", type="primary"):
+                try:
+                    from eisforge.core.preprocessor import DataPreprocessor
+                    from eisforge.parsers.base_parser import EISDataset
 
-                ds = EISDataset(
-                    frequency=st.session_state["eis_fr_raw"],
-                    z_real=st.session_state["eis_zr_raw"],
-                    z_imag=st.session_state["eis_zi_raw"],
-                )
-                n_before = len(ds.frequency)
-
-                if remove_inductive:
-                    ds = DataPreprocessor.remove_inductive_artifacts(ds, verbose=False)
-                if crop_freq:
-                    ds = DataPreprocessor.crop_frequencies(
-                        ds, f_min=f_min_in, f_max=f_max_in, verbose=False,
+                    ds = EISDataset(
+                        frequency=st.session_state["eis_fr_raw"].copy(),
+                        z_real=st.session_state["eis_zr_raw"].copy(),
+                        z_imag=st.session_state["eis_zi_raw"].copy(),
                     )
-                if remove_jumps:
-                    ds = DataPreprocessor.remove_z_jumps(
-                        ds, threshold_pct=float(jump_threshold), verbose=False,
-                    )
-                if drop_mains:
-                    ds = DataPreprocessor.drop_specific_frequency(
-                        ds, target_freq=float(mains_freq),
-                        tolerance_hz=float(mains_tol), verbose=False,
-                    )
+                    n_before = len(ds.frequency)
 
-                n_after = len(ds.frequency)
-                n_removed = n_before - n_after
+                    if remove_inductive:
+                        ds = DataPreprocessor.remove_inductive_artifacts(ds, verbose=False)
+                    if crop_freq:
+                        ds = DataPreprocessor.crop_frequencies(
+                            ds, f_min=f_min_in, f_max=f_max_in, verbose=False,
+                        )
+                    if remove_jumps:
+                        ds = DataPreprocessor.remove_z_jumps(
+                            ds, threshold_pct=float(jump_threshold), verbose=False,
+                        )
+                    if drop_mains:
+                        ds = DataPreprocessor.drop_specific_frequency(
+                            ds, target_freq=float(mains_freq),
+                            tolerance_hz=float(mains_tol), verbose=False,
+                        )
 
-                st.session_state["eis_fr"] = ds.frequency
-                st.session_state["eis_zr"] = ds.z_real
-                st.session_state["eis_zi"] = ds.z_imag
+                    st.session_state["eis_fr"] = ds.frequency
+                    st.session_state["eis_zr"] = ds.z_real
+                    st.session_state["eis_zi"] = ds.z_imag
+                    st.session_state["preprocessed"] = True
+                    if "fit" in st.session_state:
+                        del st.session_state["fit"]
 
-                if n_removed > 0:
-                    st.success(
-                        f"✅ Preprocessing complete: {n_before} → {n_after} points "
-                        f"({n_removed} removed)"
-                    )
-                else:
-                    st.info(f"✅ Preprocessing complete: no points removed ({n_after} points kept)")
+                    n_removed = n_before - len(ds.frequency)
+                    if n_removed > 0:
+                        st.success(
+                            f"✅ Preprocessing complete: {n_before} → {len(ds.frequency)} points "
+                            f"({n_removed} removed)"
+                        )
+                    else:
+                        st.info(f"✅ Preprocessing complete: no points removed")
+                except Exception as e:
+                    st.error(f"Preprocessing error: {e}")
 
-            except Exception as e:
-                st.error(f"Preprocessing error: {e}")
+        with col_b:
+            if st.button("↩ Reset to Raw Data"):
+                st.session_state["eis_fr"] = st.session_state["eis_fr_raw"].copy()
+                st.session_state["eis_zr"] = st.session_state["eis_zr_raw"].copy()
+                st.session_state["eis_zi"] = st.session_state["eis_zi_raw"].copy()
+                st.session_state["preprocessed"] = False
+                if "fit" in st.session_state:
+                    del st.session_state["fit"]
+                st.info("Data reset to raw values.")
 
     # ── K-K + Fit section ─────────────────────────────────────────────────────
     if "eis_fr" in st.session_state:
         st.divider()
+        n_current = len(st.session_state["eis_fr"])
+        is_prep   = st.session_state.get("preprocessed", False)
+        state_msg = f"Working with {n_current} points "
+        state_msg += "(preprocessed ✨)" if is_prep else "(raw data)"
+        st.caption(state_msg)
+
         col_kk, col_fit = st.columns([1, 2])
 
         with col_kk:
@@ -553,13 +622,11 @@ with tab3:
                             z_real=st.session_state["eis_zr"],
                             z_imag=st.session_state["eis_zi"],
                         )
-                        # Auto-bounds: CPE_n params (values in 0-1) constrained to [0,1]
-                        lower, upper = [], []
-                        for v in p0:
-                            lower.append(0.0)
-                            upper.append(1.0 if 0 < v <= 1 else np.inf)
 
-                        fit = CNLSFitter(circ, p0, bounds=(lower, upper),
+                        # Smart bounds based on circuit structure
+                        bounds = smart_bounds_for_circuit(circ, p0) if use_bounds else None
+
+                        fit = CNLSFitter(circ, p0, bounds=bounds,
                                          remove_outliers=False).fit(ds)
                         st.session_state["fit"] = fit
 
@@ -573,14 +640,32 @@ with tab3:
 
         if "fit" in st.session_state:
             fit = st.session_state["fit"]
-            st.dataframe(pd.DataFrame([
-                {"Parameter": n,
-                 "Value": f"{v:.4e}",
-                 "±Error": f"{fit.parameter_errors.get(n, float('nan')):.2e}",
-                 "Rel. Error (%)": f"{abs(fit.parameter_errors.get(n, float('nan'))/v)*100:.2f}"
-                                   if v != 0 and not np.isnan(v) else "N/A"}
-                for n, v in fit.parameters.items()
-            ]), use_container_width=True, hide_index=True)
+
+            # Check if any parameters are NaN
+            has_nan = any(np.isnan(v) for v in fit.parameters.values())
+            if has_nan:
+                st.warning(
+                    "⚠ Some parameters returned NaN. This usually means the optimizer "
+                    "needs different initial guesses. Try slightly different starting values, "
+                    "or uncheck 'Use smart bounds' for free optimization."
+                )
+
+            # Table
+            rows = []
+            for name, value in fit.parameters.items():
+                err = fit.parameter_errors.get(name, float("nan"))
+                val_str = f"{value:.4e}" if not np.isnan(value) else "NaN"
+                err_str = f"{err:.2e}" if not np.isnan(err) else "—"
+                if not np.isnan(value) and value != 0 and not np.isnan(err):
+                    rel = abs(err / value) * 100
+                    rel_str = f"{rel:.2f}"
+                else:
+                    rel_str = "N/A"
+                rows.append({
+                    "Parameter": name, "Value": val_str,
+                    "±Error": err_str, "Rel. Error (%)": rel_str,
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
             # Plot
             import plotly.graph_objects as go
@@ -647,10 +732,6 @@ with tab4:
             for c in res["top3"]:
                 st.progress(c["probability"],
                             text=f"{c['circuit']} — {c['probability']*100:.1f}%")
-            st.caption(
-                "Note: Model not yet trained on real data. "
-                "Train using scripts/train_ml_models.py for accurate predictions."
-            )
     else:
         st.warning("Please upload an EIS file in the 'EIS Analysis' tab first.")
 
