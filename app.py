@@ -146,9 +146,40 @@ def load_cv_lsv(f, unit_factor=1.0):
 with st.sidebar:
     st.markdown('<p class="section-title">System Settings</p>', unsafe_allow_html=True)
     system_type = st.selectbox("System type",["AOR","Battery","Corrosion","Fuel Cell","Biosensor"])
-    catalyst    = st.text_input("Catalyst", placeholder="e.g. Pt/C, PdAu/C, PtRu/C")
-    electrolyte = st.selectbox("Electrolyte",["Acidic (H₂SO₄)","Alkaline (KOH)","NaCl","PBS","Other"])
-    ekey = "acidic" if "Acidic" in electrolyte else "alkaline" if "Alkaline" in electrolyte else "acidic"
+    catalyst    = st.text_input("Catalyst", placeholder="e.g. Pt/C, B4C, PtRu/C")
+
+    # ── Catalyst type ──────────────────────────────────────────────────────
+    catalyst_type_ui = st.selectbox(
+        "Catalyst type",
+        ["Noble Metal (Pt, Pd, Au, Rh)",
+         "Alloy (PtRu, PtSn, PdAu, PtCu)",
+         "Metal Oxide (NiO, Co₃O₄, MnO₂)",
+         "Metal-Free (B₄C, N-doped C, CNT)"],
+    )
+    _CTYPE_MAP = {
+        "Noble Metal (Pt, Pd, Au, Rh)"    : "noble_metal",
+        "Alloy (PtRu, PtSn, PdAu, PtCu)" : "alloy",
+        "Metal Oxide (NiO, Co₃O₄, MnO₂)" : "metal_oxide",
+        "Metal-Free (B₄C, N-doped C, CNT)": "metal_free",
+    }
+    catalyst_type = _CTYPE_MAP[catalyst_type_ui]
+
+    # ── Electrolyte ────────────────────────────────────────────────────────
+    electrolyte = st.selectbox("Electrolyte media",["Acidic","Alkaline","NaCl","PBS","Other"])
+    ekey = "acidic" if electrolyte == "Acidic" else "alkaline" if electrolyte == "Alkaline" else "acidic"
+
+    if electrolyte == "Acidic":
+        elec_compound = st.selectbox("Acid type", ["H₂SO₄", "HClO₄", "HCl", "HNO₃"])
+        _COMPOUND_MAP = {"H₂SO₄":"H2SO4","HClO₄":"HClO4","HCl":"HCl","HNO₃":"HNO3"}
+        elec_compound_key = _COMPOUND_MAP[elec_compound]
+    elif electrolyte == "Alkaline":
+        elec_compound = st.selectbox("Base type", ["KOH", "NaOH", "Na₂CO₃", "NH₃"])
+        _COMPOUND_MAP = {"KOH":"KOH","NaOH":"NaOH","Na₂CO₃":"Na2CO3","NH₃":"NH3"}
+        elec_compound_key = _COMPOUND_MAP[elec_compound]
+    else:
+        elec_compound = electrolyte
+        elec_compound_key = electrolyte
+
     alcohol = st.selectbox("Alcohol",["ethanol","methanol","ethylene glycol","glycerol","N/A"],
                            disabled=(system_type!="AOR"))
     eis_pot = st.number_input("EIS potential (V)", value=0.5, step=0.01)
@@ -156,8 +187,9 @@ with st.sidebar:
     st.divider()
     st.markdown('<p class="section-title">Electrode Parameters</p>', unsafe_allow_html=True)
     area    = st.number_input("Geometric area (cm²)", value=1.0, step=0.01, min_value=0.001)
-    ecsa    = st.number_input("ECSA (cm²_metal)",     value=0.0, step=0.1,  min_value=0.0)
-    loading = st.number_input("Loading (mg/cm²)",     value=0.0, step=0.01, min_value=0.0)
+    _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "metal_free" else "ECSA (cm²_metal)"
+    ecsa    = st.number_input(_ecsa_label,             value=0.0, step=0.1,  min_value=0.0)
+    loading = st.number_input("Loading (mg/cm²)",      value=0.0, step=0.01, min_value=0.0)
 
     st.divider()
     st.markdown('<p class="section-title">Experimental Conditions</p>', unsafe_allow_html=True)
@@ -249,9 +281,11 @@ with tab1:
 
                 st.success(f"✅ {len(pot)} points | {cv_file.name}")
 
-                from eisforge.analysis.cv_analyzer import CVAnalyzer
+                from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
+                _el = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
                 ana = CVAnalyzer(scan_rate=sr_cv, electrode_area=area, ecsa=ecsa,
-                                 catalyst_loading=loading, onset_method=om, electrolyte=ekey)
+                                 catalyst_loading=loading, onset_method=om,
+                                 electrolyte=_el, catalyst_type=catalyst_type)
                 r = ana.analyze(pot, cur, r_s_ohms=actual_rs)
                 st.session_state.update({"cv_r":r,"cv_pot":pot,"cv_cur":cur,"cv_pot_corr":
                     CVAnalyzer.apply_ir_compensation(pot, cur, actual_rs) if actual_rs>0 else pot})
@@ -265,16 +299,23 @@ with tab1:
         if r.ir_compensated:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
 
+        _is_mf = catalyst_type == "metal_free"
+
         c1,c2,c3,c4 = st.columns(4)
         c1.metric("E_onset",  f"{r.e_onset:.4f} V")
-        c2.metric("I_f",      f"{r.i_forward_peak:.4f} mA")
-        c3.metric("I_b",      f"{r.i_backward_peak:.4f} mA")
-        c4.metric("I_f/I_b",  f"{r.if_ib_ratio:.3f}")
+        c2.metric("I_forward peak", f"{r.i_forward_peak:.4f} mA")
+        if _is_mf:
+            c3.metric("Net faradaic I", f"{r.net_faradaic_current_mA:.4f} mA")
+            c4.metric("C_dl",           f"{r.cdl_mF_cm2:.4f} mF/cm²")
+        else:
+            c3.metric("I_b",      f"{r.i_backward_peak:.4f} mA")
+            c4.metric("I_f/I_b",  f"{r.if_ib_ratio:.3f}" if not np.isnan(r.if_ib_ratio) else "N/A")
 
         c5,c6,c7 = st.columns(3)
         c5.metric("j_f (geometric)", f"{r.j_forward_peak:.4f} mA/cm²")
         c6.metric("j_b (geometric)", f"{r.j_backward_peak:.4f} mA/cm²")
-        if r.ecsa>0: c7.metric("j_f (ECSA)", f"{r.j_specific_forward:.4f} mA/cm²_Pt")
+        _ecsa_unit = "cm²_BET" if _is_mf else "cm²_Pt"
+        if r.ecsa>0: c7.metric(f"j_f (ECSA)", f"{r.j_specific_forward:.4f} mA/{_ecsa_unit}")
 
         st.info(f"**Interpretation:** {r.interpretation}")
 
@@ -332,9 +373,11 @@ with tab2:
 
                 st.success(f"✅ {len(pot_lsv)} points | {lsv_file.name}")
 
-                from eisforge.analysis.lsv_analyzer import LSVAnalyzer
+                from eisforge.analysis.lsv_analyzer import LSVAnalyzer, ElectrolyteInfo
+                _el = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
                 la = LSVAnalyzer(scan_rate=sr_lsv, electrode_area=area, ecsa=ecsa,
-                                 catalyst_loading=loading, electrolyte=ekey,
+                                 catalyst_loading=loading, electrolyte=_el,
+                                 catalyst_type=catalyst_type,
                                  e_ref_vs_rhe=e_ref_val, tafel_current_range=(tj_min,tj_max))
                 lr = la.analyze(pot_lsv, cur_lsv, r_s_ohms=actual_rs)
                 st.session_state.update({"lsv_r":lr,"lsv_pot":pot_lsv,"lsv_cur":cur_lsv})
@@ -360,7 +403,8 @@ with tab2:
         c6.metric("η @ 100 mA/cm²", f"{r.overpotential_100*1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
 
         if loading>0: st.metric("Mass activity",     f"{r.mass_activity:.3f} mA/mg_cat")
-        if ecsa>0:    st.metric("Specific activity", f"{r.specific_activity:.4f} mA/cm²_Pt")
+        _sa_unit = "cm²_BET" if catalyst_type == "metal_free" else "cm²_Pt"
+        if ecsa>0:    st.metric("Specific activity", f"{r.specific_activity:.4f} mA/{_sa_unit}")
 
         st.info(f"**Mechanism:** {r.mechanism_interpretation}")
         st.success(f"**Performance:** {r.performance_rating}")
@@ -647,9 +691,14 @@ with tab5:
                 summary["Parameter"].append("E_onset (V)" + (" iR-corr." if actual_rs>0 else ""))
                 summary["CV/LSV"].append(f"{cv_res.e_onset:.4f}")
                 summary["EIS"].append(f"Measured at {eis_pot:.4f} V")
-                if has_cv:
+                if has_cv and catalyst_type != "metal_free":
+                    _ratio = st.session_state['cv_r'].if_ib_ratio
                     summary["Parameter"].append("I_f/I_b")
-                    summary["CV/LSV"].append(f"{st.session_state['cv_r'].if_ib_ratio:.3f}")
+                    summary["CV/LSV"].append(f"{_ratio:.3f}" if not np.isnan(_ratio) else "N/A")
+                    summary["EIS"].append("—")
+                elif has_cv and catalyst_type == "metal_free":
+                    summary["Parameter"].append("C_dl (mF/cm²)")
+                    summary["CV/LSV"].append(f"{st.session_state['cv_r'].cdl_mF_cm2:.4f}")
                     summary["EIS"].append("—")
                 summary["Parameter"].append("R_ct (Ω)")
                 summary["CV/LSV"].append("—")
