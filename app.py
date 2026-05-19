@@ -347,6 +347,113 @@ with tab1:
                           yaxis_title="Current (mA)")
         st.plotly_chart(fig, use_container_width=True)
 
+    # ══ Batch CV Analysis (n=3) ═══════════════════════════════════════════════
+    st.divider()
+    st.markdown('<p class="section-title">📊 Batch Analysis — Mean ± SD (n≥3)</p>', unsafe_allow_html=True)
+    st.caption("Upload 3 or more CV files from the same experiment for statistical reproducibility.")
+
+    batch_cv_files = st.file_uploader(
+        "Upload multiple CV files (n≥3)", type=CV_FORMATS,
+        accept_multiple_files=True, key="batch_cv_up"
+    )
+
+    if batch_cv_files and len(batch_cv_files) >= 2:
+        if st.button(f"▶ Run Batch CV Analysis ({len(batch_cv_files)} files)", type="primary"):
+            with st.spinner(f"Analyzing {len(batch_cv_files)} CV files..."):
+                try:
+                    from eisforge.analysis.batch_analyzer import BatchCVAnalyzer
+                    from eisforge.analysis.cv_analyzer import ElectrolyteInfo
+
+                    _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
+                    pots_b, curs_b = [], []
+                    for f in batch_cv_files:
+                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        pots_b.append(p); curs_b.append(c)
+
+                    batch_ana = BatchCVAnalyzer(
+                        scan_rate=sr_cv, electrode_area=area, ecsa=ecsa,
+                        catalyst_type=catalyst_type, electrolyte=_el_b,
+                        onset_method=om, catalyst_loading=loading,
+                        r_s_ohms=actual_rs,
+                    )
+                    br = batch_ana.analyze_arrays(pots_b, curs_b)
+                    st.session_state["batch_cv_r"] = br
+                    st.success(f"✅ {br.n_valid}/{br.n_files} files analyzed successfully")
+                    if br.outlier_indices:
+                        st.warning(f"⚠ Outliers detected in files: {br.outlier_indices}")
+                except Exception as e:
+                    st.error(f"Batch error: {e}")
+    elif batch_cv_files:
+        st.info("Upload at least 2 files for batch analysis (3 recommended for publications).")
+
+    if "batch_cv_r" in st.session_state:
+        br = st.session_state["batch_cv_r"]
+        _is_mf = catalyst_type == "metal_free"
+        st.divider()
+        n_str = f"n={br.n_valid}"
+
+        # ── Metrics with ± SD ──────────────────────────────────────────────
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric(f"E_onset ({n_str})",
+                  f"{br.e_onset_mean:.4f} V",
+                  delta=f"± {br.e_onset_std:.4f}")
+        c2.metric(f"I_forward ({n_str})",
+                  f"{br.i_fwd_mean:.4f} mA",
+                  delta=f"± {br.i_fwd_std:.4f}")
+        c3.metric(f"j_forward ({n_str})",
+                  f"{br.j_fwd_mean:.4f} mA/cm²",
+                  delta=f"± {br.j_fwd_std:.4f}")
+        if _is_mf:
+            c4.metric(f"C_dl ({n_str})",
+                      f"{br.cdl_mean:.4f} mF/cm²",
+                      delta=f"± {br.cdl_std:.4f}")
+        else:
+            c4.metric(f"I_f/I_b ({n_str})",
+                      f"{br.if_ib_mean:.3f}",
+                      delta=f"± {br.if_ib_std:.3f}")
+
+        # ── Averaged curve with error band ─────────────────────────────────
+        if br.potential_common is not None:
+            import plotly.graph_objects as go
+            fig_b = go.Figure()
+            pot_c = br.potential_common
+            cur_m = br.current_mean_curve
+            cur_s = br.current_std_curve
+
+            fig_b.add_trace(go.Scatter(
+                x=np.concatenate([pot_c, pot_c[::-1]]),
+                y=np.concatenate([cur_m + cur_s, (cur_m - cur_s)[::-1]]),
+                fill="toself", fillcolor="rgba(37,99,235,0.12)",
+                line=dict(color="rgba(37,99,235,0)"),
+                name=f"± SD band",
+                showlegend=True,
+            ))
+            fig_b.add_trace(go.Scatter(
+                x=pot_c, y=cur_m,
+                mode="lines", name=f"Mean CV (n={br.n_valid})",
+                line=dict(color="#2563eb", width=2.5),
+            ))
+            fig_b.add_vline(x=br.e_onset_mean, line_dash="dash", line_color="#d97706",
+                            annotation_text=f"E_onset = {br.e_onset_mean:.3f} ± {br.e_onset_std:.3f} V",
+                            annotation_font=dict(color="#d97706"))
+            fig_b.update_layout(**PLOTLY_LAYOUT,
+                                title=f"Averaged CV — {n_str} | {catalyst or 'Catalyst'}",
+                                xaxis_title=f"Potential (V vs {e_ref_type})",
+                                yaxis_title="Current (mA)")
+            st.plotly_chart(fig_b, use_container_width=True)
+
+        # ── Publication table ──────────────────────────────────────────────
+        st.markdown("#### Publication-Ready Table")
+        st.dataframe(br.to_dataframe(), use_container_width=True, hide_index=True)
+
+        col_md, col_tex = st.columns(2)
+        with col_md:
+            st.markdown("**Markdown** (for README / GitHub)")
+            st.code(br.to_markdown_table(), language="markdown")
+        with col_tex:
+            st.markdown("**LaTeX** (paste directly into paper)")
+            st.code(br.to_latex_table(), language="latex")
+
 
 # ══════════════════ LSV ══════════════════════════════════════════════════════
 with tab2:
@@ -445,6 +552,118 @@ with tab2:
         fig.update_xaxes(title_text="log(j) [mA/cm²]", row=1,col=2)
         fig.update_yaxes(title_text="E (V)", row=1,col=2)
         st.plotly_chart(fig, use_container_width=True)
+
+    # ══ Batch LSV Analysis (n=3) ══════════════════════════════════════════════
+    st.divider()
+    st.markdown('<p class="section-title">📊 Batch Analysis — Mean ± SD (n≥3)</p>', unsafe_allow_html=True)
+    st.caption("Upload 3 or more LSV files for statistical reproducibility.")
+
+    batch_lsv_files = st.file_uploader(
+        "Upload multiple LSV files (n≥3)", type=CV_FORMATS,
+        accept_multiple_files=True, key="batch_lsv_up"
+    )
+
+    if batch_lsv_files and len(batch_lsv_files) >= 2:
+        if st.button(f"▶ Run Batch LSV Analysis ({len(batch_lsv_files)} files)", type="primary"):
+            with st.spinner(f"Analyzing {len(batch_lsv_files)} LSV files..."):
+                try:
+                    from eisforge.analysis.batch_analyzer import BatchLSVAnalyzer
+                    from eisforge.analysis.lsv_analyzer import ElectrolyteInfo
+
+                    _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
+                    pots_b, curs_b = [], []
+                    for f in batch_lsv_files:
+                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        pots_b.append(p); curs_b.append(c)
+
+                    batch_lsv = BatchLSVAnalyzer(
+                        scan_rate=sr_lsv, electrode_area=area, ecsa=ecsa,
+                        catalyst_type=catalyst_type, electrolyte=_el_b,
+                        catalyst_loading=loading, e_ref_vs_rhe=e_ref_val,
+                        tafel_current_range=(tj_min, tj_max),
+                        r_s_ohms=actual_rs,
+                    )
+                    blr = batch_lsv.analyze_arrays(pots_b, curs_b)
+                    st.session_state["batch_lsv_r"] = blr
+                    st.success(f"✅ {blr.n_valid}/{blr.n_files} files analyzed successfully")
+                    if blr.outlier_indices:
+                        st.warning(f"⚠ Outliers detected in files: {blr.outlier_indices}")
+                except Exception as e:
+                    st.error(f"Batch error: {e}")
+    elif batch_lsv_files:
+        st.info("Upload at least 2 files for batch analysis (3 recommended).")
+
+    if "batch_lsv_r" in st.session_state:
+        import math
+        blr = st.session_state["batch_lsv_r"]
+        _is_mf = catalyst_type == "metal_free"
+        st.divider()
+        n_str = f"n={blr.n_valid}"
+
+        # ── Metrics with ± SD ──────────────────────────────────────────────
+        c1,c2,c3 = st.columns(3)
+        c1.metric(f"E_onset ({n_str})",
+                  f"{blr.e_onset_mean:.4f} V",
+                  delta=f"± {blr.e_onset_std:.4f}")
+        _tafel_note = " (normal)" if _is_mf else ""
+        c2.metric(f"Tafel ({n_str})",
+                  f"{blr.tafel_mean:.1f} mV/dec{_tafel_note}",
+                  delta=f"± {blr.tafel_std:.1f}")
+        c3.metric(f"j₀ ({n_str})",
+                  f"{blr.j0_mean:.3e} mA/cm²",
+                  delta=f"± {blr.j0_std:.3e}")
+
+        c4,c5,c6 = st.columns(3)
+        c4.metric(f"η@10 ({n_str})",
+                  f"{blr.eta10_mean*1000:.1f} mV" if not math.isnan(blr.eta10_mean) else "N/A",
+                  delta=f"± {blr.eta10_std*1000:.1f} mV" if not math.isnan(blr.eta10_std) else None)
+        c5.metric(f"η@50 ({n_str})",
+                  f"{blr.eta50_mean*1000:.1f} mV" if not math.isnan(blr.eta50_mean) else "N/A",
+                  delta=f"± {blr.eta50_std*1000:.1f} mV" if not math.isnan(blr.eta50_std) else None)
+        c6.metric(f"η@100 ({n_str})",
+                  f"{blr.eta100_mean*1000:.1f} mV" if not math.isnan(blr.eta100_mean) else "N/A",
+                  delta=f"± {blr.eta100_std*1000:.1f} mV" if not math.isnan(blr.eta100_std) else None)
+
+        # ── Averaged LSV curve with error band ─────────────────────────────
+        if blr.potential_common is not None:
+            import plotly.graph_objects as go
+            fig_blsv = go.Figure()
+            pot_c = blr.potential_common
+            j_m   = blr.j_mean_curve
+            j_s   = blr.j_std_curve
+
+            fig_blsv.add_trace(go.Scatter(
+                x=np.concatenate([pot_c, pot_c[::-1]]),
+                y=np.concatenate([j_m + j_s, (j_m - j_s)[::-1]]),
+                fill="toself", fillcolor="rgba(37,99,235,0.12)",
+                line=dict(color="rgba(37,99,235,0)"),
+                name="± SD band",
+            ))
+            fig_blsv.add_trace(go.Scatter(
+                x=pot_c, y=j_m, mode="lines",
+                name=f"Mean LSV ({n_str})",
+                line=dict(color="#2563eb", width=2.5),
+            ))
+            fig_blsv.add_vline(x=blr.e_onset_mean, line_dash="dash", line_color="#d97706",
+                               annotation_text=f"E_onset = {blr.e_onset_mean:.3f} ± {blr.e_onset_std:.3f} V",
+                               annotation_font=dict(color="#d97706"))
+            fig_blsv.update_layout(**PLOTLY_LAYOUT,
+                                   title=f"Averaged LSV — {n_str} | {catalyst or 'Catalyst'}",
+                                   xaxis_title=f"Potential (V vs {e_ref_type})",
+                                   yaxis_title="j (mA/cm²)")
+            st.plotly_chart(fig_blsv, use_container_width=True)
+
+        # ── Publication table ──────────────────────────────────────────────
+        st.markdown("#### Publication-Ready Table")
+        st.dataframe(blr.to_dataframe(), use_container_width=True, hide_index=True)
+
+        col_md, col_tex = st.columns(2)
+        with col_md:
+            st.markdown("**Markdown** (for README / GitHub)")
+            st.code(blr.to_markdown_table(), language="markdown")
+        with col_tex:
+            st.markdown("**LaTeX** (paste directly into paper)")
+            st.code(blr.to_latex_table(), language="latex")
 
 
 # ══════════════════ EIS ══════════════════════════════════════════════════════
