@@ -1,18 +1,17 @@
 """
-EIS-CV Correlator — ارتباط‌دهنده EIS با CV.
-نویسنده: Hoda Jafari | May 2026
+EIS-CV Correlator — Cross-technique correlation between EIS and CV results.
+Author: Hoda Jafari | May 2026
 
-از همه انواع کاتالیزور پشتیبانی می‌کند:
+Supports all catalyst families:
     - noble_metal  : Pt, Pd, Au, Rh
     - alloy        : PtRu, PtSn, PdAu, PtCu
-    - metal_oxide  : NiO, Co3O4, MnO2
+    - metal_oxide  : NiO, Co3O4, MnO2, Co2NiO4
     - metal_free   : B4C, N-doped Carbon, CNT, rGO
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -35,57 +34,56 @@ class EISCVCorrelationResult:
     eis_region        : str
     r_ct              : float
     i_forward_peak    : float
-    catalyst_type     : str = CATALYST_NOBLE_METAL
+    catalyst_type     : str   = CATALYST_NOBLE_METAL
     consistency_score : float = 1.0
-    warnings          : list = field(default_factory=list)
-    recommendations   : list = field(default_factory=list)
+    warnings          : list  = field(default_factory=list)
+    recommendations   : list  = field(default_factory=list)
 
     def report(self) -> str:
-        region_map = {
-            "pre-onset" : "قبل از E_onset",
-            "onset"     : "روی E_onset",
-            "post-onset": "بعد از E_onset",
-        }
         catalyst_map = {
-            CATALYST_NOBLE_METAL : "Noble Metal (Pt/Pd/Au)",
-            CATALYST_ALLOY       : "Alloy (PtRu/PtSn/PdAu)",
-            CATALYST_METAL_OXIDE : "Metal Oxide (NiO/Co3O4)",
-            CATALYST_METAL_FREE  : "Metal-Free (B4C/N-C/CNT)",
+            CATALYST_NOBLE_METAL : "Noble Metal (Pt / Pd / Au / Rh)",
+            CATALYST_ALLOY       : "Alloy (PtRu / PtSn / PdAu / PtCu)",
+            CATALYST_METAL_OXIDE : "Metal Oxide (NiO / Co3O4 / MnO2)",
+            CATALYST_METAL_FREE  : "Metal-Free (B4C / N-doped C / CNT)",
         }
         lines = [
-            "═" * 64,
-            "  🔗 همبستگی EIS-CV — EISForge",
-            "═" * 64,
-            f"  نوع کاتالیزور  = {catalyst_map.get(self.catalyst_type, self.catalyst_type)}",
-            f"  پتانسیل EIS  = {self.eis_potential:.4f} V",
-            f"  E_onset      = {self.e_onset:.4f} V",
-            f"  ناحیه        = {region_map.get(self.eis_region, self.eis_region)}",
-            f"  R_ct (EIS)   = {self.r_ct:.2f} Ω",
-            f"  I_f (CV)     = {self.i_forward_peak:.4f} mA",
-            f"  سازگاری     = {self.consistency_score:.0%}",
+            "=" * 64,
+            "  EIS-CV Correlation Report — EISForge",
+            "=" * 64,
+            f"  Catalyst type    : {catalyst_map.get(self.catalyst_type, self.catalyst_type)}",
+            f"  EIS potential    : {self.eis_potential:.4f} V",
+            f"  E_onset (CV)     : {self.e_onset:.4f} V",
+            f"  EIS region       : {self.eis_region}",
+            f"  R_ct (EIS)       : {self.r_ct:.2f} Ohm",
+            f"  I_forward (CV)   : {self.i_forward_peak:.4f} mA",
+            f"  Consistency      : {self.consistency_score:.0%}",
         ]
         if self.warnings:
-            lines.append("  ⚠️ هشدارها:")
+            lines.append("  Warnings:")
             for w in self.warnings:
-                lines.append(f"     • {w}")
+                lines.append(f"    - {w}")
         if self.recommendations:
-            lines.append("  💡 پیشنهادها:")
+            lines.append("  Recommendations:")
             for r in self.recommendations:
-                lines.append(f"     • {r}")
-        lines.append("═" * 64)
+                lines.append(f"    - {r}")
+        lines.append("=" * 64)
         return "\n".join(lines)
 
 
 class EISCVCorrelator:
     """
-    ارتباط‌دهنده EIS با CV — برای همه انواع کاتالیزور.
+    Cross-technique correlator between EIS fit results and CV analysis.
+
+    Checks whether the EIS measurement potential is consistent with the
+    CV-derived E_onset, and whether R_ct values make physical sense
+    for the given catalyst type.
 
     Parameters
     ----------
     onset_tolerance : float
-        بازه تحمل برای تشخیص ناحیه EIS نسبت به E_onset (V).
+        Potential window around E_onset to define the 'onset' region (V).
     electrolyte : str
-        'acidic' یا 'alkaline'.
+        'acidic' or 'alkaline'.
     """
 
     def __init__(
@@ -103,20 +101,24 @@ class EISCVCorrelator:
         eis_potential : float,
     ) -> EISCVCorrelationResult:
         """
-        همبستگی نتایج EIS و CV را بررسی می‌کند.
+        Correlate EIS and CV results.
 
         Parameters
         ----------
-        cv_result      : CVAnalysisResult   نتیجه آنالیز CV
-        eis_fit_result : FitResult          نتیجه فیت EIS
-        eis_potential  : float              پتانسیلی که EIS در آن گرفته شده (V)
+        cv_result      : CVAnalysisResult   Result from CVAnalyzer.analyze()
+        eis_fit_result : FitResult          Result from CNLSFitter.fit()
+        eis_potential  : float              Potential at which EIS was measured (V)
+
+        Returns
+        -------
+        EISCVCorrelationResult
         """
         warnings        = []
         recommendations = []
 
         ctype = getattr(cv_result, "catalyst_type", CATALYST_NOBLE_METAL)
 
-        # ── ناحیه EIS ──────────────────────────────────────────────────────
+        # ── Determine EIS region relative to E_onset ──────────────────────
         delta = eis_potential - cv_result.e_onset
         if delta < -self.onset_tolerance:
             region = "pre-onset"
@@ -125,77 +127,98 @@ class EISCVCorrelator:
         else:
             region = "post-onset"
 
-        # ── R_ct ───────────────────────────────────────────────────────────
+        # ── Extract R_ct from EIS fit ──────────────────────────────────────
         r_ct = self._extract_r_ct(eis_fit_result)
 
-        # ── بررسی سازگاری (وابسته به نوع کاتالیزور) ──────────────────────
+        # ── Consistency check — catalyst-type specific ─────────────────────
         score = 1.0
 
         if not np.isnan(r_ct):
+
             if ctype == CATALYST_METAL_FREE:
-                # برای B4C و مواد غیرفلزی، R_ct بالاتر طبیعی است
+                # B4C, N-doped C, CNT: higher R_ct is normal
                 if region == "pre-onset" and r_ct < 500:
                     score -= 0.3
                     warnings.append(
-                        f"R_ct={r_ct:.1f}Ω نسبتاً کوچک برای کاتالیزور غیرفلزی در E < E_onset — "
-                        f"بررسی کنید که پیک مشاهده‌شده فارادیک است نه خازنی"
+                        f"R_ct = {r_ct:.1f} Ohm is unusually low for a metal-free "
+                        f"catalyst at E < E_onset. Verify the observed peak is "
+                        f"faradaic and not capacitive background."
                     )
                 elif region == "post-onset" and r_ct > 50000:
                     score -= 0.2
                     warnings.append(
-                        f"R_ct={r_ct:.1f}Ω خیلی بزرگ — ممکن است پسیواسیون سطحی رخ داده باشد"
+                        f"R_ct = {r_ct:.1f} Ohm is very large — possible surface "
+                        f"passivation or pore blocking."
                     )
 
             elif ctype == CATALYST_METAL_OXIDE:
-                # اکسید فلزات: R_ct در ناحیه فعال کاهش می‌یابد
                 if region == "pre-onset" and r_ct < 50:
                     score -= 0.3
                     warnings.append(
-                        f"R_ct={r_ct:.1f}Ω کوچک برای اکسید فلز در E < E_onset — "
-                        f"تأیید کنید که EIS در پتانسیل درست گرفته شده"
+                        f"R_ct = {r_ct:.1f} Ohm is unexpectedly small for a metal "
+                        f"oxide at E < E_onset. Confirm EIS was measured at the "
+                        f"correct potential."
                     )
 
             else:
-                # noble_metal و alloy — آستانه‌های کلاسیک
+                # noble_metal and alloy — classical thresholds
                 if region == "pre-onset" and r_ct < 100:
                     score -= 0.4
-                    warnings.append(f"R_ct={r_ct:.1f}Ω کوچک برای E < E_onset")
+                    warnings.append(
+                        f"R_ct = {r_ct:.1f} Ohm is small for E < E_onset "
+                        f"({cv_result.e_onset:.3f} V). Expected R_ct >> 100 Ohm "
+                        f"in the pre-onset region."
+                    )
                 elif region == "post-onset" and r_ct > 5000:
                     score -= 0.3
-                    warnings.append(f"R_ct={r_ct:.1f}Ω بزرگ برای E > E_onset")
+                    warnings.append(
+                        f"R_ct = {r_ct:.1f} Ohm is large for E > E_onset. "
+                        f"Possible CO poisoning or mass-transport limitation."
+                    )
 
-        # ── I_f/I_b — فقط برای فلزات (برای metal_free مورد کاربرد ندارد) ──
+        # ── I_f/I_b check — only for metal and alloy catalysts ────────────
         if_ib = cv_result.if_ib_ratio
+
         if ctype in (CATALYST_NOBLE_METAL, CATALYST_ALLOY):
             if not np.isnan(if_ib):
                 if if_ib < 1.0:
                     recommendations.append(
-                        "I_f/I_b < 1 — مدار دو قوسی R0-p(R1,CPE1)-p(R2,CPE2) را امتحان کنید"
+                        f"I_f/I_b = {if_ib:.2f} < 1.0 — CO poisoning suspected. "
+                        f"Try two-RC circuit R0-p(R1,CPE1)-p(R2,CPE2) for EIS fit."
                     )
                 elif if_ib > 3.0 and not np.isnan(r_ct) and r_ct > 1000:
                     warnings.append(
-                        f"I_f/I_b={if_ib:.2f} خوب اما R_ct={r_ct:.1f}Ω بزرگ است — "
-                        f"بررسی کنید که EIS در پتانسیل صحیح گرفته شده"
+                        f"I_f/I_b = {if_ib:.2f} is excellent but R_ct = {r_ct:.1f} Ohm "
+                        f"is large — confirm EIS was measured at the active potential."
                     )
+
         elif ctype == CATALYST_METAL_FREE:
             recommendations.append(
-                "کاتالیزور غیرفلزی: I_f/I_b کاربرد ندارد. "
-                "ECSA را از طریق C_dl تخمین بزنید. "
-                "مدار R0-p(R1,CPE1)-p(R2,CPE2) برای مقاومت بین‌ذره‌ای پیشنهاد می‌شود."
+                "Metal-free catalyst: I_f/I_b ratio is not applicable. "
+                "Estimate ECSA via C_dl method from scan-rate dependence. "
+                "For EIS, consider R0-p(R1,CPE1)-p(R2,CPE2) to capture "
+                "inter-particle contact resistance and pore ion diffusion."
             )
 
-        # ── پیشنهاد تکرار EIS ─────────────────────────────────────────────
+        elif ctype == CATALYST_METAL_OXIDE:
+            recommendations.append(
+                "Metal oxide catalyst: verify that two-RC circuit captures "
+                "both the M(OH)x/MOOx redox process and direct surface oxidation."
+            )
+
+        # ── Recommend repeating EIS at E_onset ────────────────────────────
         if region == "pre-onset":
             recommendations.append(
-                f"EIS را در E_onset ({cv_result.e_onset:.3f} V) تکرار کنید "
-                f"تا R_ct در شرایط واکنش مستقیماً اندازه‌گیری شود"
+                f"Repeat EIS at E_onset = {cv_result.e_onset:.3f} V to measure "
+                f"R_ct directly under active reaction conditions."
             )
 
-        # ── پیشنهاد خاص برای غیرفلزی ──────────────────────────────────────
+        # ── Metal-free specific EIS advice ─────────────────────────────────
         if ctype == CATALYST_METAL_FREE and region == "onset":
             recommendations.append(
-                "برای B4C/کربن: مقاومت تماسی بین‌ذره‌ای (R_inter) و "
-                "نفوذ یون در حفرات را در مدار EIS لحاظ کنید"
+                "For B4C / carbon catalysts at E_onset: include an inter-particle "
+                "resistance element in the EIS circuit. Ion diffusion in pores "
+                "may appear as a low-frequency Warburg tail."
             )
 
         return EISCVCorrelationResult(
@@ -212,7 +235,7 @@ class EISCVCorrelator:
 
     @staticmethod
     def _extract_r_ct(fit: FitResult) -> float:
-        """R_ct را از پارامترهای فیت EIS استخراج می‌کند."""
+        """Extract R_ct from EIS fit parameters."""
         for key in ["R1", "R_ct", "R_1"]:
             if key in fit.parameters:
                 return float(fit.parameters[key])
