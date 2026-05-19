@@ -267,7 +267,7 @@ EISforge-/
 - [x] Streamlit web interface (CV / LSV / EIS / EIS-GPT / Correlation tabs)
 - [x] Physics-Informed Transformer architecture (EIS-GPT)
 - [ ] Train EIS-GPT on 10,000+ synthetic spectra
-- [ ] iR compensation (automatic R_s extraction and potential correction)
+- [x] iR compensation (R_s from EIS fit, E_corrected = E - I×R_s, applied to CV and LSV)
 - [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
 - [ ] DRT — Distribution of Relaxation Times
 - [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
