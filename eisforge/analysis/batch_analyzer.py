@@ -123,7 +123,7 @@ class BatchCVResult:
     individual_results: list = field(default_factory=list)
 
     def summary(self) -> str:
-        is_mf = self.catalyst_type == "metal_free"
+        is_mf = self.catalyst_type == "carbon_material"
         lines = [
             "=" * 65,
             f"  Batch CV Analysis — n={self.n_valid}/{self.n_files} valid",
@@ -147,7 +147,7 @@ class BatchCVResult:
         return "\n".join(lines)
 
     def to_dataframe(self) -> pd.DataFrame:
-        is_mf = self.catalyst_type == "metal_free"
+        is_mf = self.catalyst_type == "carbon_material"
         rows = [
             ("E_onset (V)",         f"{self.e_onset_mean:.4f}", f"{self.e_onset_std:.4f}"),
             ("E_forward_peak (V)",  f"{self.e_fwd_peak_mean:.4f}", f"{self.e_fwd_peak_std:.4f}"),
@@ -228,7 +228,7 @@ class BatchLSVResult:
     individual_results: list = field(default_factory=list)
 
     def summary(self) -> str:
-        is_mf = self.catalyst_type == "metal_free"
+        is_mf = self.catalyst_type == "carbon_material"
         tafel_note = " (normal for metal-free)" if is_mf else ""
         lines = [
             "=" * 65,
@@ -250,7 +250,7 @@ class BatchLSVResult:
         return "\n".join(lines)
 
     def to_dataframe(self) -> pd.DataFrame:
-        is_mf  = self.catalyst_type == "metal_free"
+        is_mf  = self.catalyst_type == "carbon_material"
         n      = self.n_valid
         rows = [
             ("E_onset (V vs RHE)",   f"{self.e_onset_mean:.4f}", f"{self.e_onset_std:.4f}"),

@@ -6,7 +6,7 @@ Supports all catalyst families:
     - noble_metal  : Pt, Pd, Au, Rh
     - alloy        : PtRu, PtSn, PdAu, PtCu
     - metal_oxide  : NiO, Co3O4, MnO2, Co2NiO4
-    - metal_free   : B4C, N-doped Carbon, CNT, rGO
+    - carbon_material   : N-doped Carbon, CNT, rGO, graphene-based
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class EISCVCorrelationResult:
             CATALYST_NOBLE_METAL : "Noble Metal (Pt / Pd / Au / Rh)",
             CATALYST_ALLOY       : "Alloy (PtRu / PtSn / PdAu / PtCu)",
             CATALYST_METAL_OXIDE : "Metal Oxide (NiO / Co3O4 / MnO2)",
-            CATALYST_METAL_FREE  : "Metal-Free (B4C / N-doped C / CNT)",
+            CATALYST_METAL_FREE  : "Metal-Free (carbon_material / N-doped C / CNT)",
         }
         lines = [
             "=" * 64,
@@ -136,7 +136,7 @@ class EISCVCorrelator:
         if not np.isnan(r_ct):
 
             if ctype == CATALYST_METAL_FREE:
-                # B4C, N-doped C, CNT: higher R_ct is normal
+                # N-doped C, CNT, graphene-based: higher R_ct is normal
                 if region == "pre-onset" and r_ct < 500:
                     score -= 0.3
                     warnings.append(
@@ -216,7 +216,7 @@ class EISCVCorrelator:
         # ── Metal-free specific EIS advice ─────────────────────────────────
         if ctype == CATALYST_METAL_FREE and region == "onset":
             recommendations.append(
-                "For B4C / carbon catalysts at E_onset: include an inter-particle "
+                "For carbon_material / carbon catalysts at E_onset: include an inter-particle "
                 "resistance element in the EIS circuit. Ion diffusion in pores "
                 "may appear as a low-frequency Warburg tail."
             )

@@ -146,7 +146,7 @@ def load_cv_lsv(f, unit_factor=1.0):
 with st.sidebar:
     st.markdown('<p class="section-title">System Settings</p>', unsafe_allow_html=True)
     system_type = st.selectbox("System type",["AOR","Battery","Corrosion","Fuel Cell","Biosensor"])
-    catalyst    = st.text_input("Catalyst", placeholder="e.g. Pt/C, B4C, PtRu/C")
+    catalyst    = st.text_input("Catalyst", placeholder="e.g. Pt/C, carbon_material, PtRu/C")
 
     # ── Catalyst type ──────────────────────────────────────────────────────
     catalyst_type_ui = st.selectbox(
@@ -154,13 +154,13 @@ with st.sidebar:
         ["Noble Metal (Pt, Pd, Au, Rh)",
          "Alloy (PtRu, PtSn, PdAu, PtCu)",
          "Metal Oxide (NiO, Co₃O₄, MnO₂)",
-         "Metal-Free (B₄C, N-doped C, CNT)"],
+         "Carbon Material (N-doped C, CNT, Graphene)"],
     )
     _CTYPE_MAP = {
         "Noble Metal (Pt, Pd, Au, Rh)"    : "noble_metal",
         "Alloy (PtRu, PtSn, PdAu, PtCu)" : "alloy",
         "Metal Oxide (NiO, Co₃O₄, MnO₂)" : "metal_oxide",
-        "Metal-Free (B₄C, N-doped C, CNT)": "metal_free",
+        "Carbon Material (N-doped C, CNT, Graphene)": "carbon_material",
     }
     catalyst_type = _CTYPE_MAP[catalyst_type_ui]
 
@@ -187,7 +187,7 @@ with st.sidebar:
     st.divider()
     st.markdown('<p class="section-title">Electrode Parameters</p>', unsafe_allow_html=True)
     area    = st.number_input("Geometric area (cm²)", value=1.0, step=0.01, min_value=0.001)
-    _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "metal_free" else "ECSA (cm²_metal)"
+    _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "carbon_material" else "ECSA (cm²_metal)"
     ecsa    = st.number_input(_ecsa_label,             value=0.0, step=0.1,  min_value=0.0)
     loading = st.number_input("Loading (mg/cm²)",      value=0.0, step=0.01, min_value=0.0)
 
@@ -299,7 +299,7 @@ with tab1:
         if r.ir_compensated:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
 
-        _is_mf = catalyst_type == "metal_free"
+        _is_mf = catalyst_type == "carbon_material"
 
         c1,c2,c3,c4 = st.columns(4)
         c1.metric("E_onset",  f"{r.e_onset:.4f} V")
@@ -388,7 +388,7 @@ with tab1:
 
     if "batch_cv_r" in st.session_state:
         br = st.session_state["batch_cv_r"]
-        _is_mf = catalyst_type == "metal_free"
+        _is_mf = catalyst_type == "carbon_material"
         st.divider()
         n_str = f"n={br.n_valid}"
 
@@ -510,7 +510,7 @@ with tab2:
         c6.metric("η @ 100 mA/cm²", f"{r.overpotential_100*1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
 
         if loading>0: st.metric("Mass activity",     f"{r.mass_activity:.3f} mA/mg_cat")
-        _sa_unit = "cm²_BET" if catalyst_type == "metal_free" else "cm²_Pt"
+        _sa_unit = "cm²_BET" if catalyst_type == "carbon_material" else "cm²_Pt"
         if ecsa>0:    st.metric("Specific activity", f"{r.specific_activity:.4f} mA/{_sa_unit}")
 
         st.info(f"**Mechanism:** {r.mechanism_interpretation}")
@@ -596,7 +596,7 @@ with tab2:
     if "batch_lsv_r" in st.session_state:
         import math
         blr = st.session_state["batch_lsv_r"]
-        _is_mf = catalyst_type == "metal_free"
+        _is_mf = catalyst_type == "carbon_material"
         st.divider()
         n_str = f"n={blr.n_valid}"
 
@@ -910,12 +910,12 @@ with tab5:
                 summary["Parameter"].append("E_onset (V)" + (" iR-corr." if actual_rs>0 else ""))
                 summary["CV/LSV"].append(f"{cv_res.e_onset:.4f}")
                 summary["EIS"].append(f"Measured at {eis_pot:.4f} V")
-                if has_cv and catalyst_type != "metal_free":
+                if has_cv and catalyst_type != "carbon_material":
                     _ratio = st.session_state['cv_r'].if_ib_ratio
                     summary["Parameter"].append("I_f/I_b")
                     summary["CV/LSV"].append(f"{_ratio:.3f}" if not np.isnan(_ratio) else "N/A")
                     summary["EIS"].append("—")
-                elif has_cv and catalyst_type == "metal_free":
+                elif has_cv and catalyst_type == "carbon_material":
                     summary["Parameter"].append("C_dl (mF/cm²)")
                     summary["CV/LSV"].append(f"{st.session_state['cv_r'].cdl_mF_cm2:.4f}")
                     summary["EIS"].append("—")

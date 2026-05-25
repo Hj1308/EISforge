@@ -6,7 +6,7 @@ Supports three catalyst families:
     - noble_metal  : Pt, Pd, Au, Rh — uses I_f/I_b, H-UPD ECSA
     - alloy        : PtRu, PtSn, PdAu, PtCu — bifunctional mechanism
     - metal_oxide  : NiO, Co3O4, NiCoO, MnO2 — oxide peaks, high onset
-    - metal_free   : B4C, N-doped Carbon, CNT, rGO — no I_f/I_b, Cdl ECSA
+    - carbon_material   : N-doped Carbon, CNT, rGO, graphene-based — no I_f/I_b, Cdl ECSA
 
 Electrolyte specifics:
     - Acid type    : H2SO4, HClO4, HCl, HNO3
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 CATALYST_NOBLE_METAL = "noble_metal"   # Pt, Pd, Au, Rh
 CATALYST_ALLOY       = "alloy"         # PtRu, PtSn, PdAu, PtCu, PdNi
 CATALYST_METAL_OXIDE = "metal_oxide"   # NiO, Co3O4, NiCoO, MnO2, Co2NiO4
-CATALYST_METAL_FREE  = "metal_free"    # B4C, N-doped C, CNT, rGO, g-C3N4
+CATALYST_METAL_FREE  = "carbon_material"    # N-doped C, CNT, graphene-based, rGO, g-C3N4
 
 # ── Electrolyte constants ───────────────────────────────────────────────────
 
@@ -149,7 +149,7 @@ class CVAnalysisResult:
 
     def summary(self) -> str:
         el = self.electrolyte
-        is_metal_free = self.catalyst_type == CATALYST_METAL_FREE
+        is_carbon_material = self.catalyst_type == CATALYST_METAL_FREE
 
         lines = [
             "=" * 68,
@@ -170,7 +170,7 @@ class CVAnalysisResult:
             f"  E_forward_peak    = {self.e_forward_peak:.4f} V",
         ]
 
-        if not is_metal_free:
+        if not is_carbon_material:
             lines.append(
                 f"  E_backward_peak   = {self.e_backward_peak:.4f} V"
             )
@@ -180,7 +180,7 @@ class CVAnalysisResult:
             f"  I_forward_peak    = {self.i_forward_peak:.4f} mA",
         ]
 
-        if is_metal_free:
+        if is_carbon_material:
             lines += [
                 f"  Capacitive bg     = {self.capacitive_background_mA:.4f} mA",
                 f"  Net faradaic I    = {self.net_faradaic_current_mA:.4f} mA",
@@ -200,7 +200,7 @@ class CVAnalysisResult:
             f"  j_f (geometric)   = {self.j_forward_peak:.4f} mA/cm²",
         ]
         if self.ecsa > 0:
-            label = "cm²_BET" if is_metal_free else "cm²_metal"
+            label = "cm²_BET" if is_carbon_material else "cm²_metal"
             lines.append(
                 f"  j_f (ECSA)        = {self.j_specific_forward:.4f} mA/{label}"
             )
@@ -219,7 +219,7 @@ class CVAnalysisResult:
             CATALYST_NOBLE_METAL : "Noble Metal (Pt / Pd / Au / Rh)",
             CATALYST_ALLOY       : "Alloy (PtRu / PtSn / PdAu / PtCu ...)",
             CATALYST_METAL_OXIDE : "Metal Oxide (NiO / Co3O4 / MnO2 ...)",
-            CATALYST_METAL_FREE  : "Metal-Free (B4C / N-doped C / CNT ...)",
+            CATALYST_METAL_FREE  : "Metal-Free (carbon_material / N-doped C / CNT ...)",
         }
         return labels.get(self.catalyst_type, self.catalyst_type)
 
@@ -246,7 +246,7 @@ class CVAnalyzer:
     electrolyte_concentration : float
         Concentration in mol/L — used when electrolyte is a string.
     catalyst_type : str
-        One of: 'noble_metal', 'alloy', 'metal_oxide', 'metal_free'
+        One of: 'noble_metal', 'alloy', 'metal_oxide', 'carbon_material'
         Controls which metrics are computed and how results are interpreted.
     current_unit : str
         Unit of input current: 'mA', 'A', 'uA', 'nA'.
@@ -261,22 +261,22 @@ class CVAnalyzer:
     _ONSET_RANGES = {
         # Acids
         ACID_H2SO4 : {"noble_metal": (0.45, 0.65), "alloy": (0.35, 0.55),
-                       "metal_oxide": (1.30, 1.55), "metal_free": (0.60, 0.90)},
+                       "metal_oxide": (1.30, 1.55), "carbon_material": (0.60, 0.90)},
         ACID_HClO4 : {"noble_metal": (0.40, 0.60), "alloy": (0.30, 0.50),
-                       "metal_oxide": (1.25, 1.50), "metal_free": (0.55, 0.85)},
+                       "metal_oxide": (1.25, 1.50), "carbon_material": (0.55, 0.85)},
         ACID_HCl   : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
-                       "metal_oxide": (1.35, 1.60), "metal_free": (0.65, 0.95)},
+                       "metal_oxide": (1.35, 1.60), "carbon_material": (0.65, 0.95)},
         ACID_HNO3  : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
-                       "metal_oxide": (1.35, 1.60), "metal_free": (0.65, 0.95)},
+                       "metal_oxide": (1.35, 1.60), "carbon_material": (0.65, 0.95)},
         # Bases
         BASE_KOH   : {"noble_metal": (0.20, 0.40), "alloy": (0.10, 0.30),
-                       "metal_oxide": (1.30, 1.50), "metal_free": (0.40, 0.70)},
+                       "metal_oxide": (1.30, 1.50), "carbon_material": (0.40, 0.70)},
         BASE_NaOH  : {"noble_metal": (0.22, 0.42), "alloy": (0.12, 0.32),
-                       "metal_oxide": (1.32, 1.52), "metal_free": (0.42, 0.72)},
+                       "metal_oxide": (1.32, 1.52), "carbon_material": (0.42, 0.72)},
         BASE_Na2CO3: {"noble_metal": (0.30, 0.55), "alloy": (0.20, 0.45),
-                       "metal_oxide": (1.40, 1.65), "metal_free": (0.50, 0.80)},
+                       "metal_oxide": (1.40, 1.65), "carbon_material": (0.50, 0.80)},
         BASE_NH3   : {"noble_metal": (0.35, 0.60), "alloy": (0.25, 0.50),
-                       "metal_oxide": (1.45, 1.70), "metal_free": (0.55, 0.85)},
+                       "metal_oxide": (1.45, 1.70), "carbon_material": (0.55, 0.85)},
     }
 
     def __init__(
@@ -462,7 +462,7 @@ class CVAnalyzer:
         """
         Estimate and subtract capacitive background current.
 
-        For metal-free catalysts (B4C, N-doped C, CNT), the CV shows a
+        For metal-free catalysts (N-doped C, CNT, graphene-based), the CV shows a
         roughly rectangular capacitive envelope. We fit a low-order polynomial
         to regions far from the faradaic peak and subtract it.
 
@@ -704,14 +704,14 @@ class CVAnalyzer:
         return cls(electrolyte=el, catalyst_type=CATALYST_ALLOY, **kwargs)
 
     @classmethod
-    def for_metal_free(
+    def for_carbon_material(
         cls,
         electrolyte_compound   : str   = "KOH",
         concentration          : float = 1.0,
         **kwargs,
     ) -> "CVAnalyzer":
         """
-        Convenience constructor for B4C, N-doped Carbon, CNT, rGO catalysts.
+        Convenience constructor for N-doped Carbon, CNT, rGO, graphene-based catalysts.
 
         Automatically:
           - Skips I_f/I_b calculation
@@ -765,8 +765,8 @@ if __name__ == "__main__":
     result_pt = ana_pt.analyze(E, I)
     print(result_pt.summary())
 
-    # ── B4C in KOH (metal-free, alkaline) ──────────────────────────────────
-    ana_b4c = CVAnalyzer.for_metal_free(
+    # ── carbon_material in KOH (metal-free, alkaline) ──────────────────────────────────
+    ana_b4c = CVAnalyzer.for_carbon_material(
         electrolyte_compound="KOH",
         concentration=1.0,
         scan_rate=50,

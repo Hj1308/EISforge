@@ -6,7 +6,7 @@ Supports all catalyst families:
     - noble_metal  : Pt, Pd, Au, Rh
     - alloy        : PtRu, PtSn, PdAu, PtCu
     - metal_oxide  : NiO, Co3O4, Co2NiO4, MnO2
-    - metal_free   : B4C, N-doped Carbon, CNT, rGO
+    - carbon_material   : N-doped Carbon, CNT, rGO, graphene-based
 
 Electrolyte specifics:
     - Acid type    : H2SO4, HClO4, HCl, HNO3
@@ -90,9 +90,9 @@ class LSVAnalysisResult:
 
     def summary(self) -> str:
         el            = self.electrolyte
-        is_metal_free = self.catalyst_type == CATALYST_METAL_FREE
+        is_carbon_material = self.catalyst_type == CATALYST_METAL_FREE
         is_oxide      = self.catalyst_type == CATALYST_METAL_OXIDE
-        ecsa_label    = "cm²_BET" if is_metal_free else "cm²_metal"
+        ecsa_label    = "cm²_BET" if is_carbon_material else "cm²_metal"
 
         lines = [
             "=" * 68,
@@ -115,7 +115,7 @@ class LSVAnalysisResult:
             f"  R² (Tafel fit)      = {self.tafel_r_squared:.4f}",
         ]
 
-        if is_metal_free:
+        if is_carbon_material:
             lines.append(
                 "  NOTE: Tafel > 120 mV/dec is NORMAL for metal-free catalysts"
             )
@@ -152,7 +152,7 @@ class LSVAnalysisResult:
             CATALYST_NOBLE_METAL : "Noble Metal (Pt / Pd / Au / Rh)",
             CATALYST_ALLOY       : "Alloy (PtRu / PtSn / PdAu / PtCu ...)",
             CATALYST_METAL_OXIDE : "Metal Oxide (NiO / Co3O4 / MnO2 ...)",
-            CATALYST_METAL_FREE  : "Metal-Free (B4C / N-doped C / CNT ...)",
+            CATALYST_METAL_FREE  : "Metal-Free (carbon_material / N-doped C / CNT ...)",
         }
         return labels.get(self.catalyst_type, self.catalyst_type)
 
@@ -178,7 +178,7 @@ class LSVAnalyzer:
     electrolyte_concentration : float
         Concentration in mol/L — used when electrolyte is a string.
     catalyst_type : str
-        One of: 'noble_metal', 'alloy', 'metal_oxide', 'metal_free'
+        One of: 'noble_metal', 'alloy', 'metal_oxide', 'carbon_material'
     e_ref_vs_rhe : float
         Reference electrode offset to RHE (V).
     tafel_current_range : tuple
@@ -445,7 +445,7 @@ class LSVAnalyzer:
             elif abs_s < 250:
                 return (
                     f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Normal range for metal-free / ceramic catalyst (B4C, CNT, N-doped C). "
+                    f"Normal range for metal-free / ceramic catalyst (carbon_material, CNT, N-doped C). "
                     f"Multi-step mechanism without d-band facilitation."
                 )
             else:
@@ -606,8 +606,8 @@ class LSVAnalyzer:
         return cls(electrolyte=el, catalyst_type=CATALYST_ALLOY, **kw)
 
     @classmethod
-    def for_metal_free(cls, electrolyte_compound="KOH", concentration=1.0, **kw):
-        """For B4C, N-doped Carbon, CNT, rGO — uses wider Tafel thresholds."""
+    def for_carbon_material(cls, electrolyte_compound="KOH", concentration=1.0, **kw):
+        """For N-doped Carbon, CNT, rGO, graphene-based — uses wider Tafel thresholds."""
         media = "alkaline" if electrolyte_compound in (BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3) else "acidic"
         el    = ElectrolyteInfo(media=media, compound=electrolyte_compound, concentration=concentration)
         return cls(electrolyte=el, catalyst_type=CATALYST_METAL_FREE, **kw)
