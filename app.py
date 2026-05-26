@@ -33,6 +33,9 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"]{color:var(--text)!impo
 .stTabs [data-baseweb="tab"]{color:var(--muted)!important;}
 .stTabs [aria-selected="true"]{color:var(--accent)!important;border-bottom-color:var(--accent)!important;}
 .ir-box{background:#fefce8;border:1px solid #fde047;border-radius:8px;padding:.8rem;margin:.5rem 0;}
+.val-ok{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:.6rem .8rem;margin:.3rem 0;}
+.val-warn{background:#fffbeb;border:1px solid #fde047;border-radius:8px;padding:.6rem .8rem;margin:.3rem 0;}
+.val-err{background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:.6rem .8rem;margin:.3rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -63,6 +66,24 @@ E_REF_MAP = {
     "SCE":0.241,"Hg/HgO (1M KOH)":0.098,"NHE/SHE":0.000,
 }
 UNIT_MAP = {"A":1000.0,"mA":1.0,"μA":1e-3,"nA":1e-6}
+
+# ── E_onset auto-select map ───────────────────────────────────────────────────
+_ONSET_METHOD_MAP = {
+    "noble_metal":     "tangent",
+    "alloy":           "tangent",
+    "metal_oxide":     "threshold",
+    "carbon_material": "derivative",
+}
+
+# ── Try loading carbon_standards (graceful fallback if not yet installed) ─────
+try:
+    from eisforge.standards.carbon_standards import (
+        CarbonValidator, suggest_eec,
+        CDL_RANGES, CARBON_SUBTYPE_MAP, RECOMMENDED_EEC,
+    )
+    _STANDARDS_AVAILABLE = True
+except ImportError:
+    _STANDARDS_AVAILABLE = False
 
 
 def smart_bounds(circuit_str, p0):
@@ -142,7 +163,19 @@ def load_cv_lsv(f, unit_factor=1.0):
         os.unlink(tmp)
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+def _show_validation(result):
+    """Render a ValidationResult in the correct coloured box."""
+    css = {"ok":"val-ok","warning":"val-warn","error":"val-err"}.get(result.severity,"val-warn")
+    html = f'<div class="{css}">{result.message}'
+    if result.suggested_action:
+        html += f'<br><small>💡 {result.suggested_action}</small>'
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown('<p class="section-title">System Settings</p>', unsafe_allow_html=True)
     system_type = st.selectbox("System type",["AOR","Battery","Corrosion","Fuel Cell","Biosensor"])
@@ -164,6 +197,22 @@ with st.sidebar:
     }
     catalyst_type = _CTYPE_MAP[catalyst_type_ui]
 
+    # ── Carbon subtype (only for carbon_material) ──────────────────────────
+    carbon_subtype_key = "carbon_material"
+    if catalyst_type == "carbon_material" and _STANDARDS_AVAILABLE:
+        carbon_subtype_ui = st.selectbox(
+            "Carbon subtype",
+            list(CARBON_SUBTYPE_MAP.keys()),
+            help="Used for C_dl validation range",
+        )
+        carbon_subtype_key = CARBON_SUBTYPE_MAP[carbon_subtype_ui]
+    elif catalyst_type == "carbon_material":
+        carbon_subtype_ui = st.selectbox(
+            "Carbon subtype",
+            ["Graphene / rGO","N-doped Graphene","Carbon Nanotubes (CNT / MWCNT)",
+             "Activated / Porous Carbon","Carbon Black (Vulcan XC-72)","Other / Unknown"],
+        )
+
     # ── Electrolyte ────────────────────────────────────────────────────────
     electrolyte = st.selectbox("Electrolyte media",["Acidic","Alkaline","NaCl","PBS","Other"])
     ekey = "acidic" if electrolyte == "Acidic" else "alkaline" if electrolyte == "Alkaline" else "acidic"
@@ -180,13 +229,37 @@ with st.sidebar:
         elec_compound = electrolyte
         elec_compound_key = electrolyte
 
-    alcohol = st.selectbox("Alcohol",["ethanol","methanol","ethylene glycol","glycerol","N/A"],
-                           disabled=(system_type!="AOR"))
+    # ── CHANGE 1 & 2: Alcohol — isopropanol added, carbon_material stays enabled ──
+    alcohol = st.selectbox(
+        "Alcohol",
+        ["ethanol", "methanol", "isopropanol (2-propanol)",
+         "ethylene glycol", "glycerol", "N/A"],
+        disabled=(system_type != "AOR"),
+    )
+    # normalise key for analyzers
+    _ALCOHOL_KEY_MAP = {
+        "ethanol": "ethanol",
+        "methanol": "methanol",
+        "isopropanol (2-propanol)": "isopropanol",
+        "ethylene glycol": "ethylene glycol",
+        "glycerol": "glycerol",
+        "N/A": "N/A",
+    }
+    alcohol_key = _ALCOHOL_KEY_MAP.get(alcohol, alcohol)
+
     eis_pot = st.number_input("EIS potential (V)", value=0.5, step=0.01)
 
     st.divider()
     st.markdown('<p class="section-title">Electrode Parameters</p>', unsafe_allow_html=True)
-    area    = st.number_input("Geometric area (cm²)", value=1.0, step=0.01, min_value=0.001)
+
+    # ── CHANGE 3: Geometric area — 4 decimal places ────────────────────────
+    area = st.number_input(
+        "Geometric area (cm²)",
+        value=1.0,
+        step=0.0001,
+        min_value=0.0001,
+        format="%.4f",
+    )
     _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "carbon_material" else "ECSA (cm²_metal)"
     ecsa    = st.number_input(_ecsa_label,             value=0.0, step=0.1,  min_value=0.0)
     loading = st.number_input("Loading (mg/cm²)",      value=0.0, step=0.01, min_value=0.0)
@@ -198,17 +271,31 @@ with st.sidebar:
     e_ref_type   = st.selectbox("Reference electrode", list(E_REF_MAP.keys()))
     e_ref_val    = E_REF_MAP[e_ref_type]
     elec_conc    = st.number_input("Electrolyte conc. (M)", value=0.5, step=0.1)
+
+    _PH_MAP = {
+        "H2SO4": 0.3, "HClO4": 0.3, "HCl": 0.0, "HNO3": 0.0,
+        "KOH": 14.0,  "NaOH": 14.0, "Na2CO3": 11.6, "NH3": 11.6,
+    }
+    _ph_default = float(_PH_MAP.get(elec_compound_key, 14.0 if ekey == "alkaline" else 0.0))
+    ph_value = st.number_input(
+        "Solution pH", min_value=0.0, max_value=14.0,
+        value=_ph_default, step=0.1,
+    )
+
     sub_conc     = st.number_input("Substrate conc. (M)",   value=1.0, step=0.1)
     unit_factor  = UNIT_MAP.get(current_unit, 1.0)
-    if e_ref_val!=0:
-        st.info(f"RHE conversion: +{e_ref_val:.3f} V")
+
+    if e_ref_type != "RHE":
+        _total_offset = e_ref_val + 0.059 * ph_value
+        st.info(
+            f"RHE conversion: E_RHE = E_meas + {e_ref_val:.3f} V (ref) + "
+            f"0.059×pH (pH={ph_value:.1f}) → total offset = {_total_offset:.3f} V"
+        )
 
     st.divider()
-    # iR Compensation — shared across CV and LSV tabs
     st.markdown('<p class="section-title">⚡ iR Compensation</p>', unsafe_allow_html=True)
     use_ir = st.checkbox(
-        "Apply iR compensation",
-        value=False,
+        "Apply iR compensation", value=False,
         help="E_corrected = E_measured − I(A) × R_s(Ω)",
     )
     r_s = st.number_input(
@@ -229,6 +316,28 @@ with st.sidebar:
 
     actual_rs = r_s if use_ir else 0.0
 
+    # ── CHANGE 4: C_dl validation range (for carbon_material) ─────────────
+    if catalyst_type == "carbon_material" and _STANDARDS_AVAILABLE:
+        st.divider()
+        st.markdown('<p class="section-title">🔬 C_dl Validation Range</p>', unsafe_allow_html=True)
+        ref_range = CDL_RANGES.get(carbon_subtype_key, CDL_RANGES["carbon_material"])
+        use_custom_cdl = st.checkbox(
+            "Use custom C_dl range",
+            value=False,
+            help=f"Literature default: {ref_range.cdl_min_uF:.0f}–{ref_range.cdl_max_uF:.0f} μF/cm²",
+        )
+        if use_custom_cdl:
+            cdl_user_min = st.number_input("C_dl min (μF/cm²)", value=float(ref_range.cdl_min_uF), step=1.0, min_value=0.1)
+            cdl_user_max = st.number_input("C_dl max (μF/cm²)", value=float(ref_range.cdl_max_uF), step=1.0, min_value=1.0)
+        else:
+            cdl_user_min = None
+            cdl_user_max = None
+            st.caption(f"Literature range: **{ref_range.cdl_min_uF:.0f}–{ref_range.cdl_max_uF:.0f} μF/cm²** ({ref_range.material})")
+    else:
+        use_custom_cdl = False
+        cdl_user_min = None
+        cdl_user_max = None
+
     st.divider()
     if st.button("📚 Literature Guide"):
         try:
@@ -236,7 +345,7 @@ with st.sidebar:
             g = LiteratureEngine().query(
                 system_type=system_type, catalyst=catalyst,
                 electrolyte=ekey,
-                alcohol=alcohol if system_type=="AOR" else "",
+                alcohol=alcohol_key if system_type=="AOR" else "",
                 potential=eis_pot,
             )
             st.session_state["lit"] = g
@@ -250,9 +359,18 @@ with st.sidebar:
         for w in g.warnings: st.warning(w)
 
 
-# ── Tabs ──────────────────────────────────────────────────────────────────────
+# ── CHANGE 4: E_onset auto-select (computed after sidebar, before tabs) ───────
+default_onset_method = _ONSET_METHOD_MAP.get(catalyst_type, "tangent")
+_onset_methods = ["tangent", "threshold", "derivative"]
+_auto_idx = _onset_methods.index(default_onset_method)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TABS
+# ══════════════════════════════════════════════════════════════════════════════
 tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
-    "📈 CV Analysis","📉 LSV Analysis","🔬 EIS Analysis","🤖 EIS-GPT","🔗 Correlation","⚗️ K-L Analysis"
+    "📈 CV Analysis","📉 LSV Analysis","🔬 EIS Analysis",
+    "🤖 EIS-GPT","🔗 Correlation","⚗️ K-L Analysis"
 ])
 
 
@@ -268,7 +386,16 @@ with tab1:
     with col1:
         cv_file = st.file_uploader("Upload CV file", type=CV_FORMATS, key="cv_up")
         sr_cv   = st.number_input("Scan rate (mV/s)", value=50, min_value=1)
-        om      = st.radio("E_onset method",["tangent","threshold","derivative"], horizontal=True)
+
+        # ── CHANGE 4: E_onset method auto + override ───────────────────────
+        st.caption(f"🤖 Auto-selected: **{default_onset_method}** (based on catalyst type)")
+        om = st.radio(
+            "E_onset method (override if needed)",
+            _onset_methods,
+            index=_auto_idx,
+            horizontal=True,
+            help=f"Auto: {default_onset_method} for {catalyst_type_ui}. Change if needed.",
+        )
 
     with col2:
         if cv_file:
@@ -319,6 +446,21 @@ with tab1:
 
         st.info(f"**Interpretation:** {r.interpretation}")
 
+        # ── CHANGE 5: C_dl smart validation (carbon only) ─────────────────
+        if _is_mf and _STANDARDS_AVAILABLE and hasattr(r, "cdl_mF_cm2"):
+            st.markdown("#### 🔬 C_dl Validation")
+            val_result = CarbonValidator.validate_cdl(
+                cdl_mF_cm2=r.cdl_mF_cm2,
+                material_key=carbon_subtype_key,
+                user_min_uF=cdl_user_min,
+                user_max_uF=cdl_user_max,
+            )
+            _show_validation(val_result)
+
+            # E_onset validation for carbon
+            onset_val = CarbonValidator.validate_onset(r.e_onset)
+            _show_validation(onset_val)
+
         import plotly.graph_objects as go
         fig = go.Figure()
         x_plot = st.session_state.get("cv_pot_corr", st.session_state["cv_pot"])
@@ -347,7 +489,7 @@ with tab1:
                           yaxis_title="Current (mA)")
         st.plotly_chart(fig, use_container_width=True)
 
-    # ══ Batch CV Analysis (n=3) ═══════════════════════════════════════════════
+    # ── Batch CV ──────────────────────────────────────────────────────────────
     st.divider()
     st.markdown('<p class="section-title">📊 Batch Analysis — Mean ± SD (n≥3)</p>', unsafe_allow_html=True)
     st.caption("Upload 3 or more CV files from the same experiment for statistical reproducibility.")
@@ -392,45 +534,29 @@ with tab1:
         st.divider()
         n_str = f"n={br.n_valid}"
 
-        # ── Metrics with ± SD ──────────────────────────────────────────────
         c1,c2,c3,c4 = st.columns(4)
-        c1.metric(f"E_onset ({n_str})",
-                  f"{br.e_onset_mean:.4f} V",
-                  delta=f"± {br.e_onset_std:.4f}")
-        c2.metric(f"I_forward ({n_str})",
-                  f"{br.i_fwd_mean:.4f} mA",
-                  delta=f"± {br.i_fwd_std:.4f}")
-        c3.metric(f"j_forward ({n_str})",
-                  f"{br.j_fwd_mean:.4f} mA/cm²",
-                  delta=f"± {br.j_fwd_std:.4f}")
+        c1.metric(f"E_onset ({n_str})", f"{br.e_onset_mean:.4f} V", delta=f"± {br.e_onset_std:.4f}")
+        c2.metric(f"I_forward ({n_str})", f"{br.i_fwd_mean:.4f} mA", delta=f"± {br.i_fwd_std:.4f}")
+        c3.metric(f"j_forward ({n_str})", f"{br.j_fwd_mean:.4f} mA/cm²", delta=f"± {br.j_fwd_std:.4f}")
         if _is_mf:
-            c4.metric(f"C_dl ({n_str})",
-                      f"{br.cdl_mean:.4f} mF/cm²",
-                      delta=f"± {br.cdl_std:.4f}")
+            c4.metric(f"C_dl ({n_str})", f"{br.cdl_mean:.4f} mF/cm²", delta=f"± {br.cdl_std:.4f}")
         else:
-            c4.metric(f"I_f/I_b ({n_str})",
-                      f"{br.if_ib_mean:.3f}",
-                      delta=f"± {br.if_ib_std:.3f}")
+            c4.metric(f"I_f/I_b ({n_str})", f"{br.if_ib_mean:.3f}", delta=f"± {br.if_ib_std:.3f}")
 
-        # ── Averaged curve with error band ─────────────────────────────────
         if br.potential_common is not None:
             import plotly.graph_objects as go
             fig_b = go.Figure()
             pot_c = br.potential_common
             cur_m = br.current_mean_curve
             cur_s = br.current_std_curve
-
             fig_b.add_trace(go.Scatter(
                 x=np.concatenate([pot_c, pot_c[::-1]]),
                 y=np.concatenate([cur_m + cur_s, (cur_m - cur_s)[::-1]]),
                 fill="toself", fillcolor="rgba(37,99,235,0.12)",
-                line=dict(color="rgba(37,99,235,0)"),
-                name=f"± SD band",
-                showlegend=True,
+                line=dict(color="rgba(37,99,235,0)"), name=f"± SD band",
             ))
             fig_b.add_trace(go.Scatter(
-                x=pot_c, y=cur_m,
-                mode="lines", name=f"Mean CV (n={br.n_valid})",
+                x=pot_c, y=cur_m, mode="lines", name=f"Mean CV (n={br.n_valid})",
                 line=dict(color="#2563eb", width=2.5),
             ))
             fig_b.add_vline(x=br.e_onset_mean, line_dash="dash", line_color="#d97706",
@@ -442,10 +568,8 @@ with tab1:
                                 yaxis_title="Current (mA)")
             st.plotly_chart(fig_b, use_container_width=True)
 
-        # ── Publication table ──────────────────────────────────────────────
         st.markdown("#### Publication-Ready Table")
         st.dataframe(br.to_dataframe(), use_container_width=True, hide_index=True)
-
         col_md, col_tex = st.columns(2)
         with col_md:
             st.markdown("**Markdown** (for README / GitHub)")
@@ -469,6 +593,17 @@ with tab2:
         sr_lsv   = st.number_input("Scan rate (mV/s)", value=5, min_value=1, key="sr_lsv")
         tj_min   = st.number_input("Tafel j_min (mA/cm²)", value=0.1, step=0.05)
         tj_max   = st.number_input("Tafel j_max (mA/cm²)", value=2.0, step=0.5)
+
+        # ── CHANGE 4: E_onset method auto + override (LSV) ────────────────
+        st.caption(f"🤖 Auto-selected: **{default_onset_method}** (based on catalyst type)")
+        om_lsv = st.radio(
+            "E_onset method (override if needed)",
+            _onset_methods,
+            index=_auto_idx,
+            horizontal=True,
+            key="om_lsv",
+            help=f"Auto: {default_onset_method} for {catalyst_type_ui}.",
+        )
 
     with col2:
         if lsv_file:
@@ -513,6 +648,12 @@ with tab2:
         _sa_unit = "cm²_BET" if catalyst_type == "carbon_material" else "cm²_Pt"
         if ecsa>0:    st.metric("Specific activity", f"{r.specific_activity:.4f} mA/{_sa_unit}")
 
+        # ── CHANGE 5: Tafel validation for carbon ─────────────────────────
+        if catalyst_type == "carbon_material" and _STANDARDS_AVAILABLE:
+            st.markdown("#### 🔬 Tafel Validation")
+            tafel_val = CarbonValidator.validate_tafel(r.tafel_slope, electrolyte=ekey)
+            _show_validation(tafel_val)
+
         st.info(f"**Mechanism:** {r.mechanism_interpretation}")
         st.success(f"**Performance:** {r.performance_rating}")
 
@@ -521,7 +662,6 @@ with tab2:
         fig = make_subplots(rows=1,cols=2,subplot_titles=("LSV Curve","Tafel Plot"))
 
         j_lsv = st.session_state["lsv_cur"]/area
-        # Use iR-corrected potential if applicable
         if actual_rs>0:
             from eisforge.analysis.lsv_analyzer import LSVAnalyzer
             cur_ma_lsv = st.session_state["lsv_cur"]*unit_factor
@@ -532,7 +672,7 @@ with tab2:
             p_lsv = st.session_state["lsv_pot"]+e_ref_val
 
         fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
-                                 name="LSV"+" (iR-corr.)" if actual_rs>0 else "LSV",
+                                 name="LSV"+(" (iR-corr.)" if actual_rs>0 else ""),
                                  line=dict(color="#2563eb",width=2)), row=1,col=1)
         fig.add_vline(x=r.e_onset, line_dash="dash", line_color="#d97706",
                       annotation_text=f"E_onset={r.e_onset:.3f}V",
@@ -553,7 +693,7 @@ with tab2:
         fig.update_yaxes(title_text="E (V)", row=1,col=2)
         st.plotly_chart(fig, use_container_width=True)
 
-    # ══ Batch LSV Analysis (n=3) ══════════════════════════════════════════════
+    # ── Batch LSV ─────────────────────────────────────────────────────────────
     st.divider()
     st.markdown('<p class="section-title">📊 Batch Analysis — Mean ± SD (n≥3)</p>', unsafe_allow_html=True)
     st.caption("Upload 3 or more LSV files for statistical reproducibility.")
@@ -600,44 +740,31 @@ with tab2:
         st.divider()
         n_str = f"n={blr.n_valid}"
 
-        # ── Metrics with ± SD ──────────────────────────────────────────────
         c1,c2,c3 = st.columns(3)
-        c1.metric(f"E_onset ({n_str})",
-                  f"{blr.e_onset_mean:.4f} V",
-                  delta=f"± {blr.e_onset_std:.4f}")
+        c1.metric(f"E_onset ({n_str})", f"{blr.e_onset_mean:.4f} V", delta=f"± {blr.e_onset_std:.4f}")
         _tafel_note = " (normal)" if _is_mf else ""
-        c2.metric(f"Tafel ({n_str})",
-                  f"{blr.tafel_mean:.1f} mV/dec{_tafel_note}",
-                  delta=f"± {blr.tafel_std:.1f}")
-        c3.metric(f"j₀ ({n_str})",
-                  f"{blr.j0_mean:.3e} mA/cm²",
-                  delta=f"± {blr.j0_std:.3e}")
+        c2.metric(f"Tafel ({n_str})", f"{blr.tafel_mean:.1f} mV/dec{_tafel_note}", delta=f"± {blr.tafel_std:.1f}")
+        c3.metric(f"j₀ ({n_str})", f"{blr.j0_mean:.3e} mA/cm²", delta=f"± {blr.j0_std:.3e}")
 
         c4,c5,c6 = st.columns(3)
-        c4.metric(f"η@10 ({n_str})",
-                  f"{blr.eta10_mean*1000:.1f} mV" if not math.isnan(blr.eta10_mean) else "N/A",
+        c4.metric(f"η@10 ({n_str})", f"{blr.eta10_mean*1000:.1f} mV" if not math.isnan(blr.eta10_mean) else "N/A",
                   delta=f"± {blr.eta10_std*1000:.1f} mV" if not math.isnan(blr.eta10_std) else None)
-        c5.metric(f"η@50 ({n_str})",
-                  f"{blr.eta50_mean*1000:.1f} mV" if not math.isnan(blr.eta50_mean) else "N/A",
+        c5.metric(f"η@50 ({n_str})", f"{blr.eta50_mean*1000:.1f} mV" if not math.isnan(blr.eta50_mean) else "N/A",
                   delta=f"± {blr.eta50_std*1000:.1f} mV" if not math.isnan(blr.eta50_std) else None)
-        c6.metric(f"η@100 ({n_str})",
-                  f"{blr.eta100_mean*1000:.1f} mV" if not math.isnan(blr.eta100_mean) else "N/A",
+        c6.metric(f"η@100 ({n_str})", f"{blr.eta100_mean*1000:.1f} mV" if not math.isnan(blr.eta100_mean) else "N/A",
                   delta=f"± {blr.eta100_std*1000:.1f} mV" if not math.isnan(blr.eta100_std) else None)
 
-        # ── Averaged LSV curve with error band ─────────────────────────────
         if blr.potential_common is not None:
             import plotly.graph_objects as go
             fig_blsv = go.Figure()
             pot_c = blr.potential_common
             j_m   = blr.j_mean_curve
             j_s   = blr.j_std_curve
-
             fig_blsv.add_trace(go.Scatter(
                 x=np.concatenate([pot_c, pot_c[::-1]]),
                 y=np.concatenate([j_m + j_s, (j_m - j_s)[::-1]]),
                 fill="toself", fillcolor="rgba(37,99,235,0.12)",
-                line=dict(color="rgba(37,99,235,0)"),
-                name="± SD band",
+                line=dict(color="rgba(37,99,235,0)"), name="± SD band",
             ))
             fig_blsv.add_trace(go.Scatter(
                 x=pot_c, y=j_m, mode="lines",
@@ -653,16 +780,14 @@ with tab2:
                                    yaxis_title="j (mA/cm²)")
             st.plotly_chart(fig_blsv, use_container_width=True)
 
-        # ── Publication table ──────────────────────────────────────────────
         st.markdown("#### Publication-Ready Table")
         st.dataframe(blr.to_dataframe(), use_container_width=True, hide_index=True)
-
         col_md, col_tex = st.columns(2)
         with col_md:
-            st.markdown("**Markdown** (for README / GitHub)")
+            st.markdown("**Markdown**")
             st.code(blr.to_markdown_table(), language="markdown")
         with col_tex:
-            st.markdown("**LaTeX** (paste directly into paper)")
+            st.markdown("**LaTeX**")
             st.code(blr.to_latex_table(), language="latex")
 
 
@@ -673,13 +798,29 @@ with tab3:
     col1,col2 = st.columns([1,1])
     with col1:
         eis_file = st.file_uploader("Upload EIS file", type=EIS_FORMATS, key="eis_up")
-        lit_c = "R0-p(R1,CPE1)"
-        lit_g = "30, 31000, 2e-7, 0.78"
+
+        # ── CHANGE 5: EEC suggestion from carbon_standards ────────────────
+        if _STANDARDS_AVAILABLE:
+            eec_suggestion = suggest_eec(
+                catalyst_type=catalyst_type,
+                electrolyte=ekey,
+                user_circuit=None,
+            )
+            _suggested_circuit = eec_suggestion["circuit"]
+            _suggested_p0      = ", ".join(f"{v:.3e}" for v in eec_suggestion["p0"]) if eec_suggestion["p0"] else ""
+            st.info(f"🤖 Suggested EEC: `{_suggested_circuit}` — " + eec_suggestion["note"])
+        else:
+            _suggested_circuit = "R0-p(R1,CPE1)"
+            _suggested_p0      = "30, 31000, 2e-7, 0.78"
+
+        # Literature guide override
         if "lit" in st.session_state and st.session_state["lit"].system_found:
-            g=st.session_state["lit"]; lit_c=g.recommended_circuit
-            lit_g=", ".join(f"{v:.3e}" for v in g.initial_guess.values())
-        circ = st.text_input("Equivalent circuit", value=lit_c)
-        p0s  = st.text_input("Initial guess (comma-separated)", value=lit_g)
+            g = st.session_state["lit"]
+            _suggested_circuit = g.recommended_circuit
+            _suggested_p0 = ", ".join(f"{v:.3e}" for v in g.initial_guess.values())
+
+        circ = st.text_input("Equivalent circuit (edit or accept suggestion)", value=_suggested_circuit)
+        p0s  = st.text_input("Initial guess (comma-separated)", value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78")
         use_bounds = st.checkbox("Use smart bounds", value=False)
         st.caption("💡 Tip: After fit, use R0 value as R_s for iR compensation in CV/LSV tabs.")
 
@@ -799,10 +940,17 @@ with tab3:
                         (st.success if fit.converged else st.warning)(
                             f"{'✅ Fit converged' if fit.converged else '⚠ Did not fully converge'} | {msg}"
                         )
-                        # Show R0 hint for iR compensation
                         if "R0" in fit.parameters and not np.isnan(fit.parameters["R0"]):
                             r0_val = fit.parameters["R0"]
                             st.info(f"💡 R0 = {r0_val:.3f} Ω — use this as R_s in the sidebar for iR compensation")
+
+                            # R_ct validation for carbon
+                            if catalyst_type == "carbon_material" and _STANDARDS_AVAILABLE:
+                                r1_key = "R1" if "R1" in fit.parameters else None
+                                if r1_key:
+                                    rct_val = fit.parameters[r1_key]
+                                    rct_result = CarbonValidator.validate_rct(rct_val, electrolyte=ekey)
+                                    _show_validation(rct_result)
                     except Exception as e:
                         st.error(f"Fit error: {e}")
 
@@ -902,7 +1050,7 @@ with tab5:
                 c1.metric("E_onset",f"{corr.e_onset:.4f} V")
                 c2.metric("EIS region",corr.eis_region)
                 c3.metric("Consistency",f"{corr.consistency_score:.0%}")
-                for w in corr.warnings:      st.warning(w)
+                for w in corr.warnings:       st.warning(w)
                 for r in corr.recommendations: st.success(r)
 
                 st.markdown("#### Combined Results Summary")
@@ -911,7 +1059,7 @@ with tab5:
                 summary["CV/LSV"].append(f"{cv_res.e_onset:.4f}")
                 summary["EIS"].append(f"Measured at {eis_pot:.4f} V")
                 if has_cv and catalyst_type != "carbon_material":
-                    _ratio = st.session_state['cv_r'].if_ib_ratio
+                    _ratio = st.session_state["cv_r"].if_ib_ratio
                     summary["Parameter"].append("I_f/I_b")
                     summary["CV/LSV"].append(f"{_ratio:.3f}" if not np.isnan(_ratio) else "N/A")
                     summary["EIS"].append("—")
@@ -944,12 +1092,19 @@ with tab6:
 
     with kl_col1:
         st.markdown('<p class="section-title">Alcohol & Electrolyte</p>', unsafe_allow_html=True)
-        kl_alcohol   = st.selectbox("Alcohol", ["ethanol","methanol","2-propanol","ethylene_glycol","glycerol"], key="kl_alc")
+        kl_alcohol   = st.selectbox(
+            "Alcohol",
+            ["ethanol","methanol","isopropanol","2-propanol","ethylene_glycol","glycerol"],
+            key="kl_alc",
+        )
         kl_conc      = st.number_input("Alcohol concentration (M)", value=1.0, step=0.1, min_value=0.01, key="kl_conc")
         kl_temp      = st.number_input("Temperature (°C)", value=25, min_value=0, max_value=100, key="kl_temp")
         kl_pot       = st.number_input("Analysis potential (V vs RHE)", value=0.5, step=0.01, key="kl_pot")
-        kl_area      = st.number_input("Electrode area (cm²)", value=0.196, step=0.001, min_value=0.001, key="kl_area")
-        st.caption("Standard RDE electrode: 0.196 cm² (5 mm diameter)")
+        kl_area      = st.number_input(
+            "Electrode area (cm²)", value=0.1963, step=0.0001,
+            min_value=0.0001, format="%.4f", key="kl_area",
+        )
+        st.caption("Standard RDE electrode: 0.1963 cm² (5 mm diameter)")
 
     with kl_col2:
         st.markdown('<p class="section-title">Upload RDE Files</p>', unsafe_allow_html=True)
@@ -963,8 +1118,7 @@ with tab6:
                 kl_files.append(f)
                 kl_speeds.append(float(rpm_val))
 
-        # Custom speed option
-        custom_rpm = st.number_input("Custom speed (rpm, optional)", value=0, step=100, key="kl_custom_rpm")
+        custom_rpm  = st.number_input("Custom speed (rpm, optional)", value=0, step=100, key="kl_custom_rpm")
         custom_file = st.file_uploader("Custom speed file", type=CV_FORMATS, key="kl_custom_f")
         if custom_file and custom_rpm > 0:
             kl_files.append(custom_file)
@@ -993,7 +1147,6 @@ with tab6:
                         temperature_C=float(kl_temp),
                         catalyst_type=catalyst_type,
                     )
-
                     kl_result = kl_ana.analyze(
                         rotation_speeds_rpm=kl_speeds,
                         potentials=pots_kl,
@@ -1017,7 +1170,6 @@ with tab6:
             st.divider()
             st.markdown("### Results")
 
-            # ── Key metrics ────────────────────────────────────────────────
             m1,m2,m3,m4 = st.columns(4)
             m1.metric("n electrons",    f"{best.n_electrons:.2f}")
             m2.metric("j_kinetic",      f"{best.j_kinetic:.4f} mA/cm²")
@@ -1026,13 +1178,11 @@ with tab6:
 
             st.info(f"**Interpretation:** {best.interpretation}")
 
-            # ── K-L plot ───────────────────────────────────────────────────
             import plotly.graph_objects as go
             from plotly.subplots import make_subplots
             fig_kl = make_subplots(rows=1, cols=2,
                                    subplot_titles=("Koutecky-Levich Plot", "j_kinetic vs Potential"))
 
-            # K-L: 1/j vs 1/√ω
             inv_sqw = [1.0 / np.sqrt(rpm * 2 * np.pi / 60.0) for rpm in best.rotation_speeds_rpm]
             inv_j   = [1.0 / j if abs(j) > 1e-10 else None for j in best.j_measured]
             valid_pts = [(x, y) for x, y in zip(inv_sqw, inv_j) if y is not None]
@@ -1040,14 +1190,10 @@ with tab6:
             if valid_pts:
                 x_kl = [p[0] for p in valid_pts]
                 y_kl = [p[1] for p in valid_pts]
-
                 fig_kl.add_trace(go.Scatter(
-                    x=x_kl, y=y_kl, mode="markers",
-                    name="1/j vs 1/√ω",
+                    x=x_kl, y=y_kl, mode="markers", name="1/j vs 1/√ω",
                     marker=dict(color="#2563eb", size=10, symbol="circle"),
                 ), row=1, col=1)
-
-                # Fit line
                 x_fit = np.linspace(min(x_kl)*0.9, max(x_kl)*1.1, 50)
                 from scipy.stats import linregress
                 if len(x_kl) >= 2:
@@ -1057,8 +1203,6 @@ with tab6:
                         name=f"K-L fit (R²={best.r_squared:.4f})",
                         line=dict(color="#dc2626", dash="dash", width=2),
                     ), row=1, col=1)
-
-                    # Mark intercept (1/j_k)
                     if abs(best.intercept) > 1e-12:
                         fig_kl.add_hline(y=best.intercept, line_dash="dot",
                                          line_color="#d97706",
@@ -1066,12 +1210,10 @@ with tab6:
                                          annotation_font=dict(color="#d97706"),
                                          row=1, col=1)
 
-            # j_kinetic vs potential
             if len(kl_r.potentials_V) > 1:
                 fig_kl.add_trace(go.Scatter(
                     x=kl_r.potentials_V, y=kl_r.j_kinetic_arr,
-                    mode="lines+markers",
-                    name="j_kinetic",
+                    mode="lines+markers", name="j_kinetic",
                     line=dict(color="#7c3aed", width=2),
                     marker=dict(size=8),
                 ), row=1, col=2)
@@ -1084,10 +1226,8 @@ with tab6:
                                  title=f"K-L Analysis — {kl_alcohol} | {catalyst or 'Catalyst'}")
             st.plotly_chart(fig_kl, use_container_width=True)
 
-            # ── Publication table ──────────────────────────────────────────
             st.markdown("#### Publication-Ready Table")
             st.dataframe(kl_r.to_dataframe(), use_container_width=True, hide_index=True)
-
             col_md, col_tex = st.columns(2)
             with col_md:
                 st.markdown("**Markdown**")
