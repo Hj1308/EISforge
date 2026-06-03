@@ -1,0 +1,103 @@
+--- cv_analyzer.py	ORIGINAL
++++ cv_analyzer.py	PATCHED
+@@ substrate constants — add after BASENH3 = "NH3" @@
+ BASENH3 = "NH3"
++
++# --- Substrate (alcohol) constants ---
++SUBSTRATE_ETHANOL        = "ethanol"
++SUBSTRATE_METHANOL       = "methanol"
++SUBSTRATE_2PROPANOL      = "2-propanol"
++SUBSTRATE_ETHYLENE_GLYCOL = "ethylene glycol"
++SUBSTRATE_GLYCEROL       = "glycerol"
++
++# Onset potential windows (V vs RHE): {substrate: {catalysttype: (excellent_max, moderate_max)}}
++# Values based on literature for alkaline/acidic AOR at room temperature
++SUBSTRATE_ONSET_ALKALINE = {
++    SUBSTRATE_ETHANOL: {
++        "noblemetal":    (0.25, 0.45),
++        "alloy":         (0.15, 0.35),
++        "metaloxide":    (1.30, 1.50),
++        "carbonmaterial":(0.40, 0.70),
++    },
++    SUBSTRATE_METHANOL: {
++        "noblemetal":    (0.30, 0.50),
++        "alloy":         (0.20, 0.40),
++        "metaloxide":    (1.35, 1.55),
++        "carbonmaterial":(0.45, 0.75),
++    },
++    SUBSTRATE_2PROPANOL: {
++        "noblemetal":    (0.20, 0.40),
++        "alloy":         (0.10, 0.30),
++        "metaloxide":    (1.25, 1.45),
++        "carbonmaterial":(0.38, 0.65),
++    },
++    SUBSTRATE_ETHYLENE_GLYCOL: {
++        "noblemetal":    (0.18, 0.38),
++        "alloy":         (0.10, 0.28),
++        "metaloxide":    (1.20, 1.42),
++        "carbonmaterial":(0.35, 0.62),
++    },
++    SUBSTRATE_GLYCEROL: {
++        "noblemetal":    (0.15, 0.35),
++        "alloy":         (0.08, 0.26),
++        "metaloxide":    (1.18, 1.40),
++        "carbonmaterial":(0.33, 0.60),
++    },
++}
+
+@@ CVAnalyzer.__init__ — add substrate parameter @@
+     def __init__(
+         self,
+         scanrate: float = 50.0,
+         electrodearea: float = 1.0,
+         ecsa: float = 0.0,
+         onsetmethod: str = "tangent",
+         onsetthreshold: float = 0.05,
+         smoothing: bool = True,
+         electrolyte="acidic",
+         electrolyteconcentration: float = 0.5,
+         catalysttype: str = CATALYSTNOBLEMETAL,
+         currentunit: str = "mA",
+         catalystloading: float = 0.0,
++        substrate: str = "N/A",
+     ) -> None:
+         ...
++        self.substrate = substrate
+
+@@ CVAnalysisResult — add substrate field @@
+ @dataclass
+ class CVAnalysisResult:
+     ...
++    substrate: str = "N/A"
+
+@@ CVAnalyzer.interpret — append substrate-specific note @@
+-        return ". ".join(parts)
++        # --- Substrate-specific interpretation ---
++        sub = getattr(self, "substrate", "N/A")
++        if sub and sub != "N/A":
++            sub_notes = {
++                SUBSTRATE_ETHANOL: (
++                    f"Ethanol oxidation (EOR): 12-electron complete oxidation to CO2 preferred. "
++                    f"IfIb > 1 indicates good CO tolerance; low ratio suggests acetaldehyde/acetic acid as partial products."
++                ),
++                SUBSTRATE_METHANOL: (
++                    f"Methanol oxidation (MOR): 6-electron process to CO2. "
++                    f"CO intermediate poisoning is the main challenge; alloy catalysts (PtRu) mitigate this via bifunctional mechanism."
++                ),
++                SUBSTRATE_2PROPANOL: (
++                    f"2-Propanol oxidation (IOR): cleaner 2-electron pathway to acetone (minor CO poisoning). "
++                    f"Low onset expected vs. ethanol; monitor for acetone accumulation in the electrolyte."
++                ),
++                SUBSTRATE_ETHYLENE_GLYCOL: (
++                    f"Ethylene glycol oxidation (EGOR): multi-step, up to 10 electrons for complete oxidation. "
++                    f"Partial products include glycolaldehyde, glycolic acid, and oxalic acid."
++                ),
++                SUBSTRATE_GLYCEROL: (
++                    f"Glycerol oxidation (GOR): complex multi-step mechanism (up to 14 electrons). "
++                    f"Partial products include glyceraldehyde, glycerate, tartronate, and mesoxalate depending on potential and catalyst."
++                ),
++            }
++            note = sub_notes.get(sub)
++            if note:
++                parts.append(note)
++        return ". ".join(parts)

@@ -26,6 +26,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from scipy.stats import linregress
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +293,7 @@ class CVAnalyzer:
         catalyst_type          : str   = CATALYST_NOBLE_METAL,
         current_unit           : str   = "mA",
         catalyst_loading       : float = 0.0,
+    e_ref_vs_rhe     : float = 0.0,
     ) -> None:
         self.scan_rate               = scan_rate
         self.electrode_area          = max(electrode_area, 1e-10)
@@ -301,6 +303,7 @@ class CVAnalyzer:
         self.smoothing               = smoothing
         self.catalyst_type           = catalyst_type
         self.catalyst_loading        = catalyst_loading
+        self.e_ref_vs_rhe = e_ref_vs_rhe
         self.current_unit            = current_unit
         self._unit_factor            = self._UNIT_TO_MA.get(current_unit, 1.0)
 
@@ -424,6 +427,14 @@ class CVAnalyzer:
         bg_mean   = float(np.mean(np.abs(background))) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
         net_farad = i_f - bg_mean
         cdl       = self._estimate_cdl(background) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
+
+        # ── Edge guard: onset must not land on the very edge (detection failure) ──
+        _p10 = float(np.percentile(e_fwd, 10))
+        _p90 = float(np.percentile(e_fwd, 90))
+        if e_onset <= _p10 or e_onset >= _p90:
+            e_onset, baseline = self._onset_threshold(e_fwd, i_fwd, i_f)
+            onset_method = "threshold (auto-fallback)"
+
 
         return CVAnalysisResult(
             catalyst_type           = self.catalyst_type,
@@ -595,7 +606,7 @@ class CVAnalyzer:
 
     # ── Interpretation ────────────────────────────────────────────────────────
 
-    def _interpret(self, e_onset, i_f, i_b, ratio) -> str:
+    def _interpret(self, e_onset, i_f, i_b, ratio, e_ref_vs_rhe: float = 0.0) -> str:
         parts  = []
         el     = self.electrolyte_info
         ctype  = self.catalyst_type
@@ -616,22 +627,39 @@ class CVAnalyzer:
         elif conc != 1.0 and el.is_alkaline():
             conc_note = f" [{conc} M {el.compound}]"
 
-        if e_onset < lo:
-            parts.append(f"E_onset={e_onset:.3f} V — Excellent activity{conc_note}")
-        elif e_onset < hi:
-            parts.append(f"E_onset={e_onset:.3f} V — Moderate activity{conc_note}")
+        # ── RHE conversion for interpretation ──────────────────────────────
+        # If pH is known from alkaline electrolyte, include Nernst term
+        if e_ref_vs_rhe != 0.0:
+            if el.is_alkaline():
+                _conc_koh = max(el.concentration, 1e-6)
+                _ph = 14 + np.log10(_conc_koh)  # approx for KOH/NaOH
+                _ph = min(_ph, 14.0)
+            else:
+                _ph = 0.0
+            e_onset_rhe = e_onset + e_ref_vs_rhe + 0.059 * _ph
+            rhe_note = f" (= {e_onset_rhe:.3f} V vs RHE)"
         else:
-            parts.append(f"E_onset={e_onset:.3f} V — High overpotential{conc_note}")
+            e_onset_rhe = e_onset
+            rhe_note = ""
+
+        if e_onset_rhe < lo:
+            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — Excellent activity{conc_note}")
+        elif e_onset_rhe < hi:
+            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — Moderate activity{conc_note}")
+        else:
+            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — High overpotential{conc_note}")
 
         # ── Catalyst-specific assessment ────────────────────────────────────
         if ctype == CATALYST_METAL_FREE:
             parts.append(
-                "Metal-free catalyst: I_f/I_b not applicable. "
-                "ECSA via C_dl method. "
-                "CO poisoning pathway absent — different mechanism."
+                "Metal-free carbon catalyst: I_f/I_b NOT applicable. "
+                "ECSA estimated via C_dl method. "
+                "No CO poisoning pathway — IPA/alcohol oxidation via different mechanism."
             )
             if i_f > 0:
-                parts.append(f"Peak current = {i_f:.3f} mA (after background subtraction)")
+                parts.append(f"Net peak current = {i_f:.4f} mA (after capacitive background subtraction)")
+            if not np.isnan(ratio):
+                pass  # deliberately skip I_f/I_b for metal-free
 
         elif ctype == CATALYST_METAL_OXIDE:
             parts.append(
