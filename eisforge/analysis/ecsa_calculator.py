@@ -1,202 +1,291 @@
-"""
-Auto-ECSA Calculator for EISforge
-Author: Hoda Jafari | May 2026
-
-Automatically selects ECSA method based on catalyst type:
-    noble_metal     -> H_upd  (Q_H / 210 uC/cm2)
-    alloy           -> CO Stripping (Q_CO / 420 uC/cm2)
-    metal_oxide     -> C_dl method (BET-based)
-    carbon_material -> C_dl method (40 uF/cm2)
-"""
-
-from __future__ import annotations
 import numpy as np
-import logging
-
-logger = logging.getLogger(__name__)
-
-# ── Constants ─────────────────────────────────────────────────────────────────
-Q_REF_HUP  = 210e-6   # C/cm2  — Pt H-upd reference charge density
-Q_REF_CO   = 420e-6   # C/cm2  — CO stripping reference charge density
-C_SPECIFIC = 40e-6    # F/cm2  — specific capacitance for carbon materials
-C_SPECIFIC_OXIDE = 60e-6  # F/cm2  — for metal oxides
+from scipy import stats, integrate as sci_integrate
+from typing import List, Tuple, Dict, Union, Optional
+import warnings
 
 
-# ── Method selector ───────────────────────────────────────────────────────────
-ECSA_METHOD = {
-    "noble_metal":     "h_upd",
-    "alloy":           "co_stripping",
-    "metal_oxide":     "cdl",
-    "carbon_material": "cdl",
-}
-
-
-# ── Result container ──────────────────────────────────────────────────────────
-class ECSAResult:
-    def __init__(self, ecsa_cm2, ecsa_m2g, method, catalyst_loading_mg=None, details=None):
-        self.ecsa_cm2          = ecsa_cm2          # cm2
-        self.ecsa_m2g          = ecsa_m2g          # m2/g  (None if no loading given)
-        self.method            = method            # str
-        self.catalyst_loading  = catalyst_loading_mg
-        self.details           = details or {}
-
-    def summary(self):
-        lines = [
-            f"ECSA Method    : {self.method}",
-            f"ECSA           : {self.ecsa_cm2:.4f} cm²",
-        ]
-        if self.ecsa_m2g is not None:
-            lines.append(f"ECSA           : {self.ecsa_m2g:.2f} m²/g")
-        for k, v in self.details.items():
-            lines.append(f"  {k}: {v}")
-        return "\n".join(lines)
-
-
-# ── Core calculator ───────────────────────────────────────────────────────────
-class AutoECSA:
+class ECSACalculator:
     """
-    Automatic ECSA calculator — selects method from catalyst_type.
+    Utility class for calculating Electrochemically Active Surface Area (ECSA).
 
-    Parameters
-    ----------
-    catalyst_type : str
-        One of: noble_metal, alloy, metal_oxide, carbon_material
-    catalyst_loading_mg : float, optional
-        Catalyst loading in mg — enables m2/g calculation
+    Supported methods:
+        A — Hydrogen Underpotential Deposition (H-UPD)  → Pt, Pd
+        B — CO Stripping                                 → PtRu, PtSn, Pd
+        C — Double Layer Capacitance (Cdl)               → Carbon, metal-free
+
+    Units convention (strictly enforced):
+        potential  : V  (vs RHE)
+        current    : A  (Amperes — divide by 1000 if your data is in mA)
+        scan_rate  : V/s
+        q_ref      : µC/cm²
+        loading_mg : mg (total catalyst mass on electrode)
+        area_cm2   : cm² (geometric electrode area)
     """
 
-    def __init__(self, catalyst_type: str, catalyst_loading_mg: float = None):
-        self.catalyst_type    = catalyst_type.lower()
-        self.loading          = catalyst_loading_mg
-        self.method           = ECSA_METHOD.get(self.catalyst_type, "cdl")
+    # Reference charges (µC/cm²)
+    Q_H_PT   = 210.0   # Pt  — H-UPD
+    Q_H_PD   = 212.0   # Pd  — H-UPD
+    Q_CO_PT  = 420.0   # Pt  — CO stripping
+    Q_CO_PD  = 424.0   # Pd  — CO stripping
 
-    # ── Public entry point ────────────────────────────────────────────────────
-    def calculate(self, potential: np.ndarray, current: np.ndarray,
-                  scan_rate: float = 50.0) -> ECSAResult:
+    # Specific double-layer capacitance (mF/cm²)
+    CS_CARBON = 0.035   # porous carbon / CNT / graphene
+    CS_RUO2   = 0.060   # RuO2 / metal oxides
+    CS_GC     = 0.020   # flat glassy carbon
+
+    # ──────────────────────────────────────────────────────────────
+    # Private helpers
+    # ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _validate(potential: np.ndarray, current: np.ndarray) -> None:
+        """Basic sanity checks on input arrays."""
+        if len(potential) != len(current):
+            raise ValueError(
+                f"potential ({len(potential)}) and current ({len(current)}) must have the same length."
+            )
+        if len(potential) < 10:
+            raise ValueError("Minimum 10 data points required.")
+        if not (np.all(np.isfinite(potential)) and np.all(np.isfinite(current))):
+            raise ValueError("NaN or Inf values detected in input arrays.")
+
+    @staticmethod
+    def _split_scans(
+        potential: np.ndarray, current: np.ndarray
+    ) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
         """
-        Calculate ECSA from CV data.
+        Split a full CV into forward (anodic) and backward (cathodic) scans.
 
-        Parameters
-        ----------
-        potential : np.ndarray   — potential in V
-        current   : np.ndarray   — current in A  (not mA!)
-        scan_rate : float        — scan rate in mV/s
+        Detection is based on the true potential vertex (argmax), which is robust
+        against unequal numbers of points in each half — unlike the naive len//2 split.
+
+        Returns:
+            (fwd_pot, fwd_cur), (bwd_pot, bwd_cur)
         """
-        if self.method == "h_upd":
-            return self._h_upd(potential, current, scan_rate)
-        elif self.method == "co_stripping":
-            return self._co_stripping(potential, current, scan_rate)
-        elif self.method == "cdl":
-            return self._cdl(potential, current, scan_rate)
-        else:
-            raise ValueError(f"Unknown ECSA method: {self.method}")
+        vertex_idx = int(np.argmax(potential))
+        if vertex_idx == 0 or vertex_idx == len(potential) - 1:
+            warnings.warn(
+                "Vertex detected at array boundary — CV may be incomplete or reversed. "
+                "Attempting argmin-based split.",
+                UserWarning, stacklevel=3,
+            )
+            vertex_idx = int(np.argmin(potential))
 
-    # ── H_upd method (Pt, Pd, noble metals) ──────────────────────────────────
-    def _h_upd(self, potential, current, scan_rate):
-        """
-        Integrate H-adsorption region: 0.05 – 0.40 V vs RHE
-        Q_H = integral of |I| dE / scan_rate
-        ECSA = Q_H / 210 uC/cm2
-        """
-        mask = (potential >= 0.05) & (potential <= 0.40)
-        if mask.sum() < 5:
-            logger.warning("H-upd: fewer than 5 points in 0.05-0.40 V range")
+        fwd = (potential[:vertex_idx], current[:vertex_idx])
+        bwd = (potential[vertex_idx:], current[vertex_idx:])
+        return fwd, bwd
 
-        E_region = potential[mask]
-        I_region = np.abs(current[mask])
-
-        # Integrate: Q = integral(I dE) / scan_rate (V/s)
-        sr_vs = scan_rate * 1e-3  # mV/s → V/s
-        if len(E_region) > 1:
-            Q_H = np.trapezoid(I_region, E_region) / sr_vs  # Coulombs
-        else:
-            Q_H = 0.0
-
-        ecsa_cm2 = Q_H / Q_REF_HUP
-        ecsa_m2g = (ecsa_cm2 * 1e-4) / (self.loading * 1e-3) if self.loading else None
-
-        return ECSAResult(
-            ecsa_cm2=ecsa_cm2,
-            ecsa_m2g=ecsa_m2g,
-            method="H_upd (0.05-0.40 V vs RHE)",
-            catalyst_loading_mg=self.loading,
-            details={"Q_H (C)": f"{Q_H:.6f}", "Q_ref (C/cm2)": "210e-6"}
+    @staticmethod
+    def _linear_baseline(
+        potential: np.ndarray, current: np.ndarray
+    ) -> np.ndarray:
+        """Subtract a straight-line baseline connecting the first and last points."""
+        baseline = np.interp(
+            potential,
+            [potential[0], potential[-1]],
+            [current[0],   current[-1]],
         )
+        return current - baseline
 
-    # ── CO Stripping method (PtRu, PtSn, Pd alloys) ──────────────────────────
-    def _co_stripping(self, potential, current, scan_rate):
+    # ──────────────────────────────────────────────────────────────
+    # Public methods
+    # ──────────────────────────────────────────────────────────────
+
+    @classmethod
+    def method_a_hupd(
+        cls,
+        potential    : np.ndarray,
+        current      : np.ndarray,
+        scan_rate    : float,
+        loading_mg   : float,
+        v_range      : Tuple[float, float] = (0.05, 0.40),
+        q_ref        : Optional[float] = None,         # ✅ FIX: subclass-safe default
+        area_cm2     : float = 1.0,
+    ) -> Dict[str, Union[float, str]]:
         """
-        Integrate CO oxidation peak: 0.50 – 1.00 V
-        Q_CO = integral(I dE) / scan_rate
-        ECSA = Q_CO / 420 uC/cm2
+        Method A: H-UPD charge integration (cathodic scan only).
+
+        Args:
+            potential  : V vs RHE
+            current    : A  (Amperes)
+            scan_rate  : V/s
+            loading_mg : total catalyst loading (mg)
+            v_range    : (V_low, V_high) integration window vs RHE
+            q_ref      : reference charge density (µC/cm²); defaults to Q_H_PT
+            area_cm2   : geometric electrode area (cm²)
+
+        Returns dict keys:
+            method, charge_uC, q_ref_used, ecsa_cm2, specific_ecsa_cm2_mg
         """
-        mask = (potential >= 0.50) & (potential <= 1.00)
-        E_region = potential[mask]
-        I_region = current[mask]
+        if q_ref is None:                   # ✅ FIX: resolved at call time, not class-def time
+            q_ref = cls.Q_H_PT
 
-        # Only positive (oxidation) current
-        I_region = np.clip(I_region, 0, None)
+        cls._validate(potential, current)
 
-        sr_vs = scan_rate * 1e-3
-        Q_CO = np.trapezoid(I_region, E_region) / sr_vs if len(E_region) > 1 else 0.0
+        # ✅ FIX: use only the cathodic (backward) scan for H-UPD
+        _, (bwd_pot, bwd_cur) = cls._split_scans(potential, current)
 
-        ecsa_cm2 = Q_CO / Q_REF_CO
-        ecsa_m2g = (ecsa_cm2 * 1e-4) / (self.loading * 1e-3) if self.loading else None
+        # Mask the H-UPD window
+        mask = (bwd_pot >= v_range[0]) & (bwd_pot <= v_range[1])
+        pot_w = bwd_pot[mask]
+        cur_w = bwd_cur[mask]
 
-        return ECSAResult(
-            ecsa_cm2=ecsa_cm2,
-            ecsa_m2g=ecsa_m2g,
-            method="CO Stripping (0.50-1.00 V)",
-            catalyst_loading_mg=self.loading,
-            details={"Q_CO (C)": f"{Q_CO:.6f}", "Q_ref (C/cm2)": "420e-6"}
-        )
+        if len(pot_w) < 5:
+            raise ValueError(
+                f"Only {len(pot_w)} points found in H-UPD window {v_range}. "
+                "Check v_range or data coverage."
+            )
 
-    # ── C_dl method (carbon materials, metal oxides) ──────────────────────────
-    def _cdl(self, potential, current, scan_rate):
+        # Sort by potential (cathodic scan runs high→low; trapz needs monotonic x)
+        order   = np.argsort(pot_w)
+        pot_s   = pot_w[order]
+        cur_s   = cur_w[order]
+
+        # Baseline correction
+        cur_bc  = cls._linear_baseline(pot_s, cur_s)
+
+        # Q (µC) = |∫ I dV| / scan_rate  ×  1e6
+        charge_uC = abs(sci_integrate.trapezoid(cur_bc, pot_s)) / abs(scan_rate) * 1e6
+
+        ecsa_cm2           = charge_uC / q_ref                    # cm²
+        specific_ecsa      = ecsa_cm2  / loading_mg if loading_mg > 0 else 0.0
+
+        return {
+            "method"               : "H-UPD",
+            "charge_uC"            : charge_uC,
+            "q_ref_used"           : q_ref,
+            "ecsa_cm2"             : ecsa_cm2,
+            "specific_ecsa_cm2_mg" : specific_ecsa,
+            "integration_window"   : v_range,
+        }
+
+    @classmethod
+    def method_b_co(
+        cls,
+        potential    : np.ndarray,
+        current      : np.ndarray,
+        scan_rate    : float,
+        loading_mg   : float,
+        v_range      : Tuple[float, float],
+        q_ref        : Optional[float] = None,         # ✅ FIX: subclass-safe
+        area_cm2     : float = 1.0,
+    ) -> Dict[str, Union[float, str]]:
         """
-        Double-layer capacitance method.
-        Uses non-Faradaic region (mid-potential).
-        C_dl = (I_anodic - I_cathodic) / (2 * scan_rate)
-        ECSA = C_dl / C_specific
+        Method B: CO stripping charge integration (anodic scan only).
+
+        CO oxidation peak appears on the forward (anodic) scan.
         """
-        # Find non-Faradaic region: middle 20% of potential window
-        E_min, E_max = potential.min(), potential.max()
-        E_mid = (E_min + E_max) / 2
-        E_window = (E_max - E_min) * 0.1
+        if q_ref is None:
+            q_ref = cls.Q_CO_PT
 
-        mask = (potential >= E_mid - E_window) & (potential <= E_mid + E_window)
-        if mask.sum() < 4:
-            # fallback: use all data
-            mask = np.ones(len(potential), dtype=bool)
+        cls._validate(potential, current)
 
-        I_region = current[mask]
-        I_anodic  = I_region[I_region >= 0].mean() if (I_region >= 0).any() else 0.0
-        I_cathodic = np.abs(I_region[I_region < 0].mean()) if (I_region < 0).any() else 0.0
+        # ✅ FIX: use only the anodic (forward) scan for CO stripping
+        (fwd_pot, fwd_cur), _ = cls._split_scans(potential, current)
 
-        sr_vs = scan_rate * 1e-3  # V/s
-        C_dl = (I_anodic + I_cathodic) / (2 * sr_vs)  # Farads
+        mask    = (fwd_pot >= v_range[0]) & (fwd_pot <= v_range[1])
+        pot_w   = fwd_pot[mask]
+        cur_w   = fwd_cur[mask]
 
-        c_spec = C_SPECIFIC_OXIDE if self.catalyst_type == "metal_oxide" else C_SPECIFIC
-        ecsa_cm2 = C_dl / c_spec
-        ecsa_m2g = (ecsa_cm2 * 1e-4) / (self.loading * 1e-3) if self.loading else None
+        if len(pot_w) < 5:
+            raise ValueError(
+                f"Only {len(pot_w)} points found in CO stripping window {v_range}."
+            )
 
-        return ECSAResult(
-            ecsa_cm2=ecsa_cm2,
-            ecsa_m2g=ecsa_m2g,
-            method=f"C_dl (C_specific={c_spec*1e6:.0f} uF/cm2)",
-            catalyst_loading_mg=self.loading,
-            details={
-                "C_dl (F)": f"{C_dl:.6f}",
-                "I_anodic (A)": f"{I_anodic:.6f}",
-                "I_cathodic (A)": f"{I_cathodic:.6f}",
-            }
-        )
+        order   = np.argsort(pot_w)
+        pot_s   = pot_w[order]
+        cur_s   = cur_w[order]
+        cur_bc  = cls._linear_baseline(pot_s, cur_s)
 
+        charge_uC          = abs(sci_integrate.trapezoid(cur_bc, pot_s)) / abs(scan_rate) * 1e6
+        ecsa_cm2           = charge_uC / q_ref
+        specific_ecsa      = ecsa_cm2  / loading_mg if loading_mg > 0 else 0.0
 
-# ── Convenience function ──────────────────────────────────────────────────────
-def calculate_ecsa(potential, current, catalyst_type,
-                   scan_rate=50.0, catalyst_loading_mg=None) -> ECSAResult:
-    """One-line ECSA calculation."""
-    calc = AutoECSA(catalyst_type=catalyst_type,
-                    catalyst_loading_mg=catalyst_loading_mg)
-    return calc.calculate(potential, current, scan_rate)
+        return {
+            "method"               : "CO Stripping",
+            "charge_uC"            : charge_uC,
+            "q_ref_used"           : q_ref,
+            "ecsa_cm2"             : ecsa_cm2,
+            "specific_ecsa_cm2_mg" : specific_ecsa,
+            "integration_window"   : v_range,
+        }
+
+    @classmethod
+    def method_c_cdl(
+        cls,
+        potentials_list : List[np.ndarray],
+        currents_list   : List[np.ndarray],
+        scan_rates      : List[float],          # V/s (all the same unit as A/B)
+        v_range         : Tuple[float, float],
+        cs_mF_cm2       : Optional[float] = None,
+        loading_mg      : float = 1.0,
+        area_cm2        : float = 1.0,
+    ) -> Dict[str, Union[float, list, str]]:
+        """
+        Method C: Cdl from scan-rate dependence.
+
+        Δj (= j_anodic − j_cathodic) at v_mid is plotted vs scan rate.
+        Slope = 2 × Cdl  →  Cdl = slope / 2.
+
+        Args:
+            potentials_list : one array per scan rate (V)
+            currents_list   : one array per scan rate (A)
+            scan_rates      : V/s — must match order of potentials/currents lists
+            v_range         : non-Faradaic window; v_mid = mean(v_range)
+            cs_mF_cm2       : specific capacitance (mF/cm²); defaults to CS_CARBON
+            loading_mg      : catalyst loading (mg)
+            area_cm2        : geometric electrode area (cm²)
+        """
+        if cs_mF_cm2 is None:
+            cs_mF_cm2 = cls.CS_CARBON
+
+        n = len(scan_rates)
+        if not (len(potentials_list) == len(currents_list) == n):
+            raise ValueError(
+                f"potentials_list ({len(potentials_list)}), currents_list ({len(currents_list)}), "
+                f"and scan_rates ({n}) must all have the same length."
+            )
+        if n < 3:
+            warnings.warn("At least 3 scan rates recommended for reliable Cdl.", UserWarning)
+
+        v_mid       = (v_range[0] + v_range[1]) / 2.0
+        delta_j_list = []
+
+        for i, (pot, cur) in enumerate(zip(potentials_list, currents_list)):
+            cls._validate(pot, cur)
+
+            # ✅ FIX: true vertex → separate forward & backward scans
+            (fwd_pot, fwd_cur), (bwd_pot, bwd_cur) = cls._split_scans(pot, cur)
+
+            if len(fwd_pot) < 2 or len(bwd_pot) < 2:
+                raise ValueError(f"CV #{i+1}: scan split failed — too few points.")
+
+            # Interpolate at v_mid (more robust than nearest-index lookup)
+            j_a = float(np.interp(v_mid, fwd_pot, fwd_cur))   # anodic  current (A)
+            j_c = float(np.interp(v_mid, bwd_pot[::-1], bwd_cur[::-1]))  # cathodic
+
+            # Normalise to geometric area → A/cm²
+            delta_j_list.append(abs(j_a - j_c) / area_cm2)
+
+        # ✅ FIX: linregress gives slope AND intercept; both returned for UI trendline
+        slope, intercept, r_value, _, std_err = stats.linregress(scan_rates, delta_j_list)
+
+        cdl_F_cm2   = abs(slope) / 2.0                   # F/cm²
+        cdl_mF_cm2  = cdl_F_cm2 * 1000.0                 # mF/cm²
+        ecsa_cm2    = (cdl_mF_cm2 / cs_mF_cm2) * area_cm2
+        specific    = ecsa_cm2 / loading_mg if loading_mg > 0 else 0.0
+
+        return {
+            "method"               : "Cdl",
+            "cdl_mF_cm2"           : cdl_mF_cm2,
+            "ecsa_cm2"             : ecsa_cm2,
+            "specific_ecsa_cm2_mg" : specific,
+            "r_squared"            : r_value ** 2,
+            "fit_slope"            : slope,
+            "fit_intercept"        : intercept,       # ✅ for UI trendline
+            "fit_std_err"          : std_err,
+            "cs_used_mF_cm2"       : cs_mF_cm2,
+            "v_mid"                : v_mid,
+            "scan_rates_V_s"       : list(scan_rates),
+            "delta_j_A_cm2"        : delta_j_list,
+        }
