@@ -5,6 +5,7 @@ Run: streamlit run app.py
 """
 
 import streamlit as st
+from eisforge.analysis.ecsa_calculator import ECSACalculator
 import pandas as pd
 import numpy as np
 import re
@@ -368,9 +369,9 @@ _auto_idx = _onset_methods.index(default_onset_method)
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
     "📈 CV Analysis","📉 LSV Analysis","🔬 EIS Analysis",
-    "🤖 EIS-GPT","🔗 Correlation","⚗️ K-L Analysis"
+    "🤖 EIS-GPT","🔗 Correlation","⚗️ K-L Analysis","📏 ECSA Calculator"
 ])
 
 
@@ -1235,3 +1236,234 @@ with tab6:
             with col_tex:
                 st.markdown("**LaTeX**")
                 st.code(kl_r.to_latex_table(), language="latex")
+
+
+# ══════════════════════════════════════════
+# TAB 7 — ECSA CALCULATOR
+# ══════════════════════════════════════════
+with tab7:
+    st.header("📏 Automated ECSA Calculator")
+    st.markdown("Calculate ECSA using **H-UPD**, **CO Stripping**, or **Cdl**.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        ecsa_method = st.selectbox(
+            "ECSA Method",
+            [
+                "Method A: H-UPD (Pt/Pd)",
+                "Method B: CO Stripping (PtRu/Pd)",
+                "Method C: Cdl (Carbon/Metal-Free)"
+            ],
+            key="ecsa_method_sel"
+        )
+        ecsa_loading = st.number_input(
+            "Catalyst Loading (mg)",
+            value=0.1, min_value=0.001, step=0.01,
+            key="ecsa_loading"
+        )
+    with c2:
+        ecsa_scan_rate = st.number_input(
+            "Scan Rate (mV/s)",
+            value=50.0, step=10.0,
+            key="ecsa_sr"
+        )
+        ecsa_q_ref_sel = st.selectbox(
+            "Reference Charge",
+            [
+                "Pt — H-UPD: 210 | CO: 420 uC/cm2",
+                "Pd — H-UPD: 212 | CO: 424 uC/cm2"
+            ],
+            key="ecsa_qref"
+        )
+
+    q_hupd = ECSACalculator.Q_H_PD if "Pd" in ecsa_q_ref_sel else ECSACalculator.Q_H_PT
+    q_co   = ECSACalculator.Q_CO_PD if "Pd" in ecsa_q_ref_sel else ECSACalculator.Q_CO_PT
+
+    st.divider()
+
+    if not ecsa_method.startswith("Method C"):
+        ecsa_file = st.file_uploader(
+            "Upload CV file (.csv, .txt, .idf, .dta)",
+            type=CV_FORMATS,
+            key="ecsa_single_up"
+        )
+
+        if ecsa_file:
+            try:
+                pot_e, cur_e = load_cv_lsv(ecsa_file)
+                v_lo = float(pot_e.min())
+                v_hi = float(pot_e.max())
+                default_win = (0.05, 0.40) if ecsa_method.startswith("Method A") else (0.60, 0.90)
+                win_lo = max(v_lo, default_win[0])
+                win_hi = min(v_hi, default_win[1])
+                v_min_e, v_max_e = st.slider(
+                    "Integration Window (V vs RHE)",
+                    float(v_lo), float(v_hi),
+                    (float(win_lo), float(win_hi)),
+                    step=0.01,
+                    key="ecsa_window"
+                )
+            except Exception as ex:
+                st.error(f"File read error: {ex}")
+                ecsa_file = None
+
+        if ecsa_file and st.button("Calculate ECSA", key="ecsa_calc_ab"):
+            try:
+                sr_vs = ecsa_scan_rate / 1000.0
+                if ecsa_method.startswith("Method A"):
+                    res_e = ECSACalculator.method_a_hupd(
+                        pot_e, cur_e, sr_vs, ecsa_loading,
+                        v_range=(v_min_e, v_max_e),
+                        q_ref=q_hupd
+                    )
+                else:
+                    res_e = ECSACalculator.method_b_co(
+                        pot_e, cur_e, sr_vs, ecsa_loading,
+                        v_range=(v_min_e, v_max_e),
+                        q_ref=q_co
+                    )
+
+                import plotly.graph_objects as go_e
+                fig_e = go_e.Figure()
+                fig_e.add_trace(go_e.Scatter(
+                    x=pot_e, y=cur_e,
+                    mode="lines", name="CV Data"
+                ))
+                fig_e.add_vrect(
+                    x0=v_min_e, x1=v_max_e,
+                    fillcolor="green", opacity=0.15,
+                    line_width=0,
+                    annotation_text="Integration Region"
+                )
+                fig_e.update_layout(
+                    xaxis_title="Potential (V vs RHE)",
+                    yaxis_title="Current (A)",
+                    template="plotly_dark"
+                )
+                st.plotly_chart(fig_e, use_container_width=True)
+
+                col_r1, col_r2, col_r3 = st.columns(3)
+                col_r1.metric("Charge (uC)",      f"{res_e['charge_uC']:.2f}")
+                col_r2.metric("ECSA (cm2/mg)",    f"{res_e['ecsa_cm2_mg']:.3f}")
+                col_r3.metric("Q_ref (uC/cm2)",   f"{res_e['q_ref_used']:.0f}")
+
+                import pandas as pd_exp
+                st.download_button(
+                    "Export Results (CSV)",
+                    pd_exp.DataFrame([res_e]).to_csv(index=False),
+                    "ecsa_results.csv",
+                    "text/csv"
+                )
+
+            except Exception as ex:
+                st.error(f"Error: {ex}")
+
+    else:
+        ecsa_files_c = st.file_uploader(
+            "Upload CVs at different scan rates (min 3 files)",
+            type=CV_FORMATS,
+            accept_multiple_files=True,
+            key="ecsa_multi_up"
+        )
+        ecsa_sr_text = st.text_input(
+            "Scan Rates (mV/s) comma-separated — same order as files",
+            "10,20,40,60,80,100",
+            key="ecsa_sr_list"
+        )
+        ecsa_vmid = st.number_input(
+            "Non-Faradaic Midpoint (V)",
+            value=0.25, step=0.01,
+            key="ecsa_vmid"
+        )
+        ecsa_cs = st.number_input(
+            "Specific Capacitance Cs (mF/cm2)",
+            value=0.035, step=0.005,
+            help="0.035 Carbon | 0.060 RuO2",
+            key="ecsa_cs"
+        )
+
+        if ecsa_files_c and len(ecsa_files_c) >= 3:
+            sr_list_c = [float(x.strip()) for x in ecsa_sr_text.split(",")]
+
+            import pandas as pd_match
+            st.dataframe(
+                pd_match.DataFrame({
+                    "File": [f.name for f in ecsa_files_c],
+                    "Scan Rate (mV/s)": sr_list_c[:len(ecsa_files_c)]
+                }),
+                use_container_width=True
+            )
+
+            if len(sr_list_c) != len(ecsa_files_c):
+                st.error(
+                    f"Scan rates ({len(sr_list_c)}) must equal "
+                    f"number of files ({len(ecsa_files_c)})"
+                )
+            elif st.button("Calculate Cdl and ECSA", key="ecsa_calc_c"):
+                try:
+                    pots_c, curs_c = [], []
+                    for f_c in ecsa_files_c:
+                        p_c, i_c = load_cv_lsv(f_c)
+                        pots_c.append(p_c)
+                        curs_c.append(i_c)
+
+                    sr_vs_list = [s / 1000.0 for s in sr_list_c]
+                    res_c = ECSACalculator.method_c_cdl(
+                        pots_c, curs_c, sr_vs_list,
+                        v_range=(ecsa_vmid - 0.05, ecsa_vmid + 0.05)
+                    )
+
+                    ecsa_from_cdl = (res_c["cdl_value"] / ecsa_cs) if ecsa_cs > 0 else 0.0
+                    spec_ecsa_cdl = ecsa_from_cdl / ecsa_loading if ecsa_loading > 0 else 0.0
+
+                    import plotly.graph_objects as go_c
+                    fig_c = go_c.Figure()
+                    fig_c.add_trace(go_c.Scatter(
+                        x=res_c["scan_rates_V_s"],
+                        y=res_c["delta_j_list"],
+                        mode="markers",
+                        marker=dict(size=10),
+                        name="Delta-j Data"
+                    ))
+                    y_fit = [
+                        res_c["fit_slope"] * v + res_c["fit_intercept"]
+                        for v in res_c["scan_rates_V_s"]
+                    ]
+                    fig_c.add_trace(go_c.Scatter(
+                        x=res_c["scan_rates_V_s"],
+                        y=y_fit,
+                        mode="lines",
+                        name=f"Linear Fit R2={res_c['r_squared']:.4f}"
+                    ))
+                    fig_c.update_layout(
+                        xaxis_title="Scan Rate (V/s)",
+                        yaxis_title="Delta-j (A/cm2)",
+                        template="plotly_dark"
+                    )
+                    st.plotly_chart(fig_c, use_container_width=True)
+
+                    col_c1, col_c2, col_c3 = st.columns(3)
+                    col_c1.metric("Cdl (mF/cm2)",          f"{res_c['cdl_value']*1000:.4f}")
+                    col_c2.metric("ECSA (cm2)",             f"{ecsa_from_cdl:.3f}")
+                    col_c3.metric("Specific ECSA (cm2/mg)", f"{spec_ecsa_cdl:.3f}")
+
+                    import pandas as pd_exp2
+                    st.download_button(
+                        "Export Results (CSV)",
+                        pd_exp2.DataFrame([{
+                            "Method":                "Cdl",
+                            "Cdl_mF_cm2":            res_c["cdl_value"] * 1000,
+                            "R2":                    res_c["r_squared"],
+                            "ECSA_cm2":              ecsa_from_cdl,
+                            "Specific_ECSA_cm2_mg":  spec_ecsa_cdl,
+                            "Cs_used_mF_cm2":        ecsa_cs,
+                            "Loading_mg":            ecsa_loading,
+                        }]).to_csv(index=False),
+                        "ecsa_cdl_results.csv",
+                        "text/csv"
+                    )
+
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
+        else:
+            st.info("Please upload at least 3 CV files.")
