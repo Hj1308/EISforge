@@ -23,24 +23,27 @@ If you use EISForge in your research, please cite:
 }
 ```
 
+> ⚠️ **Note:** A Zenodo DOI will be registered upon the first official release (v0.1.0). Until then, please cite the GitHub URL above.
+
 ---
 
 ## Key Features at a Glance 🚀
 
 | Feature | Status |
 |---|---|
-| CNLS circuit fitting (χ² = 0.0008 on real data) | ✅ |
-| Kramers-Kronig validation | ✅ |
-| CV analysis (E_onset, I_f/I_b, current density) | ✅ |
-| LSV analysis (Tafel slope, overpotential, mass activity) | ✅ |
-| Robust data preprocessing (4 independent methods) | ✅ |
-| Literature-guided initial parameter guesses | ✅ |
-| Physics-Informed Transformer architecture (EIS-GPT) | ✅ Architecture only — weights untrained |
-| Uncertainty quantification | ✅ |
-| Autolab / Gamry file support | ✅ |
-| BioLogic (.mpr/.mpt) file support | 🔄 In progress |
-| Zahner (.ism) file support | 🔄 Planned |
-| DRT Analysis | 🔄 Planned |
+| CNLS circuit fitting (χ² = 0.0008 on real data) | ✅ Implemented |
+| Kramers-Kronig validation | ✅ Implemented |
+| CV analysis (E_onset, I_f/I_b, current density) | ✅ Implemented |
+| LSV analysis (Tafel slope, overpotential, mass activity) | ✅ Implemented |
+| Robust data preprocessing (4 independent methods) | ✅ Implemented |
+| Literature-guided initial parameter guesses | ✅ Implemented |
+| Autolab (.idf) / Gamry (.dta) / CSV parsers | ✅ Implemented |
+| Streamlit web interface (5 analysis tabs) | ✅ Implemented |
+| Physics-Informed Transformer architecture (EIS-GPT) | ⚠️ Architecture only — **weights untrained** |
+| BioLogic (.mpr/.mpt) parser | 🔄 In progress (v0.2) |
+| Zahner (.ism) parser | 🔄 Planned (v0.3) |
+| DRT — Distribution of Relaxation Times | 🔄 Planned (v0.3) |
+| Train EIS-GPT on synthetic spectra | 🔄 Planned (v0.4) |
 | Free & Open Source (MIT) | ✅ |
 
 ---
@@ -50,15 +53,50 @@ If you use EISForge in your research, please cite:
 ```bash
 git clone https://github.com/Hj1308/EISforge-.git
 cd EISforge-
-pip install -r requirements.txt
 pip install -e .
 ```
+
+This installs all required dependencies automatically via `pyproject.toml`.
 
 **Launch the web interface:**
 
 ```bash
 streamlit run app.py
 ```
+
+---
+
+## Quick Start — Real Working Example
+
+```python
+from eisforge.core.analyzer    import EisAnalyzer
+from eisforge.core.preprocessor import DataPreprocessor
+from eisforge.core.fitter       import CNLSFitter
+
+# 1. Load data — supports Autolab (.idf), Gamry (.dta), CSV
+ana = EisAnalyzer()
+raw = ana.load("examples/synthetic_randles.csv")   # or your own .idf/.dta file
+print(raw)
+# EISDataset(n=60, f=[1.00e-02, 1.00e+05] Hz)
+
+# 2. Clean the data
+clean = DataPreprocessor.clean_pipeline(raw)
+
+# 3. Fit equivalent circuit
+result = CNLSFitter(
+    circuit_string="R0-p(R1,CPE1)",
+    initial_guess=[10.0, 150.0, 50e-6, 0.85],
+).fit(clean)
+
+print(result.parameter_table())
+# Parameter        Value        ±Error
+# R0           1.000e+01    ~0
+# R1           1.500e+02    ~0
+# CPE1_0       5.000e-05    ~0
+# Reduced χ² ≈ 0.0008
+```
+
+> 📁 Example data files are in the `examples/` folder. Run `python examples/generate_synthetic_data.py` to regenerate them.
 
 ---
 
@@ -69,10 +107,10 @@ streamlit run app.py
 | Metrohm Autolab NOVA | `.idf` | ✅ |
 | Gamry Instruments | `.dta` | ✅ |
 | Generic CSV / TXT | `.csv`, `.txt` | ✅ |
-| BioLogic EC-Lab | `.mpt`, `.mpr` | 🔄 In progress |
-| Zahner | `.ism` | 🔄 Planned |
+| BioLogic EC-Lab | `.mpt`, `.mpr` | 🔄 In progress (v0.2) |
+| Zahner | `.ism` | 🔄 Planned (v0.3) |
 
-> Autolab `.idf` parser automatically detects column order (Z', Z'', frequency in any order) and measurement type (CV vs EIS vs LSV). Current is auto-converted from A to mA.
+> Autolab `.idf` parser automatically detects column order and measurement type (CV vs EIS vs LSV). Current is auto-converted from A to mA.
 
 ---
 
@@ -122,8 +160,6 @@ print(f"j_f      = {result.j_forward_peak:.4f} mA/cm²")
 print(result.interpretation)
 ```
 
-**Outputs:** E_onset (3 methods), I_f, I_b, I_f/I_b ratio, geometric current density (mA/cm²), ECSA-normalized current density (mA/cm²_metal), automatic AOR interpretation.
-
 ### 4. LSV Analysis
 
 ```python
@@ -135,10 +171,7 @@ result = ana.analyze(potential, current)
 print(f"Tafel slope     = {result.tafel_slope:.1f} mV/dec")
 print(f"η @ 10 mA/cm²  = {result.overpotential_10*1000:.1f} mV")
 print(f"Mass activity   = {result.mass_activity:.3f} mA/mg_cat")
-print(result.mechanism_interpretation)
 ```
-
-**Outputs:** E_onset, Tafel slope (mV/dec), exchange current density (j₀), overpotential at 10/50/100 mA/cm², mass activity (mA/mg), specific activity (mA/cm²_ECSA), mechanism interpretation, performance rating.
 
 ### 5. Literature Knowledge Base
 
@@ -152,16 +185,14 @@ guess = LiteratureEngine().query(
     alcohol="ethanol",
     potential=0.5,
 )
-print(guess.recommended_circuit)   # "R0-p(R1,CPE1)"
-print(guess.initial_guess)         # {'R0': 15.0, 'R1': 250.0, ...}
-print(guess.confidence)            # "high"
+print(guess.recommended_circuit)  # "R0-p(R1,CPE1)"
+print(guess.initial_guess)        # {'R0': 15.0, 'R1': 250.0, ...}
+print(guess.confidence)           # "high"
 ```
-
-Curated database covers: AOR (Pt, Pd, PtRu, PtSn in acidic/alkaline), Li-ion batteries, corrosion, PEMFC, biosensors.
 
 ### 6. EIS-GPT — Physics-Informed Transformer
 
-A **Physics-Informed Transformer** architecture for EIS spectrum analysis.
+> ⚠️ **Current Status:** The Transformer **architecture** is fully implemented and tested. Model **weights are untrained** — training on synthetic data is planned for v0.4. Do not use for inference yet.
 
 **Architecture:**
 - Each frequency point = one token
@@ -177,43 +208,6 @@ L_total = L_reconstruction
         + λ₃ × L_high-frequency-limit
 ```
 
-> **Status:** Architecture complete. Model weights are currently **untrained**. Train using `scripts/train_ml_models.py` on the included synthetic dataset generator.
-
----
-
-## Full Example
-
-```python
-from eisforge.core.analyzer      import EisAnalyzer
-from eisforge.core.preprocessor   import DataPreprocessor
-from eisforge.core.fitter         import CNLSFitter
-
-# 1. Load data — supports Autolab (.idf), Gamry (.dta), CSV
-ana = EisAnalyzer()
-raw = ana.load("EIS_0.82V.idf")
-print(raw)
-# EISDataset(n=74, f=[1.00e-01, 1.00e+05] Hz)
-
-# 2. Clean the data
-clean = DataPreprocessor.clean_pipeline(raw)
-# Cleaning pipeline: 74 → 73 points (1 removed)
-
-# 3. Fit equivalent circuit
-result = CNLSFitter(
-    circuit_string="R0-p(R1,CPE1)",
-    initial_guess=[30.0, 31000.0, 2e-7, 0.78],
-).fit(clean)
-
-print(result.parameter_table())
-# Parameter            Value          ±Error
-# ──────────────────────────────────────────────────
-# R0            2.5230e+01        1.77e-01
-# R1            3.3462e+04        1.56e-05
-# CPE1_0        1.0487e-05        7.21e-08
-# CPE1_1        7.4527e-01        1.01e-03
-# Reduced χ² = 0.000800
-```
-
 ---
 
 ## Project Structure
@@ -221,34 +215,40 @@ print(result.parameter_table())
 ```
 EISforge-/
 ├── app.py                          # Streamlit web interface (5 tabs)
+├── pyproject.toml                  # Package metadata + dependencies
 ├── requirements.txt
-├── setup.py
+│
+├── examples/
+│   ├── synthetic_randles.csv       # Ready-to-use example EIS data
+│   ├── synthetic_warburg.csv       # Randles + Warburg example
+│   └── generate_synthetic_data.py  # Script to regenerate examples
+│
+├── tests/
+│   ├── test_eis_fitting.py         # Unit tests: Randles circuit math
+│   └── test_parsers.py             # Unit tests: CSV parser
 │
 └── eisforge/
     ├── core/
-    │   ├── analyzer.py             # Main orchestration class
-    │   ├── fitter.py               # CNLS via direct scipy optimization
-    │   ├── validators.py           # Kramers-Kronig validation
-    │   └── preprocessor.py         # 4 robust cleaning methods
-    │
+    │   ├── analyzer.py
+    │   ├── fitter.py
+    │   ├── validators.py
+    │   └── preprocessor.py
     ├── parsers/
-    │   ├── base_parser.py          # EISDataset container
-    │   ├── autolab_parser.py       # Metrohm Autolab .idf (CV + EIS + LSV)
-    │   ├── gamry_parser.py         # Gamry .dta
-    │   └── generic_csv_parser.py   # CSV / TXT
-    │
+    │   ├── base_parser.py
+    │   ├── autolab_parser.py
+    │   ├── gamry_parser.py
+    │   ├── generic_csv_parser.py
+    │   └── biologic_parser.py      # BioLogic .mpr/.mpt (in progress)
     ├── analysis/
-    │   ├── cv_analyzer.py          # CV: E_onset, I_f/I_b, j
-    │   ├── lsv_analyzer.py         # LSV: Tafel, overpotential, activity
-    │   └── eis_cv_correlator.py    # Cross-technique correlation
-    │
+    │   ├── cv_analyzer.py
+    │   ├── lsv_analyzer.py
+    │   └── eis_cv_correlator.py
     ├── ml/
     │   ├── aor_dataset_generator.py
     │   └── eis_gpt/
-    │       ├── tokenizer.py        # EIS spectrum → transformer tokens
-    │       ├── transformer.py      # Physics-Informed Transformer
-    │       └── physics_loss.py     # K-K + passivity + HF-limit loss
-    │
+    │       ├── tokenizer.py
+    │       ├── transformer.py
+    │       └── physics_loss.py
     └── knowledge/
         ├── literature_engine.py
         └── data/
@@ -261,23 +261,33 @@ EISforge-/
 
 - [x] CNLS fitting (direct scipy, χ² = 0.0008 on real data)
 - [x] Kramers-Kronig validation with fallback
-- [x] Autolab / Gamry file parsers
+- [x] Autolab / Gamry / CSV file parsers
 - [x] CV analysis (E_onset, I_f/I_b, geometric and ECSA current density)
 - [x] LSV analysis (Tafel slope, overpotential, mass/specific activity)
-- [x] Robust data preprocessing (4 methods, including per-axis jump detection)
-- [x] Literature knowledge base for AOR and other electrochemical systems
-- [x] Streamlit web interface (CV / LSV / EIS / EIS-GPT / Correlation tabs)
-- [x] Physics-Informed Transformer architecture (EIS-GPT)
-- [x] iR compensation (R_s from EIS fit, E_corrected = E - I×R_s)
-- [ ] BioLogic (.mpr/.mpt) parser — in progress
-- [ ] Train EIS-GPT on 10,000+ synthetic spectra
-- [ ] Zahner (.ism) parser
-- [ ] DRT — Distribution of Relaxation Times
+- [x] Robust data preprocessing (4 methods)
+- [x] Literature knowledge base
+- [x] Streamlit web interface
+- [x] Physics-Informed Transformer architecture (EIS-GPT) — untrained
+- [x] iR compensation
+- [x] CI/CD via GitHub Actions
+- [ ] BioLogic (.mpr/.mpt) parser — **in progress (v0.2)**
+- [ ] Train EIS-GPT on 10,000+ synthetic spectra (v0.4)
+- [ ] Zahner (.ism) parser (v0.3)
+- [ ] DRT — Distribution of Relaxation Times (v0.3)
 - [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
 - [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
 - [ ] Faradaic efficiency calculator
 - [ ] Zenodo DOI registration
 - [ ] JOSS paper submission
+
+---
+
+## Running Tests
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+```
 
 ---
 
@@ -295,5 +305,5 @@ EISforge-/
 
 MIT License — Copyright (c) 2026 Hoda Jafari
 
-Free to use in academic and commercial applications.
+Free to use in academic and commercial applications.  
 **Please cite this work if you use it in your publications.**
