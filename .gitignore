@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+ 
+# Temporary files 
+*.bak* 
+fix*.py 
+patch*.py 
+__pycache__/ 
+*.pyc
