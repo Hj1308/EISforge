@@ -1,5 +1,10 @@
 # EISForge 🔬⚡
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20649692.svg)](https://doi.org/10.5281/zenodo.20649692)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/Hj1308/EISforge-/actions/workflows/ci.yml/badge.svg)](https://github.com/Hj1308/EISforge-/actions)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+
 > **Advanced open-source framework for Electrochemical Impedance Spectroscopy (EIS) analysis with Physics-Informed Machine Learning**
 >
 > *Open-source EIS framework combining classical CNLS fitting, CV/LSV analysis, and a Physics-Informed Transformer (EIS-GPT).*
@@ -17,13 +22,12 @@ If you use EISForge in your research, please cite:
   author    = {Jafari, Hoda},
   title     = {EISForge: Physics-Informed ML for Electrochemical Impedance Spectroscopy},
   year      = {2026},
-  publisher = {GitHub},
-  url       = {https://github.com/Hj1308/EISforge-},
-  note      = {Open-source EIS/CV/LSV analysis with Physics-Informed Transformer}
+  publisher = {Zenodo},
+  version   = {v0.1.1},
+  doi       = {10.5281/zenodo.20649692},
+  url       = {https://doi.org/10.5281/zenodo.20649692}
 }
 ```
-
-> ⚠️ **Note:** A Zenodo DOI will be registered upon the first official release (v0.1.0). Until then, please cite the GitHub URL above.
 
 ---
 
@@ -270,6 +274,7 @@ EISforge-/
 - [x] Physics-Informed Transformer architecture (EIS-GPT) — untrained
 - [x] iR compensation
 - [x] CI/CD via GitHub Actions
+- [x] Zenodo DOI — `10.5281/zenodo.20649692`
 - [ ] BioLogic (.mpr/.mpt) parser — **in progress (v0.2)**
 - [ ] Train EIS-GPT on 10,000+ synthetic spectra (v0.4)
 - [ ] Zahner (.ism) parser (v0.3)
@@ -277,7 +282,6 @@ EISforge-/
 - [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
 - [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
 - [ ] Faradaic efficiency calculator
-- [ ] Zenodo DOI registration
 - [ ] JOSS paper submission
 
 ---
