@@ -39,6 +39,8 @@ If you use EISForge in your research, please cite:
 | Kramers-Kronig validation | ✅ Implemented |
 | CV analysis (E_onset, I_f/I_b, current density) | ✅ Implemented |
 | LSV analysis (Tafel slope, overpotential, mass activity) | ✅ Implemented |
+| ECSA calculation (H-UPD, CO stripping, Cdl) | ✅ Implemented |
+| Statistical reproducibility (n≥3, mean ± SD) | ✅ Implemented |
 | Robust data preprocessing (4 independent methods) | ✅ Implemented |
 | Literature-guided initial parameter guesses | ✅ Implemented |
 | Autolab (.idf) / Gamry (.dta) / CSV parsers | ✅ Implemented |
@@ -177,7 +179,74 @@ print(f"η @ 10 mA/cm²  = {result.overpotential_10*1000:.1f} mV")
 print(f"Mass activity   = {result.mass_activity:.3f} mA/mg_cat")
 ```
 
-### 5. Literature Knowledge Base
+### 5. ECSA Calculation — Three Methods
+
+```python
+from eisforge.analysis.ecsa_calculator import ECSACalculator
+import numpy as np
+
+# Method A: H-UPD — for Pt, Pd (metallic catalysts)
+result_a = ECSACalculator.method_a_hupd(
+    potential   = pot_array,      # V vs RHE
+    current     = cur_array,      # A (Amperes)
+    scan_rate   = 0.05,           # V/s
+    loading_mg  = 0.28,           # catalyst loading
+    v_range     = (0.05, 0.40),   # H-UPD integration window
+    q_ref       = ECSACalculator.Q_H_PT,  # 210 µC/cm² for Pt
+)
+print(f"ECSA = {result_a['ecsa_cm2']:.1f} cm²")
+print(f"Specific ECSA = {result_a['specific_ecsa_cm2_mg']:.1f} cm²/mg")
+
+# Method B: CO Stripping — for PtRu, PtSn alloys
+result_b = ECSACalculator.method_b_co(
+    potential   = pot_co,
+    current     = cur_co,
+    scan_rate   = 0.02,
+    loading_mg  = 0.28,
+    v_range     = (0.50, 0.90),
+)
+
+# Method C: Cdl — for carbon-based, metal-free, non-precious catalysts
+# Requires CVs at multiple scan rates (≥3 recommended)
+result_c = ECSACalculator.method_c_cdl(
+    potentials_list = [pot_5mv, pot_10mv, pot_20mv, pot_50mv],
+    currents_list   = [cur_5mv, cur_10mv, cur_20mv, cur_50mv],
+    scan_rates      = [0.005, 0.010, 0.020, 0.050],  # V/s
+    v_range         = (0.20, 0.40),   # non-Faradaic window
+    cs_mF_cm2       = ECSACalculator.CS_CARBON,  # 0.035 mF/cm² for carbon
+    loading_mg      = 0.20,
+)
+print(f"Cdl  = {result_c['cdl_mF_cm2']:.4f} mF/cm²")
+print(f"R²   = {result_c['r_squared']:.4f}")
+```
+
+> **Method selection guide:**
+> - **Metallic Pt/Pd catalysts** → Method A (H-UPD) or Method B (CO stripping)
+> - **PtRu, PtSn alloys** → Method B (CO stripping preferred; H-UPD region overlaps with Ru/Sn oxides)
+> - **Carbon, N-doped carbon, metal-free** → Method C (Cdl) — H-UPD and CO stripping are not applicable
+> - **Metal oxides (RuO₂, IrO₂)** → Method C with `cs_mF_cm2 = ECSACalculator.CS_RUO2` (0.060 mF/cm²)
+
+### 6. Statistical Reproducibility (Batch Analysis)
+
+```python
+from eisforge.analysis.batch_analyzer import BatchAnalyzer
+
+# Analyze n≥3 replicate measurements → mean ± SD for all parameters
+batch = BatchAnalyzer()
+result = batch.run(
+    filepaths    = ["rep1.idf", "rep2.idf", "rep3.idf"],
+    circuit      = "R0-p(R1,CPE1)",
+    analysis_type = "EIS",
+)
+
+print(result.summary_table())
+# Parameter     Mean        SD          RSD (%)
+# R0            10.12       0.08        0.8
+# R1            149.7       2.1         1.4
+# CPE1_0        4.98e-05    3e-07       0.6
+```
+
+### 7. Literature Knowledge Base
 
 ```python
 from eisforge.knowledge.literature_engine import LiteratureEngine
@@ -194,7 +263,7 @@ print(guess.initial_guess)        # {'R0': 15.0, 'R1': 250.0, ...}
 print(guess.confidence)           # "high"
 ```
 
-### 6. EIS-GPT — Physics-Informed Transformer
+### 8. EIS-GPT — Physics-Informed Transformer
 
 > ⚠️ **Current Status:** The Transformer **architecture** is fully implemented and tested. Model **weights are untrained** — training on synthetic data is planned for v0.4. Do not use for inference yet.
 
@@ -246,7 +315,9 @@ EISforge-/
     ├── analysis/
     │   ├── cv_analyzer.py
     │   ├── lsv_analyzer.py
-    │   └── eis_cv_correlator.py
+    │   ├── eis_cv_correlator.py
+    │   ├── ecsa_calculator.py      # ECSA: H-UPD / CO stripping / Cdl
+    │   └── batch_analyzer.py       # Statistical reproducibility (n≥3)
     ├── ml/
     │   ├── aor_dataset_generator.py
     │   └── eis_gpt/
@@ -275,12 +346,12 @@ EISforge-/
 - [x] iR compensation
 - [x] CI/CD via GitHub Actions
 - [x] Zenodo DOI — `10.5281/zenodo.20649692`
+- [x] Automatic ECSA calculation (H-UPD, CO stripping, Cdl) — metallic & carbon catalysts
+- [x] Statistical reproducibility (n≥3 batch analysis, mean ± SD)
 - [ ] BioLogic (.mpr/.mpt) parser — **in progress (v0.2)**
 - [ ] Train EIS-GPT on 10,000+ synthetic spectra (v0.4)
 - [ ] Zahner (.ism) parser (v0.3)
 - [ ] DRT — Distribution of Relaxation Times (v0.3)
-- [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
-- [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
 - [ ] Faradaic efficiency calculator
 - [ ] JOSS paper submission
 
