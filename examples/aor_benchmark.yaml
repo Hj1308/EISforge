@@ -1,0 +1,205 @@
+# AOR Literature Benchmark Dataset
+# ============================================================
+# Alcohol Oxidation Reaction (AOR) catalyst performance data
+# compiled from peer-reviewed literature for use as reference
+# benchmarks in EISForge validation and comparison workflows.
+#
+# Potential conversion: E_RHE = E_Ag/AgCl + 0.197 + (0.0592 * pH)
+# Compiled by: Hoda Jafari | 2026
+# ============================================================
+
+meta:
+  description: "AOR benchmark — alkaline alcohol oxidation on Pd/Pt/Ni catalysts"
+  sources:
+    Ayman2023:
+      doi: "10.1155/2023/6674344"
+      title: "Efficient Electro-Oxidation of 2-Propanol at Platinum- and Gold-Modified Palladium Nanocatalysts"
+      journal: "Journal of Chemistry"
+      year: 2023
+    Fu2023:
+      doi: null
+      title: "Pd/DPHE-GS and Pt NW/N-LDG catalysts for methanol oxidation"
+      journal: null
+      year: 2023
+  notes:
+    - "Potentials converted from Ag/AgCl (3 M NaCl, E° = 0.197 V) to RHE scale"
+    - "pH = 13 assumed for 0.1 M NaOH and 1.0 M KOH electrolytes"
+    - "Values marked approximate:true are read from graphical CV traces"
+    - "current_normalized_by: geometric unless stated as mass"
+
+entries:
+
+  - entry: 1
+    catalyst: "Pd/Au/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.6
+      E_onset_V_RHE: 0.367
+      E_peak_V_AgAgCl: -0.3
+      E_peak_V_RHE: 0.667
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_at_potential_mA: 0.038
+      j_at_potential_V_AgAgCl: -0.4
+      j_at_potential_V_RHE: 0.567
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+      faradaic_efficiency_pct: null
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "Both potential and transient current data available"
+
+  - entry: 2
+    catalyst: "Pd/Pt/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.55
+      E_onset_V_RHE: 0.417
+      E_peak_V_AgAgCl: -0.2
+      E_peak_V_RHE: 0.767
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing peak current density (j_peak); values read from CV graph"
+
+  - entry: 3
+    catalyst: "Pd/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.45
+      E_onset_V_RHE: 0.517
+      E_peak_V_AgAgCl: -0.1
+      E_peak_V_RHE: 0.867
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing peak current density; baseline Pd catalyst"
+
+  - entry: 4
+    catalyst: "Pd"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.3
+      E_onset_V_RHE: 0.667
+      E_peak_V_AgAgCl: 0.0
+      E_peak_V_RHE: 0.967
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Bare Pd reference catalyst; missing j_peak"
+
+  - entry: 5
+    catalyst: "Pd/DPHE-GS-2"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Fu2023"
+    potential_data:
+      E_onset_V_RHE: null
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 1.6
+      j_peak_A_g_metal: 1540.0
+      basis: "mass"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+      faradaic_efficiency_pct: 100.0
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing E_onset; j_peak read from histogram (Fig. 6)"
+
+  - entry: 6
+    catalyst: "Ni-Co-G-3.5-15"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Hydrogen Energy Publications 2021"
+    potential_data:
+      E_onset_V_RHE: null
+    kinetic_data:
+      j_peak_mA_cm2: 15.82
+      basis: "geometric"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: false
+      notes: "j_peak from table (not graph); missing E_onset"
+
+  - entry: 7
+    catalyst: "Pt NW/N-LDG"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Fu2023"
+    potential_data:
+      E_onset_V_RHE: null
+    kinetic_data:
+      j_peak_A_g_metal: 1280.0
+      basis: "mass"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing E_onset; j_peak read from Fig. 7"
+
+# ============================================================
+# Validation Summary
+# PASS:    1  (Pd/Au/GC — full potential + transient current)
+# WARNING: 6  (missing j_peak or E_onset)
+# Conflicts: 0
+# RHE conversions: 4 (Ayman2023 series, pH=13)
+# Confidence: HIGH
+# ============================================================
