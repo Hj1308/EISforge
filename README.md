@@ -2,7 +2,7 @@
 
 > **Advanced open-source framework for Electrochemical Impedance Spectroscopy (EIS) analysis with Physics-Informed Machine Learning**
 >
-> *The first open-source EIS framework combining classical CNLS fitting, CV/LSV analysis, and a Physics-Informed Transformer (EIS-GPT).*
+> *Open-source EIS framework combining classical CNLS fitting, CV/LSV analysis, and a Physics-Informed Transformer (EIS-GPT).*
 
 ---
 
@@ -27,7 +27,7 @@ If you use EISForge in your research, please cite:
 
 ## Key Features at a Glance 🚀
 
-| Feature | EISForge |
+| Feature | Status |
 |---|---|
 | CNLS circuit fitting (χ² = 0.0008 on real data) | ✅ |
 | Kramers-Kronig validation | ✅ |
@@ -35,9 +35,12 @@ If you use EISForge in your research, please cite:
 | LSV analysis (Tafel slope, overpotential, mass activity) | ✅ |
 | Robust data preprocessing (4 independent methods) | ✅ |
 | Literature-guided initial parameter guesses | ✅ |
-| Physics-Informed Transformer (EIS-GPT) | ✅ **NOVEL** |
+| Physics-Informed Transformer architecture (EIS-GPT) | ✅ Architecture only — weights untrained |
 | Uncertainty quantification | ✅ |
-| Autolab / Gamry / BioLogic file support | ✅ |
+| Autolab / Gamry file support | ✅ |
+| BioLogic (.mpr/.mpt) file support | 🔄 In progress |
+| Zahner (.ism) file support | 🔄 Planned |
+| DRT Analysis | 🔄 Planned |
 | Free & Open Source (MIT) | ✅ |
 
 ---
@@ -61,12 +64,13 @@ streamlit run app.py
 
 ## Supported File Formats
 
-| Instrument | Extension |
-|---|---|
-| Metrohm Autolab NOVA | `.idf` |
-| Gamry Instruments | `.dta` |
-| BioLogic EC-Lab | `.mpt`, `.mpr` |
-| Generic CSV / TXT | `.csv`, `.txt` |
+| Instrument | Extension | Status |
+|---|---|---|
+| Metrohm Autolab NOVA | `.idf` | ✅ |
+| Gamry Instruments | `.dta` | ✅ |
+| Generic CSV / TXT | `.csv`, `.txt` | ✅ |
+| BioLogic EC-Lab | `.mpt`, `.mpr` | 🔄 In progress |
+| Zahner | `.ism` | 🔄 Planned |
 
 > Autolab `.idf` parser automatically detects column order (Z', Z'', frequency in any order) and measurement type (CV vs EIS vs LSV). Current is auto-converted from A to mA.
 
@@ -157,7 +161,7 @@ Curated database covers: AOR (Pt, Pd, PtRu, PtSn in acidic/alkaline), Li-ion bat
 
 ### 6. EIS-GPT — Physics-Informed Transformer
 
-The first **Physics-Informed Transformer** for EIS spectrum analysis.
+A **Physics-Informed Transformer** architecture for EIS spectrum analysis.
 
 **Architecture:**
 - Each frequency point = one token
@@ -173,9 +177,7 @@ L_total = L_reconstruction
         + λ₃ × L_high-frequency-limit
 ```
 
-This ensures all predictions are physically valid — no post-hoc correction needed.
-
-> **Status:** Architecture complete. Model weights are currently untrained. Train using `scripts/train_ml_models.py` on the included synthetic dataset generator.
+> **Status:** Architecture complete. Model weights are currently **untrained**. Train using `scripts/train_ml_models.py` on the included synthetic dataset generator.
 
 ---
 
@@ -186,7 +188,7 @@ from eisforge.core.analyzer      import EisAnalyzer
 from eisforge.core.preprocessor   import DataPreprocessor
 from eisforge.core.fitter         import CNLSFitter
 
-# 1. Load data — auto-detects Autolab/Gamry/BioLogic/CSV
+# 1. Load data — supports Autolab (.idf), Gamry (.dta), CSV
 ana = EisAnalyzer()
 raw = ana.load("EIS_0.82V.idf")
 print(raw)
@@ -259,17 +261,19 @@ EISforge-/
 
 - [x] CNLS fitting (direct scipy, χ² = 0.0008 on real data)
 - [x] Kramers-Kronig validation with fallback
-- [x] Autolab / Gamry / BioLogic file parsers
+- [x] Autolab / Gamry file parsers
 - [x] CV analysis (E_onset, I_f/I_b, geometric and ECSA current density)
 - [x] LSV analysis (Tafel slope, overpotential, mass/specific activity)
 - [x] Robust data preprocessing (4 methods, including per-axis jump detection)
 - [x] Literature knowledge base for AOR and other electrochemical systems
 - [x] Streamlit web interface (CV / LSV / EIS / EIS-GPT / Correlation tabs)
 - [x] Physics-Informed Transformer architecture (EIS-GPT)
+- [x] iR compensation (R_s from EIS fit, E_corrected = E - I×R_s)
+- [ ] BioLogic (.mpr/.mpt) parser — in progress
 - [ ] Train EIS-GPT on 10,000+ synthetic spectra
-- [x] iR compensation (R_s from EIS fit, E_corrected = E - I×R_s, applied to CV and LSV)
-- [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
+- [ ] Zahner (.ism) parser
 - [ ] DRT — Distribution of Relaxation Times
+- [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
 - [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
 - [ ] Faradaic efficiency calculator
 - [ ] Zenodo DOI registration
