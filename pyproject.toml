@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "eisforge"
-version = "0.1.0"
+version = "0.1.1"
 description = "EIS data analysis and ML toolkit for electrochemical impedance spectroscopy"
 readme = "README.md"
 license = { file = "LICENSE" }
