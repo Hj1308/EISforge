@@ -8,7 +8,9 @@ Usage:
 
     parser = ReviewHTMLParser('eisforge/knowledge/data/reviews/review.html')
     records = parser.parse()
-    # records is a list of dicts, one per paper
+
+    # Export to JSON
+    parser.export_json('output.json')
 
     # Access all potential values across all papers:
     for rec in records:
@@ -17,9 +19,11 @@ Usage:
 
 from __future__ import annotations
 
-import os
+import io
 import re
 import glob
+import json
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -27,10 +31,12 @@ try:
     from bs4 import BeautifulSoup
 except ImportError:  # pragma: no cover
     raise ImportError(
-        "beautifulsoup4 is required for parsing review HTML files. "
-        "Install it with: pip install beautifulsoup4"
+        "beautifulsoup4 is required. Install: pip install beautifulsoup4"
     )
 
+# Force UTF-8 output on Windows CMD
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -77,7 +83,7 @@ class PaperRecord:
     """One paper extracted from a review HTML file."""
     title: str
     doi: Optional[str]
-    source_type: str  # e.g. 'crossref', 'pdf-metadata', 'largest-font'
+    source_type: str
     potentials: List[PotentialEntry] = field(default_factory=list)
     current_densities: List[CurrentDensityEntry] = field(default_factory=list)
     tafel_slopes: List[TafelSlopeEntry] = field(default_factory=list)
@@ -112,6 +118,23 @@ class PaperRecord:
 
 
 # ---------------------------------------------------------------------------
+# DOI extraction helper
+# ---------------------------------------------------------------------------
+
+_DOI_RE = re.compile(r'10\.\d{4,}/[^\s<>"\']+')
+
+
+def _extract_doi(text: str) -> Optional[str]:
+    """Extract first valid DOI from a text string."""
+    text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+    m = _DOI_RE.search(text)
+    if m:
+        doi = m.group(0).rstrip('.,;)')
+        return doi
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
 
@@ -122,12 +145,8 @@ class ReviewHTMLParser:
     Parameters
     ----------
     path : str
-        Path to the review HTML file. May be a single file path or a
-        glob pattern (e.g. 'reviews/*.html').
+        Path to the review HTML file. Supports glob patterns (e.g. 'reviews/*.html').
     """
-
-    # Regex to detect section headers like "2007 - Ye - Electrooxidation..."
-    _SECTION_RE = re.compile(r'^\d{4}\s*-\s*.+')
 
     def __init__(self, path: str):
         self.path = path
@@ -145,8 +164,31 @@ class ReviewHTMLParser:
         return records
 
     def to_dicts(self) -> List[dict]:
-        """Convenience: parse and return as plain dicts."""
+        """Parse and return as plain dicts."""
         return [r.to_dict() for r in self.parse()]
+
+    def export_json(self, output_path: str) -> None:
+        """Parse and save results as a UTF-8 JSON file."""
+        data = self.to_dicts()
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[OK] Exported {len(data)} records to: {output_path}")
+
+    def summary(self) -> None:
+        """Print a quick summary table of all parsed papers."""
+        records = self.parse()
+        print(f"\n{'='*70}")
+        print(f"  EISForge Review Parser — {len(records)} papers found")
+        print(f"{'='*70}")
+        print(f"  {'#':<4} {'Year':<6} {'DOI':<35} {'Potentials':>10} {'Tafel':>6}")
+        print(f"  {'-'*65}")
+        for i, r in enumerate(records, 1):
+            year = r.title[:4] if r.title[:4].isdigit() else '????'
+            doi_short = (r.doi[:33] + '..') if r.doi and len(r.doi) > 35 else (r.doi or 'N/A')
+            n_pot = len(r.potentials)
+            n_tafel = len(r.tafel_slopes)
+            print(f"  {i:<4} {year:<6} {doi_short:<35} {n_pot:>10} {n_tafel:>6}")
+        print(f"{'='*70}\n")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -158,19 +200,33 @@ class ReviewHTMLParser:
 
         records: List[PaperRecord] = []
 
-        # Each paper section is wrapped in an <h3> … next <h3> block
         for h3 in soup.find_all('h3'):
             title_tag = h3.find('b')
             title = title_tag.get_text(strip=True) if title_tag else h3.get_text(strip=True)
 
-            # DOI: look for <p> containing 'DOI' text right after <h3>
+            # --- DOI extraction (multi-strategy) ---
             doi: Optional[str] = None
+
+            # Strategy 1: look in the <p> right after <h3>
             doi_p = h3.find_next('p')
             if doi_p:
-                doi_text = doi_p.get_text()
-                doi_match = re.search(r'10\.\d{4,}/\S+', doi_text)
-                if doi_match:
-                    doi = doi_match.group(0).rstrip('.')
+                doi = _extract_doi(doi_p.get_text())
+
+            # Strategy 2: search in h3 raw HTML itself (some entries embed DOI in <h3>)
+            if not doi:
+                doi = _extract_doi(str(h3))
+
+            # Strategy 3: scan next few siblings for DOI text
+            if not doi:
+                sib = h3.find_next_sibling()
+                for _ in range(4):
+                    if sib is None or sib.name == 'h3':
+                        break
+                    candidate = _extract_doi(sib.get_text())
+                    if candidate:
+                        doi = candidate
+                        break
+                    sib = sib.find_next_sibling()
 
             # Source type from <small> or <i> tags inside <h3>
             src_tag = h3.find('small') or h3.find('i')
@@ -178,13 +234,11 @@ class ReviewHTMLParser:
 
             record = PaperRecord(title=title, doi=doi, source_type=source_type)
 
-            # Walk sibling tags until next <h3>
+            # Walk siblings until next <h3>
             sibling = h3.find_next_sibling()
             while sibling and sibling.name != 'h3':
-                tag_name = sibling.name
-
-                if tag_name == 'h4':
-                    section_label = sibling.get_text(strip=True).lower()
+                if sibling.name == 'h4':
+                    section_label = sibling.get_text(strip=True).lower().replace(' ', '').replace('_', '')
                     table = sibling.find_next_sibling('table')
                     if table:
                         if 'potentials' in section_label:
@@ -192,12 +246,12 @@ class ReviewHTMLParser:
                                 table, PotentialEntry,
                                 col_keys=['value', 'unit_ref', 'page', 'flags', 'context']
                             )
-                        elif 'currentdensities' in section_label or 'current_densities' in section_label:
+                        elif 'currentdensities' in section_label:
                             record.current_densities = self._parse_numeric_table(
                                 table, CurrentDensityEntry,
                                 col_keys=['value', 'unit', 'page', 'flags', 'context']
                             )
-                        elif 'tafelslopes' in section_label or 'tafel_slopes' in section_label:
+                        elif 'tafelslopes' in section_label:
                             record.tafel_slopes = self._parse_numeric_table(
                                 table, TafelSlopeEntry,
                                 col_keys=['value', 'unit', 'page', 'flags', 'context']
@@ -207,7 +261,6 @@ class ReviewHTMLParser:
                                 table, RctEntry,
                                 col_keys=['value', 'unit', 'page', 'flags', 'context']
                             )
-
                 sibling = sibling.find_next_sibling()
 
             records.append(record)
@@ -223,12 +276,10 @@ class ReviewHTMLParser:
             cells = row.find_all('td')
             if len(cells) < 2:
                 continue
-            # Skip checkbox cell (first td is always a checkbox input)
             data_cells = [c for c in cells if not c.find('input')]
             if not data_cells:
-                data_cells = cells[1:]  # fallback: skip first cell
+                data_cells = cells[1:]
 
-            # Try to read value (first real data cell)
             try:
                 raw_val = data_cells[0].get_text(strip=True)
                 numeric_val = float(raw_val)
@@ -251,19 +302,20 @@ class ReviewHTMLParser:
 
 
 # ---------------------------------------------------------------------------
-# CLI convenience
+# CLI
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    import sys
-    import json
-
     if len(sys.argv) < 2:
-        print('Usage: python parse_review_html.py <path_to_review.html>')
+        print('Usage:')
+        print('  python parse_review_html.py <review.html>              # summary')
+        print('  python parse_review_html.py <review.html> output.json  # export JSON')
         sys.exit(1)
 
     html_path = sys.argv[1]
     parser = ReviewHTMLParser(html_path)
-    records = parser.to_dicts()
-    print(json.dumps(records, indent=2, ensure_ascii=False))
-    print(f'\n>>> Total papers parsed: {len(records)}', file=sys.stderr)
+
+    if len(sys.argv) >= 3:
+        parser.export_json(sys.argv[2])
+    else:
+        parser.summary()
