@@ -1,0 +1,57 @@
+cff-version: 1.2.0
+message: "If you use EISForge in your research, please cite it using this metadata."
+
+title: "EISForge: Physics-Informed Machine Learning for Electrochemical Impedance Spectroscopy"
+version: "0.1.1"
+date-released: "2026-06-12"
+license: MIT
+repository-code: "https://github.com/Hj1308/EISforge-"
+doi: 10.5281/zenodo.20649692
+url: "https://doi.org/10.5281/zenodo.20649692"
+
+authors:
+  - family-names: Jafari
+    given-names: Hoda
+    email: hoda.jaafari@gmail.com
+    orcid: ""
+
+abstract: >
+  EISForge is an open-source Python framework for Electrochemical Impedance
+  Spectroscopy (EIS) analysis. It combines classical CNLS fitting with
+  Kramers-Kronig validation, CV/LSV analysis, ECSA calculation, a
+  literature-guided knowledge base (195 peer-reviewed papers), and a
+  Physics-Informed Transformer architecture (EIS-GPT). Supports Autolab (.idf),
+  Gamry (.dta), and generic CSV file formats.
+
+keywords:
+  - electrochemical impedance spectroscopy
+  - EIS
+  - CNLS fitting
+  - equivalent circuit
+  - cyclic voltammetry
+  - machine learning
+  - electrochemistry
+  - alcohol oxidation reaction
+  - Kramers-Kronig
+  - open source
+
+references:
+  - type: article
+    title: "Kramers-Kronig Transforms for the Analysis of Electrochemical Impedance Data"
+    authors:
+      - family-names: Boukamp
+        given-names: B.A.
+    journal: "Journal of The Electrochemical Society"
+    volume: 142
+    year: 1995
+    doi: 10.1149/1.2044210
+
+  - type: article
+    title: "A Linear Kramers-Kronig Validity Test"
+    authors:
+      - family-names: Schonleber
+        given-names: M.
+    journal: "Electrochimica Acta"
+    volume: 131
+    year: 2014
+    doi: 10.1016/j.electacta.2014.01.034
