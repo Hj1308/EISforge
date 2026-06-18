@@ -9,7 +9,7 @@
 ![Tests](https://github.com/Hj1308/EISforge-/actions/workflows/tests.yml/badge.svg?style=flat-square)
 
 **EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.2.0**  
-Author: [Hoda Jaafari](https://github.com/Hj1308) | MIT License | First published: May 2026
+Author: [Hoda Jaafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
 
 > **Looking for surface area & pore analysis (BET/BJH)?**  
 > → See [BET_analyser](https://github.com/Hj1308/BET_analyser)  
@@ -194,6 +194,14 @@ python train_eis_gpt.py
 
 ---
 
+## 📚 Knowledge Base
+
+The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer built from **195 peer-reviewed papers**. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
+
+> This knowledge layer is an original contribution of EISForge. If your research uses EISForge diagnostics, interpretation outputs, or any results derived from this knowledge base, please cite EISForge accordingly (see **Citation and Attribution** below).
+
+---
+
 ## 🧪 Testing
 
 ```bash
@@ -242,7 +250,7 @@ EISforge-/
 │   ├── ml/
 │   │   ├── eis_gpt/              # Physics-informed Transformer
 │   │   └── uncertainty/          # Uncertainty quantification
-│   ├── knowledge/                # Literature knowledge base
+│   ├── knowledge/                # Literature-guided knowledge base (195 papers)
 │   ├── standards/                # Electrochemical reference standards
 │   ├── utils/
 │   └── visualization/
@@ -267,21 +275,25 @@ EISforge-/
 
 ---
 
-## 📌 Citation
+## 📌 Citation and Attribution
 
-If you use EISForge in your research, please cite:
+> ⚠️ **Citation is required.** If you use EISForge — including its analysis modules, curated `knowledge/` resources, or any derived outputs — in publications, theses, reports, presentations, or other software, you **must** cite the repository and the associated Zenodo record.
 
 ```bibtex
 @software{jafari2026eisforge,
-  author    = {Jaafari, Hoda},
-  title     = {EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit},
-  year      = {2026},
-  doi       = {10.5281/zenodo.20649692},
-  publisher = {Zenodo},
-  url       = {https://github.com/Hj1308/EISforge-},
-  note      = {Automated CV / LSV / EIS analysis for the alcohol oxidation reaction}
+  author       = {Jaafari, Hoda},
+  title        = {EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit},
+  year         = {2026},
+  doi          = {10.5281/zenodo.20649692},
+  publisher    = {Zenodo},
+  url          = {https://github.com/Hj1308/EISforge-},
+  version      = {0.2.0},
+  affiliation  = {CCERCI},
+  note         = {Automated CV / LSV / EIS analysis for the alcohol oxidation reaction}
 }
 ```
+
+**DOI:** [10.5281/zenodo.20649692](https://doi.org/10.5281/zenodo.20649692)
 
 A `CITATION.cff` file is included for automatic citation parsing by GitHub and Zenodo.
 
@@ -305,4 +317,4 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 
 ## License
 
-MIT — free to use, modify, and distribute. Please cite this work if you use it in your publications.
+MIT — free to use, modify, and distribute. **Citation is required** for any academic or research use. See **Citation and Attribution** above.
