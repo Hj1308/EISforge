@@ -1,9 +1,13 @@
 cff-version: 1.2.0
-message: "If you use EISForge in your research, please cite it using this metadata."
+message: >
+  EISForge is freely available under the MIT License. If you use EISForge,
+  its analysis modules, curated knowledge resources, or any derived outputs
+  in publications, theses, reports, presentations, or software, you MUST
+  cite the repository and the associated Zenodo record below.
 
-title: "EISForge: Physics-Informed Machine Learning for Electrochemical Impedance Spectroscopy"
-version: "0.1.1"
-date-released: "2026-06-12"
+title: "EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit"
+version: "0.2.0"
+date-released: "2026-06-18"
 license: MIT
 repository-code: "https://github.com/Hj1308/EISforge-"
 doi: 10.5281/zenodo.20649692
@@ -13,15 +17,17 @@ authors:
   - family-names: Jafari
     given-names: Hoda
     email: hoda.jaafari@gmail.com
+    affiliation: "CCERCI (Chemistry and Chemical Engineering Research Center of Iran)"
     orcid: ""
 
 abstract: >
-  EISForge is an open-source Python framework for Electrochemical Impedance
-  Spectroscopy (EIS) analysis. It combines classical CNLS fitting with
-  Kramers-Kronig validation, CV/LSV analysis, ECSA calculation, a
-  literature-guided knowledge base (195 peer-reviewed papers), and a
-  Physics-Informed Transformer architecture (EIS-GPT). Supports Autolab (.idf),
-  Gamry (.dta), and generic CSV file formats.
+  EISForge is an open-source Python framework for automated electrochemical
+  analysis of the Alcohol Oxidation Reaction (AOR). It combines classical
+  CNLS fitting with Kramers-Kronig validation, CV/LSV/EIS analysis, ECSA
+  calculation, Koutecky-Levich analysis, a literature-guided knowledge base
+  (195 peer-reviewed papers), and a Physics-Informed Transformer architecture
+  (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Autolab (.idf),
+  and generic CSV file formats.
 
 keywords:
   - electrochemical impedance spectroscopy
@@ -29,10 +35,13 @@ keywords:
   - CNLS fitting
   - equivalent circuit
   - cyclic voltammetry
+  - linear sweep voltammetry
   - machine learning
   - electrochemistry
   - alcohol oxidation reaction
   - Kramers-Kronig
+  - ECSA
+  - Tafel slope
   - open source
 
 references:
