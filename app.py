@@ -224,21 +224,16 @@ def _compute_charge(E, I_mA, scan_rate_mV_s):
     return Q_f + Q_b, Q_f, Q_b
 
 
-def load_cv_lsv(f, unit_factor=1.0, cycle_idx=-1):
-    """Unified CV/LSV loader: Ivium .idf (unit+cycle aware) or CSV/TXT.
-    Always returns (E, I_mA, meta) — 3 values."""
-    suffix = Path(f.name).suffix.lower()
-    tmp = save_upload(f)
+def load_cv_lsv@st.cache_data(show_spinner=False)
+def _parse_idf_cached(_file_bytes: bytes, cycle_idx: int = -1):
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".idf") as t:
+        t.write(_file_bytes); tmp = t.name
     try:
-        if suffix == ".idf":
-            return _load_ivium_cv(tmp, cycle_idx=cycle_idx)
-        else:
-            df = read_csv_safe(tmp); c = df.columns.tolist()
-            E  = df[c[0]].to_numpy(float)
-            I  = df[c[1]].to_numpy(float) * unit_factor
-            return E, I, {}
+        return _load_ivium_cv(tmp, cycle_idx=cycle_idx)
     finally:
-        os.unlink(tmp)
+        try: os.unlink(tmp)
+        except: pass
 
 
 def _show_validation(result):
@@ -513,8 +508,10 @@ with tab1:
     with col2:
         if cv_file:
             try:
-                pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor,
-                                               cycle_idx=int(cycle_idx))
+                if Path(cv_file.name).suffix.lower() == ".idf":
+    pot, cur, _meta = _parse_idf_cached(cv_file.getvalue(), cycle_idx=int(cycle_idx))
+else:
+    pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor)
                 if "Scanrate" in _meta:
                     sr_cv = int(_meta["Scanrate"] * 1000)
                 if use_smooth:
@@ -793,7 +790,11 @@ with tab2:
         from plotly.subplots import make_subplots
         fig = make_subplots(rows=1,cols=2,subplot_titles=("LSV Curve","Tafel Plot"))
 
-        j_lsv = st.session_state["lsv_cur"]/area
+        if area > 0:
+    j_lsv = st.session_state["lsv_cur"] / area
+else:
+    j_lsv = st.session_state["lsv_cur"].copy()
+    st.warning("Electrode area = 0 — showing raw current (mA) instead of current density.")
         _nernst = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
 _rhe_offset = e_ref_val + _nernst * ph_value
 if actual_rs > 0:
