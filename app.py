@@ -10,6 +10,7 @@ import numpy as np
 import re
 import tempfile
 import os
+import math
 from pathlib import Path
 
 st.set_page_config(page_title="EISForge", page_icon="⚡", layout="wide")
