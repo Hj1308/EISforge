@@ -1,13 +1,14 @@
 """
 apply_cv_changes.py
 ===================
-Applies 8 incremental changes to app.py, each as a separate git commit.
+Applies 9 incremental changes to app.py, each as a separate git commit.
 
 Usage (run from repo root):
     python apply_cv_changes.py
 
 Each change patches only the relevant lines using str.replace().
 CRLF/LF differences are handled automatically.
+Patches are IDEMPOTENT: if a change was already applied, it is skipped.
 """
 
 import re
@@ -19,30 +20,47 @@ APP = Path("app.py")
 # ─────────────────────────────────────────────────────────────────────────────
 def read():
     raw = APP.read_bytes()
-    # normalize CRLF → LF so patches always work
     return raw.replace(b"\r\n", b"\n").decode("utf-8")
 
 def write(text):
-    APP.write_bytes(text.encode("utf-8"))   # write LF only
+    APP.write_bytes(text.encode("utf-8"))
 
 def commit(msg):
     subprocess.run(["git", "add", "app.py"], check=True)
-    subprocess.run(["git", "commit", "-m", msg], check=True)
-    print(f"  ✅ Committed: {msg}")
+    result = subprocess.run(
+        ["git", "commit", "-m", msg],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        print(f"  ✅ Committed: {msg}")
+    else:
+        # "nothing to commit" is fine (change was already committed)
+        print(f"  ⏭  Nothing to commit (already applied): {msg}")
 
 def patch(src, old, new, label):
-    # also normalize the search string
+    """Replace OLD with NEW in src. Idempotent: skips if NEW already present."""
     old_n = old.replace("\r\n", "\n")
-    if old_n not in src:
-        # try a whitespace-flexible search to give a better error
-        hint = src[max(0, src.find(old_n[:40])-100) : src.find(old_n[:40])+200]
-        raise ValueError(
-            f"\n❌ PATCH FAILED [{label}]\n"
-            f"Could not find the target text.\n"
-            f"--- first 40 chars of expected ---\n{old_n[:80]!r}\n"
-            f"--- surrounding context in file ---\n{hint!r}\n"
-        )
-    return src.replace(old_n, new, 1)
+    new_n = new.replace("\r\n", "\n")
+
+    if old_n in src:
+        return src.replace(old_n, new_n, 1)
+
+    # OLD not found — check if NEW is already there (idempotent skip)
+    # Use the first 60 chars of NEW as a fingerprint
+    fingerprint = new_n[:60]
+    if fingerprint in src:
+        print(f"  ⏭  [{label}] already applied — skipping.")
+        return src
+
+    # Neither OLD nor NEW found → real failure
+    hint_start = src.find(old_n[:40])
+    hint = src[max(0, hint_start - 100): hint_start + 300] if hint_start != -1 else "<not found>"
+    raise ValueError(
+        f"\n❌ PATCH FAILED [{label}]\n"
+        f"Could not find the target text.\n"
+        f"--- first 40 chars of expected ---\n{old_n[:80]!r}\n"
+        f"--- surrounding context in file ---\n{hint!r}\n"
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHANGE 0 — top-level import math
@@ -73,7 +91,6 @@ def change_0(src):
 # CHANGE 1 — replace load_cv_lsv + fix ALL call sites
 # ─────────────────────────────────────────────────────────────────────────────
 def change_1(src):
-    # 1a — replace old function
     OLD_FN = (
         "def load_cv_lsv(f, unit_factor=1.0):\n"
         "    suffix = Path(f.name).suffix.lower()\n"
@@ -186,13 +203,13 @@ def change_1(src):
         '                    pot_lsv,cur_lsv,_ = load_cv_lsv(lsv_file, unit_factor=unit_factor)',
     )
 
-    # 1c & 1d — batch CV + batch LSV (same pattern, replace both occurrences)
+    # 1c & 1d — batch CV + batch LSV
     src = src.replace(
         'p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)\n'
         '                        pots_b.append(p); curs_b.append(c)',
         'p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)\n'
         '                        pots_b.append(p); curs_b.append(c)',
-    )   # replaces ALL occurrences (batch CV + batch LSV both match)
+    )
 
     # 1e — K-L tab
     src = src.replace(
@@ -321,7 +338,6 @@ def change_5(src):
 # CHANGE 6 — CV tab: cycle selector + smoothing + updated col2
 # ─────────────────────────────────────────────────────────────────────────────
 def change_6(src):
-    # 6a — add cycle_idx + use_smooth after sr_cv
     OLD_SR = (
         "        sr_cv   = st.number_input(\"Scan rate (mV/s)\", value=50, min_value=1)\n"
         "\n"
@@ -341,7 +357,6 @@ def change_6(src):
     )
     src = patch(src, OLD_SR, NEW_SR, "Change 6a — cycle selector + smoothing")
 
-    # 6b — replace col2 upload block
     OLD_COL2 = (
         "    with col2:\n"
         "        if cv_file:\n"
