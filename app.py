@@ -537,22 +537,36 @@ with tab1:
 
         _is_mf = catalyst_type == "carbon_material"
 
+        _e_onset_rhe = r.e_onset + e_ref_val + 0.059 * ph_value
         c1,c2,c3,c4 = st.columns(4)
-        c1.metric("E_onset",  f"{r.e_onset:.4f} V")
-        c2.metric("I_forward peak", f"{r.i_forward_peak:.4f} mA")
+        c1.metric("E_onset (vs ref)", f"{r.e_onset:.4f} V")
+        c2.metric("E_onset (vs RHE)", f"{_e_onset_rhe:.4f} V",
+                  help=f"= {r.e_onset:.4f} + {e_ref_val:.3f}(ref) + 0.059×{ph_value:.2f}(pH)")
         if _is_mf:
             c3.metric("Net faradaic I", f"{r.net_faradaic_current_mA:.4f} mA")
             c4.metric("C_dl",           f"{r.cdl_mF_cm2:.4f} mF/cm²")
         else:
-            c3.metric("I_b",      f"{r.i_backward_peak:.4f} mA")
-            c4.metric("I_f/I_b",  f"{r.if_ib_ratio:.3f}" if not np.isnan(r.if_ib_ratio) else "N/A")
-
-        c5,c6,c7 = st.columns(3)
-        c5.metric("j_f (geometric)", f"{r.j_forward_peak:.4f} mA/cm²")
-        c6.metric("j_b (geometric)", f"{r.j_backward_peak:.4f} mA/cm²")
+            c3.metric("I_b",     f"{r.i_backward_peak:.4f} mA")
+            c4.metric("I_f/I_b", f"{r.if_ib_ratio:.3f}" if not np.isnan(r.if_ib_ratio) else "N/A")
+        c5,c6,c7,c8 = st.columns(4)
+        c5.metric("j_f (geometric)", f"{r.j_forward_peak:.4f} mA cm⁻²")
+        if not _is_mf:
+            c6.metric("j_b (geometric)", f"{r.j_backward_peak:.4f} mA cm⁻²")
         _ecsa_unit = "cm²_BET" if _is_mf else "cm²_Pt"
-        if r.ecsa>0: c7.metric(f"j_f (ECSA)", f"{r.j_specific_forward:.4f} mA/{_ecsa_unit}")
-
+        if r.ecsa > 0:
+            c7.metric("j_f (ECSA)", f"{r.j_specific_forward:.4f} mA/{_ecsa_unit}")
+        if loading > 0:
+            c8.metric("Mass activity", f"{r.j_forward_peak / loading:.1f} A/g",
+                      help="j_f / loading")
+        if "cv_Q_total" in st.session_state:
+            _Qf = st.session_state["cv_Q_f"]; _Qb = st.session_state["cv_Q_b"]
+            cq1,cq2,cq3 = st.columns(3)
+            cq1.metric("Q_forward (mC)",  f"{_Qf:.3f}")
+            cq2.metric("Q_backward (mC)", f"{abs(_Qb):.3f}")
+            cq3.metric("Q_f / |Q_b|", f"{abs(_Qf/_Qb):.3f}" if _Qb != 0 else "N/A",
+                       help="≈1 = reversible")
+        st.caption(f"Alcohol: **{alcohol}** {alcohol_conc} M  |  "
+                   f"Electrolyte: **{elec_compound}** {elec_conc} M  |  pH = {ph_value:.2f}")
         st.info(f"**Interpretation:** {r.interpretation}")
 
         # ── CHANGE 5: C_dl smart validation (carbon only) ─────────────────
