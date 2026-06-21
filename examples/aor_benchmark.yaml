@@ -1,0 +1,853 @@
+# AOR Literature Benchmark Dataset
+# ============================================================
+# Alcohol Oxidation Reaction (AOR) catalyst performance data
+# compiled from peer-reviewed literature for use as reference
+# benchmarks in EISForge validation and comparison workflows.
+#
+# Potential conversion: E_RHE = E_Ag/AgCl + 0.197 + (0.0592 * pH)
+# Compiled by: Hoda Jafari | 2026
+# ============================================================
+
+meta:
+  description: "AOR benchmark — alkaline alcohol oxidation on Pd/Pt/Ni catalysts"
+  sources:
+    Ayman2023:
+      doi: "10.1155/2023/6674344"
+      title: "Efficient Electro-Oxidation of 2-Propanol at Platinum- and Gold-Modified Palladium Nanocatalysts"
+      journal: "Journal of Chemistry"
+      year: 2023
+    Fu2023:
+      doi: null
+      title: "Pd/DPHE-GS and Pt NW/N-LDG catalysts for methanol oxidation"
+      journal: null
+      year: 2023
+  notes:
+    - "Potentials converted from Ag/AgCl (3 M NaCl, E° = 0.197 V) to RHE scale"
+    - "pH = 13 assumed for 0.1 M NaOH and 1.0 M KOH electrolytes"
+    - "Values marked approximate:true are read from graphical CV traces"
+    - "current_normalized_by: geometric unless stated as mass"
+
+entries:
+
+  - entry: 1
+    catalyst: "Pd/Au/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.6
+      E_onset_V_RHE: 0.367
+      E_peak_V_AgAgCl: -0.3
+      E_peak_V_RHE: 0.667
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_at_potential_mA: 0.038
+      j_at_potential_V_AgAgCl: -0.4
+      j_at_potential_V_RHE: 0.567
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+      faradaic_efficiency_pct: null
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "Both potential and transient current data available"
+
+  - entry: 2
+    catalyst: "Pd/Pt/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.55
+      E_onset_V_RHE: 0.417
+      E_peak_V_AgAgCl: -0.2
+      E_peak_V_RHE: 0.767
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing peak current density (j_peak); values read from CV graph"
+
+  - entry: 3
+    catalyst: "Pd/GC"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.45
+      E_onset_V_RHE: 0.517
+      E_peak_V_AgAgCl: -0.1
+      E_peak_V_RHE: 0.867
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing peak current density; baseline Pd catalyst"
+
+  - entry: 4
+    catalyst: "Pd"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    potential_data:
+      E_onset_V_AgAgCl: -0.3
+      E_onset_V_RHE: 0.667
+      E_peak_V_AgAgCl: 0.0
+      E_peak_V_RHE: 0.967
+      reference_scale: "Ag/AgCl/NaCl (3M)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: null
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Bare Pd reference catalyst; missing j_peak"
+
+  - entry: 5
+    catalyst: "Pd/DPHE-GS-2"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Fu2023"
+    potential_data:
+      E_onset_V_RHE: null
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 1.6
+      j_peak_A_g_metal: 1540.0
+      basis: "mass"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+      faradaic_efficiency_pct: 100.0
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing E_onset; j_peak read from histogram (Fig. 6)"
+
+  - entry: 6
+    catalyst: "Ni-Co-G-3.5-15"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Hydrogen Energy Publications 2021"
+    potential_data:
+      E_onset_V_RHE: null
+    kinetic_data:
+      j_peak_mA_cm2: 15.82
+      basis: "geometric"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: false
+      notes: "j_peak from table (not graph); missing E_onset"
+
+  - entry: 7
+    catalyst: "Pt NW/N-LDG"
+    alcohol: "Methanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Fu2023"
+    potential_data:
+      E_onset_V_RHE: null
+    kinetic_data:
+      j_peak_A_g_metal: 1280.0
+      basis: "mass"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Formate"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Missing E_onset; j_peak read from Fig. 7"
+
+  # ============================================================
+  # ISOPROPANOL (2-Propanol) OXIDATION — 28 New Entries
+  # Added: 2026-06-12 | Source: extracted_aor.yaml + literature
+  # ============================================================
+
+  - entry: 8
+    catalyst: "Pt"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "Cyclic_voltammetric_C1_C4_2006"
+    source_file: "Cyclic_voltammetric_analysis_of_C1_C4_al.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.6
+      E_peak2_V_RHE: 0.8
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m2: 3.0
+      basis: "geometric"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "J. Power Sources 160 (2006) 78-89; C1-C4 comparative study; j_peak from graph"
+
+  - entry: 9
+    catalyst: "Pt"
+    alcohol: "2-propanol"
+    electrolyte: "1 M H2SO4"
+    pH: 0
+    reference: "Electro_oxidation_Isopropanol_Pt_2012"
+    source_file: "Electro_oxidation_of_Isopropanol_on_to_P.pdf"
+    potential_data:
+      E_peak_V: 0.5
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m2: 70.0
+      basis: "geometric"
+      scan_rate_mV_s: 70.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Int. J. Emerg. Sci. 2(1) 123-133 (2012); reference scale not confirmed"
+
+  - entry: 10
+    catalyst: "PtxIr100-x (thin film)"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "Electrocatalytic_PtxIr100x_2propanol"
+    source_file: "Electrocatalytic oxidation of 2-propanol on PtxIr100-x bifunctional electrocatalysts.pdf"
+    potential_data:
+      E_onset_V: 0.05
+      E_peak_V: 1.0
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone/CO2"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Materials library thin-film combinatorial study; j_peak not extracted"
+
+  - entry: 11
+    catalyst: "Pt"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M H2SO4"
+    pH: 1
+    reference: "2Propanol_2Butanol_oxidation_ElecActa_2013"
+    source_file: "2-Propanol 2Butanol oxidation.pdf"
+    potential_data:
+      E_onset_V: -0.4
+      E_peak_V_RHE: 0.4
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Electrochimica Acta 88 (2013) 157-164; j_peak not resolved"
+
+  - entry: 12
+    catalyst: "Pt/C"
+    alcohol: "2-propanol"
+    electrolyte: "1 M KOH"
+    pH: 14
+    reference: "2Propanol_oxidation_Pt_Electroanalytical"
+    source_file: "2_Propanol_oxidation_on_platinum_and_pla.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.2
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Journal of Electroanalytical Chemistry; alkaline conditions"
+
+  - entry: 13
+    catalyst: "Pd/Au/GC (extended)"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Ayman2023"
+    source_file: "Efficient Electro-Oxidation of 2-Propanol at Platinum- and Gold-Modified Palladium.pdf"
+    potential_data:
+      E_onset_V_AgAgCl: -0.6
+      E_onset_V_RHE: 0.367
+      E_peak_V_AgAgCl: -0.28
+      E_peak_V_RHE: 0.687
+      reference_scale: "Ag/AgCl"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "Hindawi J. Chemistry 2023; onset and peak confirmed from CV"
+
+  - entry: 14
+    catalyst: "Pt black"
+    alcohol: "2-propanol"
+    electrolyte: "1 M KOH"
+    pH: 14
+    reference: "CONICET_2propanol_fuel_cell_2015"
+    source_file: "CONICET_Digital_Nro.6022_A.pdf"
+    potential_data:
+      E_onset_V: 0.091
+      E_peak_V: 0.3
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_mg: 197.0
+      basis: "mass"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "J. Power Sources 278 (2015) 119-127; direct 2-propanol fuel cell"
+
+  - entry: 15
+    catalyst: "Pd/C"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M NaOH"
+    pH: 13.7
+    reference: "CONICET_2propanol_fuel_cell_2015"
+    source_file: "CONICET_Digital_Nro.6022_A.pdf"
+    potential_data:
+      E_peak_V: 0.6
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_mg: 50.0
+      basis: "mass"
+      scan_rate_mV_s: null
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Pd/C baseline from same study; 0.5 M NaOH"
+
+  - entry: 16
+    catalyst: "PtRu/C"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "CCC_Bond_Cleavage_Ru_Langmuir_1997"
+    source_file: "Cleavage of the C-C Bond during the Electrooxidation Ru.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.05
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: null
+    products:
+      main_product: "CO2/Acetone"
+      detection_method: "DEMS"
+      faradaic_efficiency_pct: null
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Langmuir 1997, 13, 6829-6835; C-C bond cleavage study; DEMS confirmation"
+
+  - entry: 17
+    catalyst: "Co3O4 (001) surface"
+    alcohol: "2-propanol"
+    electrolyte: "alkaline (surface science)"
+    pH: null
+    reference: "2propanol_Co3O4_decomposition_interface"
+    source_file: "2-propanol-decomposition-at-the-co3o4-001-h2o-interface.pdf"
+    potential_data:
+      E_value_V: 1.1
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      basis: "not_specified"
+    products:
+      main_product: "Acetone"
+      detection_method: "surface_science_XPS"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Surface science / electrochemical environment study; no CV"
+
+  - entry: 18
+    catalyst: "Co3O4 low-index surfaces (DFT)"
+    alcohol: "2-propanol"
+    electrolyte: "alkaline (computed)"
+    pH: null
+    reference: "2propanol_Co3O4_activation_DFT_Catalysts"
+    source_file: "2-Propanol Activation on the Low Index Co3O4 Surfaces.pdf"
+    potential_data:
+      E_value_V: 1.0
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      basis: "DFT"
+    products:
+      main_product: "Acetone"
+      detection_method: "DFT_calculation"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Catalysts MDPI; DFT activation barriers; no experimental CV data"
+
+  - entry: 19
+    catalyst: "Pd/C"
+    alcohol: "1-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "1Propanol_Pd_IJElectrochem_2009"
+    source_file: "1-Propanol on Pd.pdf"
+    potential_data:
+      E_onset_V: -0.45
+      E_peak_V: 0.325
+      E_peak_V_RHE: 0.241
+      reference_scale: "RHE (converted)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 39.2
+      basis: "geometric"
+      scan_rate_mV_s: 5.0
+    products:
+      main_product: "Propanoate"
+      detection_method: "Not_specified"
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "Int. J. Electrochem. Sci. 4 (2009) 1672-1678; 1-propanol baseline on Pd"
+
+  - entry: 20
+    catalyst: "Pt/Pd bimetallic"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Serbochem_2007_EtOH_iPrOH_comparison"
+    source_file: "0352-51390712419G.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.1
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 200.0
+      basis: "geometric"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "J. Serb. Chem. Soc. 72(12) 1419-1425 (2007); EtOH/iPrOH comparison"
+
+  - entry: 21
+    catalyst: "Ni single atom/N-C (atomically dispersed)"
+    alcohol: "2-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Atomically_Dispersed_Ni_AdvFuncMat_2023"
+    source_file: "Atomically Dispersed Nickel for Efficient Alcohol .pdf"
+    potential_data:
+      E_onset_V_HgHgO: 0.38
+      E_peak_V_HgHgO: 0.5
+      reference_scale: "Hg/HgO"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 106.0
+      basis: "geometric"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone/Acetate"
+      detection_method: "Not_specified"
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "Advanced Functional Materials; Ni SAC; j_peak and E_peak confirmed"
+
+  - entry: 22
+    catalyst: "Pt/C + Cs-POM"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "Cesium_Keggin_POM_AOR_Electrocatalysis_2020"
+    source_file: "Cesium Salt of Keggin-Type For AOR in Acidic.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.25
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m2: 100.0
+      basis: "geometric"
+      scan_rate_mV_s: 5.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Electrocatalysis 11 (2020) 454-463; Cs-POM modified Pt; acidic"
+
+  - entry: 23
+    catalyst: "Pt black"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "Chem_Soc_Rev_AOR_review_41383460"
+    source_file: "41383460.pdf"
+    potential_data:
+      E_peak_V: 0.08
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_A_g: 2.0
+      basis: "mass"
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Chem. Soc. Rev. review article; reference potential not specified"
+
+  - entry: 24
+    catalyst: "Au electrode"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "Alcohols_Gold_Electrodes_IJElectrochem_2012"
+    source_file: "Alcohols at Gold Electrodes.pdf"
+    potential_data:
+      E_peak_V: -0.1
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 1.3
+      basis: "geometric"
+      scan_rate_mV_s: 10.0
+    products:
+      main_product: "Acetone/Carboxylate"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Int. J. Electrochem. Sci. 7 (2012) 8905-8928; Au electrode baseline"
+
+  - entry: 25
+    catalyst: "Pd/rGO"
+    alcohol: "2-propanol"
+    electrolyte: "1 M KOH"
+    pH: 14
+    reference: "d1ra01841h_RSC_Advances_2021"
+    source_file: "d1ra01841h.pdf"
+    potential_data:
+      E_peak_V_RHE: 0.4
+      reference_scale: "RHE (calc)"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 14.2
+      basis: "geometric"
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "RSC Advances 2021 review; Pd/reduced graphene oxide"
+
+  - entry: 26
+    catalyst: "Ni-Co oxide"
+    alcohol: "2-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "d4cc04822a_ChemComm_2024"
+    source_file: "d4cc04822a.pdf"
+    potential_data:
+      E_onset_V_RHE: 1.36
+      E_peak_V_RHE: 1.427
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 10.0
+      basis: "geometric"
+    products:
+      main_product: "Acetone/Formate"
+      detection_method: "Not_specified"
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "ChemComm 2024; Ni-Co oxide; onset and peak confirmed"
+
+  - entry: 27
+    catalyst: "NiOOH/Ni foam"
+    alcohol: "2-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "Deciphering_Ni_AOR_AdvEnergyMat_review"
+    source_file: "Deciphering the Role of Nickel in Electrochemical Organic.pdf"
+    potential_data:
+      E_onset_V_RHE: 1.2
+      E_peak_V_RHE: 1.5
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Adv. Energy Mater. review; Ni oxidation mechanism focus; j_peak not extracted"
+
+  - entry: 28
+    catalyst: "Cu-Pt nanocomposite"
+    alcohol: "2-propanol"
+    electrolyte: "1 M KOH"
+    pH: 14
+    reference: "Article5_CuPt_chain_nanocomposite"
+    source_file: "Article5.pdf"
+    potential_data:
+      E_peak_V: 0.36
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 187.7
+      basis: "geometric"
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Cu-Pt chain-like nanocomposite; ResearchGate preprint"
+
+  - entry: 29
+    catalyst: "Pt/C + POM nanocatalyst"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "ChemSusChem_Minireview_Nanocatalysts_2018"
+    source_file: "10.1002@cssc.201803063.pdf"
+    potential_data:
+      E_peak_V: 0.55
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_mg: 2411.5
+      basis: "mass"
+      scan_rate_mV_s: 50.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "ChemSusChem Minireview nanocatalysts AOR; doi:10.1002/cssc.201803063"
+
+  - entry: 30
+    catalyst: "PtSn/C"
+    alcohol: "2-propanol"
+    electrolyte: "0.5 M H2SO4"
+    pH: 0.3
+    reference: "carbon_supported_PtSn_PtCu_Pt_JSolidState"
+    source_file: "carbon-supported PtSn, PtCu, and Pt nanoparticles alcohol.pdf"
+    potential_data:
+      E_peak_V: 0.3
+      reference_scale: "Ag/AgCl"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_g: 26.0
+      basis: "mass"
+      scan_rate_mV_s: 20.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "J. Solid State Electrochem; PtSn/C bimetallic; acidic medium"
+
+  - entry: 31
+    catalyst: "Pd/C"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M KOH"
+    pH: 13
+    reference: "AOR20_Catalysts_MDPI"
+    source_file: "AOR20.pdf"
+    potential_data:
+      E_onset_V: 0.1
+      E_peak_V: 0.6
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m2: 100.0
+      basis: "geometric"
+      scan_rate_mV_s: 100.0
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Catalysts MDPI; 0.1 M KOH electrolyte"
+
+  - entry: 32
+    catalyst: "Ni/C"
+    alcohol: "2-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "AOR2_Ni_EIS_impedance"
+    source_file: "AOR2.pdf"
+    potential_data:
+      E_peak_V_SHE: 0.746
+      reference_scale: "SHE"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m2: 2.0
+      basis: "geometric"
+    products:
+      main_product: "Acetone"
+      detection_method: "EIS"
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "EIS impedance analysis study; SHE reference scale; mechanism confirmed"
+
+  - entry: 33
+    catalyst: "Fe-based (acceptorless)"
+    alcohol: "2-propanol"
+    electrolyte: "aqueous pH 7"
+    pH: 7
+    reference: "Electrocatalytic_AOR_Iron_Acceptorless"
+    source_file: "Electrocatalytic Alcohol Oxidation with Iron-Based Acceptorless.pdf"
+    potential_data:
+      E_peak_V: 0.74
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      basis: "geometric"
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Iron-based dehydrogenation catalyst; acceptorless oxidation mechanism"
+
+  - entry: 34
+    catalyst: "Ni single atom/N-C (high activity)"
+    alcohol: "2-propanol"
+    electrolyte: "1.0 M KOH"
+    pH: 14
+    reference: "d4cc04822a_ChemComm_2024"
+    source_file: "d4cc04822a.pdf"
+    potential_data:
+      E_peak_V_RHE: 1.48
+      reference_scale: "RHE"
+      approximate: true
+    kinetic_data:
+      j_peak_mA_cm2: 4250.0
+      basis: "geometric"
+    products:
+      main_product: "Acetone"
+      detection_method: "NMR"
+      faradaic_efficiency_pct: null
+    validation:
+      status: "PASS"
+      incomplete: false
+      notes: "ChemComm 2024; Ni SAC high activity site; NMR product confirmation"
+
+  - entry: 35
+    catalyst: "Pd black"
+    alcohol: "2-propanol"
+    electrolyte: "0.1 M NaOH"
+    pH: 13
+    reference: "CEJ_2019_02_046"
+    source_file: "10.1016@j.cej.2019.02.046.pdf"
+    potential_data:
+      E_value_V: -1.0
+      reference_scale: "unknown"
+      approximate: true
+    kinetic_data:
+      j_peak_A_m: 10618.0
+      basis: "mass"
+    products:
+      main_product: "Acetone"
+      detection_method: "Not_specified"
+    validation:
+      status: "WARNING"
+      incomplete: true
+      notes: "Chem. Eng. J. 366 (2019) 223-234; very high mass activity — verify units"
+
+# ============================================================
+# Validation Summary (Updated 2026-06-12)
+# PASS:    8  entries (1, 13, 19, 21, 26, 32, 34, and original entry 1)
+# WARNING: 27 entries (missing j_peak, reference scale, or E_onset)
+# Total entries: 35
+# Alcohols covered: 2-propanol (30), methanol (3), 1-propanol (1), mixed (1)
+# Catalysts: Pt, Pd, Ni, Au, PtRu, PtSn, PtIr, Co3O4, Fe-based
+# Media: alkaline KOH/NaOH (22), acidic H2SO4 (8), neutral/DFT (5)
+# RHE conversions: E_RHE = E_Ag/AgCl + 0.197 + (0.0592 * pH)
+# Confidence: MEDIUM (auto-extracted + manual curation needed)
+# ============================================================

@@ -1,0 +1,316 @@
+<!-- EISForge Compare My Catalyst — demo UI
+     Replace DB array with your extracted_aor.yaml data for full functionality -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EISForge — Compare My Catalyst</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #f7f6f2; --surface: #ffffff; --surface2: #f3f0ec;
+  --border: #dcd9d5; --text: #28251d; --muted: #7a7974;
+  --primary: #01696f; --primary-h: #0c4e54;
+  --warn: #e9c46a; --good: #2a9d8f; --bad: #e76f51;
+  --radius: 10px; --font: system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font);
+       font-size: 15px; line-height: 1.6; padding: 2rem 1rem; }
+.container { max-width: 860px; margin: 0 auto; }
+.header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+.header h1 { font-size: 1.5rem; font-weight: 700; }
+.header p  { color: var(--muted); font-size: 0.88rem; margin-top: 2px; }
+.card { background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1.25rem; }
+.card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem;
+           display: flex; align-items: center; gap: .5rem; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+label { display: block; font-size: .82rem; color: var(--muted);
+        margin-bottom: 3px; font-weight: 500; }
+input, select {
+  width: 100%; padding: .45rem .7rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: .9rem; background: var(--surface);
+  color: var(--text); outline: none; transition: border-color .15s;
+}
+input:focus, select:focus { border-color: var(--primary); }
+.btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: var(--primary); color: #fff;
+  border: none; border-radius: 6px;
+  padding: .6rem 1.4rem; font-size: .95rem;
+  font-weight: 600; cursor: pointer; transition: background .15s;
+  margin-top: .75rem;
+}
+.btn:hover { background: var(--primary-h); }
+#results { display: none; }
+.pct-wrap { margin: 1rem 0; }
+.pct-label { font-size:.85rem; color:var(--muted); margin-bottom:.3rem; }
+.pct-bar-bg { background: var(--surface2); border-radius: 999px;
+              height: 12px; width: 100%; overflow: hidden; }
+.pct-bar-fill { height: 100%; border-radius: 999px;
+                background: linear-gradient(90deg, var(--bad) 0%, var(--warn) 50%, var(--good) 100%);
+                transition: width .6s ease; }
+.pct-val { font-size: .95rem; font-weight: 700; margin-top: .3rem; }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: .87rem; margin-top: .5rem; }
+.cmp-table th { text-align: left; padding: .45rem .6rem;
+                background: var(--surface2); font-weight: 600;
+                border-bottom: 2px solid var(--border); }
+.cmp-table td { padding: .4rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.cmp-table tr.yours { background: oklch(from var(--primary) l c h / 0.06); }
+.cmp-table tr.yours td { font-weight: 600; }
+.badge { display: inline-block; font-size: .75rem; font-weight: 600;
+         padding: 1px 7px; border-radius: 999px; }
+.badge-approx { background:#fef3c7; color:#92400e; }
+.badge-exact  { background:#d1fae5; color:#065f46; }
+.delta-pos { color: var(--good); font-weight: 600; }
+.delta-neg { color: var(--bad);  font-weight: 600; }
+.delta-neu { color: var(--muted); }
+.doi-link { font-size:.78rem; color: var(--primary); text-decoration: none; }
+.doi-link:hover { text-decoration: underline; }
+.filter-note { font-size:.82rem; color:var(--muted); margin-bottom:.75rem;
+               padding:.5rem .75rem; background:var(--surface2);
+               border-radius:6px; border-left: 3px solid var(--primary); }
+.empty-state { text-align:center; padding: 2rem; color: var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-label="EISForge logo">
+      <rect width="40" height="40" rx="8" fill="#01696f"/>
+      <path d="M8 28 L14 14 L20 22 L26 10 L32 28" stroke="white" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="26" cy="10" r="2.5" fill="#4fd1c5"/>
+    </svg>
+    <div>
+      <h1>EISForge — Compare My Catalyst</h1>
+      <p>کاتالیست من کجای دنیا ایستاده؟ · مقایسه با پایگاه داده‌ی ادبیات</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+      داده‌های کاتالیست شما
+    </h2>
+    <div class="grid">
+      <div><label>الکل مورد آزمایش</label>
+        <select id="inp-alcohol">
+          <option value="ethanol">Ethanol</option>
+          <option value="methanol">Methanol</option>
+          <option value="glycerol">Glycerol</option>
+          <option value="isopropanol">Isopropanol</option>
+        </select></div>
+      <div><label>محیط الکترولیت</label>
+        <select id="inp-electrolyte">
+          <option value="alkaline">Alkaline (KOH/NaOH)</option>
+          <option value="acidic">Acidic (H₂SO₄/HClO₄)</option>
+        </select></div>
+      <div><label>E_onset (V vs RHE)</label>
+        <input type="number" id="inp-onset" placeholder="e.g. 0.29" step="0.01" min="-1" max="2"></div>
+      <div><label>j_peak (مبنای نرمال‌سازی)</label>
+        <select id="inp-norm">
+          <option value="mass">Mass (mA mg⁻¹)</option>
+          <option value="geometric">Geometric (mA cm⁻²)</option>
+        </select></div>
+      <div><label>j_peak value</label>
+        <input type="number" id="inp-jpeak" placeholder="e.g. 1650" min="0"></div>
+      <div><label>If/Ib ratio (اختیاری)</label>
+        <input type="number" id="inp-ifib" placeholder="e.g. 2.0" step="0.1" min="0" max="20"></div>
+      <div><label>Tafel slope (mV dec⁻¹، اختیاری)</label>
+        <input type="number" id="inp-tafel" placeholder="e.g. 65" min="20" max="300"></div>
+      <div><label>نام کاتالیست شما</label>
+        <input type="text" id="inp-name" placeholder="e.g. PtCo/rGO"></div>
+    </div>
+    <button class="btn" onclick="compare()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      مقایسه با پایگاه داده
+    </button>
+  </div>
+
+  <div id="results">
+    <div class="card" id="card-percentile">
+      <h2>📊 جایگاه کلی</h2>
+      <div class="pct-wrap">
+        <div class="pct-label" id="pct-label-text"></div>
+        <div class="pct-bar-bg"><div class="pct-bar-fill" id="pct-bar" style="width:0%"></div></div>
+        <div class="pct-val" id="pct-val-text"></div>
+      </div>
+      <div id="pct-detail" style="font-size:.87rem;color:var(--muted);margin-top:.5rem"></div>
+    </div>
+    <div class="card">
+      <h2>🔍 نزدیک‌ترین مقالات (k-NN در شرایط هم‌خوان)</h2>
+      <div class="filter-note" id="filter-note"></div>
+      <div id="knn-table-wrap"></div>
+    </div>
+    <div class="card">
+      <h2>💡 تفسیر</h2>
+      <div id="interpretation"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DB = [
+  { id:"demo_001", doi:"10.1039/D2EE01234A",
+    title:"PtRu/C for ethanol oxidation in alkaline media",
+    catalyst:"PtRu/C", alcohol:"ethanol", electrolyte_type:"alkaline",
+    normalization:"mass", E_onset:0.31, j_peak:1540, If_Ib:1.8, tafel:68, approximate:false },
+  { id:"demo_002", doi:"10.1016/j.electacta.2023.142001",
+    title:"Pd/C ethanol oxidation alkaline",
+    catalyst:"Pd/C", alcohol:"ethanol", electrolyte_type:"alkaline",
+    normalization:"mass", E_onset:0.34, j_peak:980, If_Ib:1.2, tafel:82, approximate:false },
+  { id:"demo_003", doi:"10.1021/acscatal.3c00512",
+    title:"PtPd nanoframes ethanol alkaline high activity",
+    catalyst:"PtPd nanoframes", alcohol:"ethanol", electrolyte_type:"alkaline",
+    normalization:"mass", E_onset:0.28, j_peak:2100, If_Ib:2.3, tafel:59, approximate:false },
+  { id:"demo_004", doi:"10.1039/D3TA01122B",
+    title:"Ni-Fe LDH glycerol oxidation alkaline",
+    catalyst:"Ni-Fe LDH", alcohol:"glycerol", electrolyte_type:"alkaline",
+    normalization:"geometric", E_onset:1.32, j_peak:85, approximate:false },
+  { id:"demo_005", doi:"10.1016/j.apcatb.2023.122500",
+    title:"Au/C methanol acidic",
+    catalyst:"Au/C", alcohol:"methanol", electrolyte_type:"acidic",
+    normalization:"mass", E_onset:0.65, j_peak:420, approximate:true },
+  { id:"demo_006", doi:"10.1021/acsenergylett.3c01200",
+    title:"Pt₃Ni/C ethanol alkaline",
+    catalyst:"Pt3Ni/C", alcohol:"ethanol", electrolyte_type:"alkaline",
+    normalization:"mass", E_onset:0.30, j_peak:1820, If_Ib:2.1, tafel:63, approximate:false },
+];
+
+function normalize(val, min, max) {
+  if (max === min) return 0.5;
+  return (val - min) / (max - min);
+}
+
+function compare() {
+  const alcohol = document.getElementById("inp-alcohol").value;
+  const elec    = document.getElementById("inp-electrolyte").value;
+  const onset   = parseFloat(document.getElementById("inp-onset").value);
+  const norm    = document.getElementById("inp-norm").value;
+  const jpeak   = parseFloat(document.getElementById("inp-jpeak").value);
+  const ifib    = parseFloat(document.getElementById("inp-ifib").value) || null;
+  const tafel   = parseFloat(document.getElementById("inp-tafel").value) || null;
+  const name    = document.getElementById("inp-name").value || "Your catalyst";
+
+  if (isNaN(onset) || isNaN(jpeak)) {
+    alert("لطفاً حداقل E_onset و j_peak را وارد کنید.");
+    return;
+  }
+
+  const filtered = DB.filter(d =>
+    d.alcohol === alcohol && d.electrolyte_type === elec && d.normalization === norm);
+
+  document.getElementById("filter-note").innerHTML =
+    `فیلتر فعال: <strong>${alcohol}</strong> در محیط <strong>${elec}</strong>، ` +
+    `نرمال‌سازی <strong>${norm}</strong> — <strong>${filtered.length}</strong> مقاله از ${DB.length} مقاله شرایط هم‌خوان دارند.` +
+    (filtered.length === 0 ? " <span style='color:var(--bad)'>هیچ مقاله‌ی هم‌خوانی یافت نشد.</span>" : "");
+
+  if (filtered.length === 0) {
+    document.getElementById("results").style.display = "block";
+    document.getElementById("knn-table-wrap").innerHTML =
+      '<div class="empty-state">⚠️ در پایگاه داده‌ی دمو مقاله‌ی هم‌خوان وجود ندارد.<br>با پایگاه ۲۵۰مقاله‌ای واقعی این محدودیت برطرف می‌شود.</div>';
+    document.getElementById("card-percentile").style.display = "none";
+    return;
+  }
+  document.getElementById("card-percentile").style.display = "block";
+
+  const allOnset = filtered.map(d => d.E_onset).concat([onset]);
+  const allJpeak = filtered.map(d => d.j_peak).concat([jpeak]);
+  const minOn = Math.min(...allOnset), maxOn = Math.max(...allOnset);
+  const minJp = Math.min(...allJpeak), maxJp = Math.max(...allJpeak);
+  const normOnset = v => 1 - normalize(v, minOn, maxOn);
+  const normJpeak = v => normalize(v, minJp, maxJp);
+
+  function score(on, jp, tf) {
+    if (tf != null) {
+      const allT = filtered.filter(x=>x.tafel).map(x=>x.tafel).concat([tafel]);
+      const mn = Math.min(...allT), mx = Math.max(...allT);
+      return 0.4*normOnset(on) + 0.4*normJpeak(jp) + 0.2*(1 - normalize(tf,mn,mx));
+    }
+    return 0.5*normOnset(on) + 0.5*normJpeak(jp);
+  }
+
+  const myScore = score(onset, jpeak, tafel);
+  const allScores = filtered.map(d => score(d.E_onset, d.j_peak, d.tafel));
+  const percentile = Math.round((allScores.filter(s => s <= myScore).length / filtered.length) * 100);
+
+  document.getElementById("pct-label-text").textContent =
+    `${name} در مقایسه با ${filtered.length} مقاله‌ی هم‌خوان`;
+  document.getElementById("pct-bar").style.width = percentile + "%";
+  document.getElementById("pct-val-text").textContent =
+    `صدک ${percentile}ام — بهتر از ${percentile}٪ از کاتالیست‌های گزارش‌شده`;
+  document.getElementById("pct-detail").textContent =
+    `(بر اساس E_onset و j_peak${tafel ? " و Tafel slope" : ""} برای ${alcohol} در محیط ${elec})`;
+
+  function dist(d) {
+    const dOn = normOnset(d.E_onset) - normOnset(onset);
+    const dJp = normJpeak(d.j_peak) - normJpeak(jpeak);
+    return Math.sqrt(dOn*dOn + dJp*dJp);
+  }
+
+  const top5 = [...filtered].sort((a,b) => dist(a)-dist(b)).slice(0,5);
+  const me = {E_onset:onset, j_peak:jpeak, If_Ib:ifib, tafel, catalyst:name, doi:null, approximate:false, _isMe:true};
+
+  let html = `<table class="cmp-table"><thead><tr>
+    <th>کاتالیست</th><th>E_onset (V vs RHE)</th><th>j_peak</th>
+    <th>If/Ib</th><th>Tafel (mV/dec)</th><th>منبع</th>
+  </tr></thead><tbody>`;
+
+  [me, ...top5].forEach(d => {
+    const isMe = d._isMe;
+    function fmtD(diff, lowerBetter) {
+      if (isMe) return "";
+      const good = lowerBetter ? diff > 0 : diff > 0;
+      const cls = Math.abs(diff)<0.001 ? "delta-neu" : good ? "delta-pos" : "delta-neg";
+      return `<span class="${cls}">(${diff>0?"+":""}${diff.toFixed(1)})</span>`;
+    }
+    const doi = d.doi
+      ? `<a class="doi-link" href="https://doi.org/${d.doi}" target="_blank">${d.doi}</a>`
+      : `<em style="color:var(--muted)">شما</em>`;
+    const badge = d.approximate
+      ? '<span class="badge badge-approx">≈ تقریبی</span>'
+      : (!isMe ? '<span class="badge badge-exact">✓ دقیق</span>' : '');
+    html += `<tr class="${isMe?'yours':''}">
+      <td>${d.catalyst||"—"} ${badge}</td>
+      <td>${d.E_onset?.toFixed(3)?"—"} ${fmtD(onset-d.E_onset,true)}</td>
+      <td>${d.j_peak?.toFixed(0)??"—"} ${fmtD(d.j_peak-jpeak,false)}</td>
+      <td>${d.If_Ib?.toFixed(1)??"—"}</td>
+      <td>${d.tafel?.toFixed(0)??"—"}</td>
+      <td>${doi}</td></tr>`;
+  });
+  html += "</tbody></table>";
+  document.getElementById("knn-table-wrap").innerHTML = html;
+
+  const best = top5[0];
+  const lines = [];
+  const onDiff = ((best.E_onset - onset)*1000).toFixed(0);
+  const jDiff  = (((jpeak - best.j_peak)/best.j_peak)*100).toFixed(0);
+  lines.push(onset < best.E_onset
+    ? `✅ <strong>E_onset شما ${Math.abs(onDiff)} mV بهتر</strong> از نزدیک‌ترین مقاله (${best.catalyst}) است.`
+    : `⚠️ E_onset شما <strong>${Math.abs(onDiff)} mV بالاتر</strong> از ${best.catalyst} است.`);
+  lines.push(jpeak > best.j_peak
+    ? `✅ <strong>j_peak شما ${Math.abs(jDiff)}٪ بالاتر</strong> از ${best.catalyst} است.`
+    : `⚠️ j_peak شما <strong>${Math.abs(jDiff)}٪ پایین‌تر</strong> از ${best.catalyst} است.`);
+  lines.push(percentile >= 70
+    ? `🏆 با صدک ${percentile}، نتیجه‌ی شما در دسته‌ی برتر است و ارزش انتشار دارد.`
+    : percentile >= 40
+    ? `📌 با صدک ${percentile}، عملکرد شما متوسط است. بهینه‌سازی ممکن است کمک کند.`
+    : `📌 با صدک ${percentile}، هنوز فاصله‌ی قابل توجهی با مقالات برتر وجود دارد.`);
+  lines.push(`<span style="font-size:.82rem;color:var(--muted)">⚠️ این مقایسه بر اساس ${filtered.length} مقاله‌ی دمو است. با پایگاه داده‌ی ۲۵۰مقاله‌ای کامل، دقت بسیار بیشتر خواهد بود.</span>`);
+
+  document.getElementById("interpretation").innerHTML = lines.map(l=>`<p style="margin-bottom:.6rem">${l}</p>`).join("");
+  document.getElementById("results").style.display = "block";
+  document.getElementById("results").scrollIntoView({behavior:"smooth"});
+}
+</script>
+</body>
+</html>

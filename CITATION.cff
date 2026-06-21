@@ -1,0 +1,66 @@
+cff-version: 1.2.0
+message: >
+  EISForge is freely available under the MIT License. If you use EISForge,
+  its analysis modules, curated knowledge resources, or any derived outputs
+  in publications, theses, reports, presentations, or software, you MUST
+  cite the repository and the associated Zenodo record below.
+
+title: "EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit"
+version: "0.2.0"
+date-released: "2026-06-18"
+license: MIT
+repository-code: "https://github.com/Hj1308/EISforge-"
+doi: 10.5281/zenodo.20649692
+url: "https://doi.org/10.5281/zenodo.20649692"
+
+authors:
+  - family-names: Jafari
+    given-names: Hoda
+    email: hoda.jaafari@gmail.com
+    affiliation: "CCERCI (Chemistry and Chemical Engineering Research Center of Iran)"
+    orcid: ""
+
+abstract: >
+  EISForge is an open-source Python framework for automated electrochemical
+  analysis of the Alcohol Oxidation Reaction (AOR). It combines classical
+  CNLS fitting with Kramers-Kronig validation, CV/LSV/EIS analysis, ECSA
+  calculation, Koutecky-Levich analysis, a literature-guided knowledge base
+  (195 peer-reviewed papers), and a Physics-Informed Transformer architecture
+  (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Autolab (.idf),
+  and generic CSV file formats.
+
+keywords:
+  - electrochemical impedance spectroscopy
+  - EIS
+  - CNLS fitting
+  - equivalent circuit
+  - cyclic voltammetry
+  - linear sweep voltammetry
+  - machine learning
+  - electrochemistry
+  - alcohol oxidation reaction
+  - Kramers-Kronig
+  - ECSA
+  - Tafel slope
+  - open source
+
+references:
+  - type: article
+    title: "Kramers-Kronig Transforms for the Analysis of Electrochemical Impedance Data"
+    authors:
+      - family-names: Boukamp
+        given-names: B.A.
+    journal: "Journal of The Electrochemical Society"
+    volume: 142
+    year: 1995
+    doi: 10.1149/1.2044210
+
+  - type: article
+    title: "A Linear Kramers-Kronig Validity Test"
+    authors:
+      - family-names: Schonleber
+        given-names: M.
+    journal: "Electrochimica Acta"
+    volume: 131
+    year: 2014
+    doi: 10.1016/j.electacta.2014.01.034

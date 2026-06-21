@@ -1,295 +1,320 @@
-# EISForge 🔬⚡
+# EISForge ⚡
 
-> **Advanced open-source framework for Electrochemical Impedance Spectroscopy (EIS) analysis with Physics-Informed Machine Learning**
->
-> *The first open-source EIS framework combining classical CNLS fitting, CV/LSV analysis, and a Physics-Informed Transformer (EIS-GPT).*
+![Version](https://img.shields.io/badge/version-v0.2.0-blue?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square&logo=python)
+![Streamlit](https://img.shields.io/badge/built%20with-Streamlit-FF4B4B?style=flat-square&logo=streamlit)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20649692-blue?style=flat-square)
+![CI](https://github.com/Hj1308/EISforge-/actions/workflows/ci.yml/badge.svg?style=flat-square)
+![Tests](https://github.com/Hj1308/EISforge-/actions/workflows/tests.yml/badge.svg?style=flat-square)
 
----
+**EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.2.0**  
+Author: [Hoda Jaafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
 
-## Author & Citation
-
-**Hoda Jafari** | 📧 hoda.jaafari@gmail.com | 🔗 https://github.com/Hj1308 | 📅 May 2026
-
-If you use EISForge in your research, please cite:
-
-```bibtex
-@software{jafari2026eisforge,
-  author    = {Jafari, Hoda},
-  title     = {EISForge: Physics-Informed ML for Electrochemical Impedance Spectroscopy},
-  year      = {2026},
-  publisher = {GitHub},
-  url       = {https://github.com/Hj1308/EISforge-},
-  note      = {Open-source EIS/CV/LSV analysis with Physics-Informed Transformer}
-}
-```
+> **Looking for surface area & pore analysis (BET/BJH)?**  
+> → See [BET_analyser](https://github.com/Hj1308/BET_analyser)  
+> **Looking for catalyst kinetics & ODS analysis?**  
+> → See [CatLab-Tools](https://github.com/Hj1308/CatLab-Tools)
 
 ---
 
-## Key Features at a Glance 🚀
+## What is EISForge?
 
-| Feature | EISForge |
+A Streamlit-based web application and Python API for **automated electrochemical analysis** of the **Alcohol Oxidation Reaction (AOR)**.  
+Designed for PhD-level electrocatalysis research — covers CV, LSV, EIS, ECSA, Koutecký–Levich, and batch reproducibility.  
+EISForge adapts its diagnostics to the **catalyst family** and **electrolyte chemistry**, ensuring peer-review-defensible results.
+
+| Catalyst Family | Supported Electrolytes |
 |---|---|
-| CNLS circuit fitting (χ² = 0.0008 on real data) | ✅ |
-| Kramers-Kronig validation | ✅ |
-| CV analysis (E_onset, I_f/I_b, current density) | ✅ |
-| LSV analysis (Tafel slope, overpotential, mass activity) | ✅ |
-| Robust data preprocessing (4 independent methods) | ✅ |
-| Literature-guided initial parameter guesses | ✅ |
-| Physics-Informed Transformer (EIS-GPT) | ✅ **NOVEL** |
-| Uncertainty quantification | ✅ |
-| Autolab / Gamry / BioLogic file support | ✅ |
-| Free & Open Source (MIT) | ✅ |
+| `noble_metal` (Pt, Pd, Au…) | Acidic: H₂SO₄, HClO₄, HCl |
+| `alloy` (PtRu, PdAu…) | Alkaline: KOH, NaOH |
+| `metal_oxide` (RuO₂, IrO₂…) | Neutral buffers |
+| `carbon_material` / metal-free | Custom pH environments |
 
 ---
 
-## Installation
+## 🚀 Quick Start
 
 ```bash
 git clone https://github.com/Hj1308/EISforge-.git
 cd EISforge-
-pip install -r requirements.txt
 pip install -e .
-```
-
-**Launch the web interface:**
-
-```bash
 streamlit run app.py
 ```
 
----
+With ML dependencies:
+```bash
+pip install -e ".[ml]"
+```
 
-## Supported File Formats
-
-| Instrument | Extension |
-|---|---|
-| Metrohm Autolab NOVA | `.idf` |
-| Gamry Instruments | `.dta` |
-| BioLogic EC-Lab | `.mpt`, `.mpr` |
-| Generic CSV / TXT | `.csv`, `.txt` |
-
-> Autolab `.idf` parser automatically detects column order (Z', Z'', frequency in any order) and measurement type (CV vs EIS vs LSV). Current is auto-converted from A to mA.
+With development tools:
+```bash
+pip install -e ".[dev]"
+```
 
 ---
 
-## Features
+## 📑 Modules
 
-### 1. EIS Analysis
+| Module | Technique | Key Outputs |
+|---|---|---|
+| **CV Analyzer** | Cyclic Voltammetry | Eₒₙₛₑₜ, peak position/height, ECSA, iR-corrected potentials |
+| **LSV Analyzer** | Linear Sweep Voltammetry | Tafel slope, η₁₀/η₅₀/η₁₀₀, j₀, mass activity, specific activity |
+| **EIS Analyzer** | Impedance Spectroscopy | Rₛ, R_ct, CPE, Nyquist/Bode plots, K–K validation |
+| **ECSA Calculator** | Multi-scan-rate CV | Double-layer capacitance, electrochemically active surface area |
+| **Koutecký–Levich** | Rotating disk LSV | Electron-transfer number, diffusion-limited current |
+| **Batch Analyzer** | CV / LSV / EIS | Mean ± SD over n ≥ 3 replicates, reproducibility scoring |
+| **EIS–CV Correlator** | Cross-technique | R_ct ↔ peak current correlation, activity–impedance maps |
 
-- **CNLS Fitting** — direct `scipy.optimize.least_squares` with Levenberg-Marquardt and Trust Region Reflective strategies
-- **Kramers-Kronig Validation** — linKK (impedance.py) with Voigt-circuit fallback
-- **Supported circuits** — R-RC, R-RCPE, R-RCPE-W, R-RCPE-RCPE, and any custom circuit
-- **Achieved χ² = 0.0008** on real experimental Autolab data
+---
 
-### 2. Data Preprocessing — Robust Outlier Filtering
+## 📈 Cyclic Voltammetry (CV)
 
-Four independent cleaning methods that can be combined in any order:
+- Onset potential (Eₒₙₛₑₜ), oxidation peak position and height
+- iR-corrected potentials (`E_corr = E − I·Rₛ`)
+- Double-layer capacitance and ECSA workflow
+- Catalyst-aware peak assignment (alcohol oxidation vs. oxide formation)
+- Batch CV (n ≥ 3) with mean ± standard deviation
 
-```python
-from eisforge.core.preprocessor import DataPreprocessor
-
-# Method 1: Remove high-frequency inductive artifacts (Z'' < 0)
-clean = DataPreprocessor.remove_inductive_artifacts(dataset)
-
-# Method 2: Crop to a specific frequency range
-clean = DataPreprocessor.crop_frequencies(dataset, f_min=0.01, f_max=1e5)
-
-# Method 3: Remove single-point glitches in Z' or Z'' (per-axis detection)
-clean = DataPreprocessor.remove_z_jumps(dataset, threshold_pct=20.0)
-
-# Method 4: Remove known noisy frequencies (e.g. 50/60 Hz electrical interference)
-clean = DataPreprocessor.drop_specific_frequency(dataset, target_freq=50.0)
-
-# Or run all steps at once:
-clean = DataPreprocessor.clean_pipeline(dataset)
-```
-
-### 3. CV Analysis
+**Python API:**
 
 ```python
-from eisforge.analysis.cv_analyzer import CVAnalyzer
+from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
 
-ana    = CVAnalyzer(scan_rate=50.0, electrode_area=1.0, electrolyte="acidic")
-result = ana.analyze(potential, current)
-
-print(f"E_onset  = {result.e_onset:.4f} V")
-print(f"I_f/I_b  = {result.if_ib_ratio:.3f}")
-print(f"j_f      = {result.j_forward_peak:.4f} mA/cm²")
-print(result.interpretation)
-```
-
-**Outputs:** E_onset (3 methods), I_f, I_b, I_f/I_b ratio, geometric current density (mA/cm²), ECSA-normalized current density (mA/cm²_metal), automatic AOR interpretation.
-
-### 4. LSV Analysis
-
-```python
-from eisforge.analysis.lsv_analyzer import LSVAnalyzer
-
-ana    = LSVAnalyzer(scan_rate=5.0, electrode_area=1.0, electrolyte="acidic")
-result = ana.analyze(potential, current)
-
-print(f"Tafel slope     = {result.tafel_slope:.1f} mV/dec")
-print(f"η @ 10 mA/cm²  = {result.overpotential_10*1000:.1f} mV")
-print(f"Mass activity   = {result.mass_activity:.3f} mA/mg_cat")
-print(result.mechanism_interpretation)
-```
-
-**Outputs:** E_onset, Tafel slope (mV/dec), exchange current density (j₀), overpotential at 10/50/100 mA/cm², mass activity (mA/mg), specific activity (mA/cm²_ECSA), mechanism interpretation, performance rating.
-
-### 5. Literature Knowledge Base
-
-```python
-from eisforge.knowledge.literature_engine import LiteratureEngine
-
-guess = LiteratureEngine().query(
-    system_type="AOR",
-    catalyst="PtRu/C",
-    electrolyte="acidic",
-    alcohol="ethanol",
-    potential=0.5,
+analyzer = CVAnalyzer(
+    scan_rate=50,                      # mV/s
+    electrode_area=0.1225,             # cm²
+    catalyst_type="noble_metal",
+    electrolyte=ElectrolyteInfo("alkaline", "KOH", 1.0),
 )
-print(guess.recommended_circuit)   # "R0-p(R1,CPE1)"
-print(guess.initial_guess)         # {'R0': 15.0, 'R1': 250.0, ...}
-print(guess.confidence)            # "high"
+E, I = CVAnalyzer.load_csv("sample_cv.csv")
+result = analyzer.analyze(E, I, r_s_ohms=3.2)
+
+print(result.ecsa_cm2, "cm²")
+print(result.onset_potential, "V vs. RHE")
 ```
-
-Curated database covers: AOR (Pt, Pd, PtRu, PtSn in acidic/alkaline), Li-ion batteries, corrosion, PEMFC, biosensors.
-
-### 6. EIS-GPT — Physics-Informed Transformer
-
-The first **Physics-Informed Transformer** for EIS spectrum analysis.
-
-**Architecture:**
-- Each frequency point = one token
-- 6-layer Transformer encoder, 8 attention heads
-- [CLS] token for circuit classification
-- Parallel heads for circuit prediction and parameter regression
-
-**Novel physics-informed loss function:**
-```
-L_total = L_reconstruction
-        + λ₁ × L_Kramers-Kronig
-        + λ₂ × L_passivity
-        + λ₃ × L_high-frequency-limit
-```
-
-This ensures all predictions are physically valid — no post-hoc correction needed.
-
-> **Status:** Architecture complete. Model weights are currently untrained. Train using `scripts/train_ml_models.py` on the included synthetic dataset generator.
 
 ---
 
-## Full Example
+## 📉 Linear Sweep Voltammetry (LSV) & Tafel Analysis
+
+- **Tafel slope** from the activation-controlled region (auto-selected, see *Methodology*)
+- Onset potential, overpotentials at η₁₀, η₅₀, η₁₀₀ (mA·cm⁻²)
+- Limiting current, half-wave potential (E₁/₂)
+- Mass activity (A·mg⁻¹) and specific activity (A·cm⁻²_ECSA)
+- Optional exchange current density j₀ (requires `equilibrium_potential`)
+- Koutecký–Levich: electron-transfer number n
+- Batch LSV (n ≥ 3) reproducibility statistics
+
+**Python API:**
 
 ```python
-from eisforge.core.analyzer      import EisAnalyzer
-from eisforge.core.preprocessor   import DataPreprocessor
-from eisforge.core.fitter         import CNLSFitter
+from eisforge.analysis.lsv_analyzer import LSVAnalyzer, ElectrolyteInfo
 
-# 1. Load data — auto-detects Autolab/Gamry/BioLogic/CSV
-ana = EisAnalyzer()
-raw = ana.load("EIS_0.82V.idf")
-print(raw)
-# EISDataset(n=74, f=[1.00e-01, 1.00e+05] Hz)
+analyzer = LSVAnalyzer(
+    scan_rate=5,                       # mV/s — use ≤5 for reliable Tafel
+    electrode_area=0.1225,             # cm²
+    catalyst_type="carbon_material",
+    electrolyte=ElectrolyteInfo("acidic", "H2SO4", 0.5),
+    equilibrium_potential=None,        # provide E_eq to compute a true j₀
+)
+E, I = LSVAnalyzer.load_csv("hbc4_lsv.csv")
+result = analyzer.analyze(E, I, r_s_ohms=25.5)
 
-# 2. Clean the data
-clean = DataPreprocessor.clean_pipeline(raw)
-# Cleaning pipeline: 74 → 73 points (1 removed)
-
-# 3. Fit equivalent circuit
-result = CNLSFitter(
-    circuit_string="R0-p(R1,CPE1)",
-    initial_guess=[30.0, 31000.0, 2e-7, 0.78],
-).fit(clean)
-
-print(result.parameter_table())
-# Parameter            Value          ±Error
-# ──────────────────────────────────────────────────
-# R0            2.5230e+01        1.77e-01
-# R1            3.3462e+04        1.56e-05
-# CPE1_0        1.0487e-05        7.21e-08
-# CPE1_1        7.4527e-01        1.01e-03
-# Reduced χ² = 0.000800
+print(result.tafel_slope, "mV/dec",
+      "| R² =", result.tafel_r_squared,
+      "| warnings:", result.tafel_warnings)
 ```
 
 ---
 
-## Project Structure
+## 🔬 Electrochemical Impedance Spectroscopy (EIS)
+
+- Equivalent-circuit (CNLS) fitting via `impedance` library
+- **Kramers–Kronig validation** (causality, linearity, stationarity)
+- Charge-transfer resistance (R_ct), solution resistance (Rₛ)
+- CPE and double-layer capacitance extraction
+- Interactive Nyquist and Bode plots (Plotly)
+- EIS–CV cross-technique correlation
+
+---
+
+## 📐 Methodology Notes
+
+> **Read this before reporting numbers in a manuscript.**
+
+- **Tafel slope** — linear fit of `E vs log₁₀(j)` in the **activation-controlled branch only** (above Eₒₙₛₑₜ, below the current peak). Auto-selects the lowest-slope linear window. Results are flagged when: slope > 120 mV·dec⁻¹, window < 1 decade, R² < 0.99, or window approaches the current peak. Manual override: `auto_tafel_region=False`, `tafel_current_range=(j_min, j_max)`.
+
+- **Exchange current density j₀** — reported **only** when `equilibrium_potential` is provided; obtained by extrapolating the Tafel line to η = 0. Extrapolation to Eₒₙₛₑₜ is physically incorrect and is **never** reported as j₀.
+
+- **Scan rate** — Tafel analysis is most reliable at **≤ 5 mV·s⁻¹**; higher rates inflate the apparent slope via capacitive contribution.
+
+- **iR correction** — always supply `r_s_ohms` (from EIS high-frequency intercept) to obtain corrected onset and Tafel values.
+
+- **ECSA** — estimated from double-layer capacitance (Cdl) via multi-scan-rate CV in the non-Faradaic window, or from H/CO underpotential deposition for noble metals.
+
+- **Kramers–Kronig** — all EIS fits are validated against K–K constraints before reporting circuit parameters.
+
+---
+
+## 🔌 Supported Instruments / Formats
+
+| Instrument | File Format | Parser |
+|---|---|---|
+| Gamry Instruments | `.DTA` | `gamry_parser.py` |
+| BioLogic Science Instruments | `.mpt`, `.mpr` | `biologic_parser.py` |
+| Metrohm Autolab | `.idf` | `autolab_parser.py` |
+| Generic / custom | `.csv`, `.tsv` | `generic_csv_parser.py` |
+
+All parsers share automatic unit handling (A / mA / µA / nA) and multi-instrument detection.
+
+---
+
+## 🤖 ML Module — EIS-GPT
+
+EISForge includes a **physics-informed Transformer** for automated equivalent-circuit topology prediction from raw impedance spectra.
+
+```
+eisforge/ml/eis_gpt/
+├── transformer.py            # Multi-head self-attention model architecture
+├── tokenizer.py              # Impedance spectrum → token sequence
+├── physics_loss.py           # Kramers–Kronig + causality constraints in loss
+├── aor_dataset_generator.py  # Synthetic AOR training data generation
+└── eis_cv_correlator.py      # EIS ↔ CV cross-modal correlation
+```
+
+**Training:**
+
+```bash
+python train_eis_gpt.py
+```
+
+> ⚠️ Requires optional ML dependencies: `pip install -e ".[ml]"`  
+> ⚠️ Pre-trained weights are in development — see Roadmap.
+
+---
+
+## 📚 Knowledge Base
+
+The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer built from **195 peer-reviewed papers**. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
+
+> This knowledge layer is an original contribution of EISForge. If your research uses EISForge diagnostics, interpretation outputs, or any results derived from this knowledge base, please cite EISForge accordingly (see **Citation and Attribution** below).
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run full test suite
+pytest
+
+# With coverage report
+pytest --cov=eisforge --cov-report=term-missing
+```
+
+| Test File | Covers |
+|---|---|
+| `tests/test_eis_fitting.py` | EIS CNLS fitting & Kramers–Kronig |
+| `tests/test_ecsa.py` | ECSA / double-layer capacitance |
+| `tests/test_batch_analyzer.py` | Batch statistics & reproducibility |
+| `tests/test_parsers.py` | Multi-instrument file parsers |
+
+CI runs automatically on every push via [GitHub Actions](https://github.com/Hj1308/EISforge-/actions).
+
+---
+
+## 🗂 Repository Structure
 
 ```
 EISforge-/
-├── app.py                          # Streamlit web interface (5 tabs)
-├── requirements.txt
-├── setup.py
-│
-└── eisforge/
-    ├── core/
-    │   ├── analyzer.py             # Main orchestration class
-    │   ├── fitter.py               # CNLS via direct scipy optimization
-    │   ├── validators.py           # Kramers-Kronig validation
-    │   └── preprocessor.py         # 4 robust cleaning methods
-    │
-    ├── parsers/
-    │   ├── base_parser.py          # EISDataset container
-    │   ├── autolab_parser.py       # Metrohm Autolab .idf (CV + EIS + LSV)
-    │   ├── gamry_parser.py         # Gamry .dta
-    │   └── generic_csv_parser.py   # CSV / TXT
-    │
-    ├── analysis/
-    │   ├── cv_analyzer.py          # CV: E_onset, I_f/I_b, j
-    │   ├── lsv_analyzer.py         # LSV: Tafel, overpotential, activity
-    │   └── eis_cv_correlator.py    # Cross-technique correlation
-    │
-    ├── ml/
-    │   ├── aor_dataset_generator.py
-    │   └── eis_gpt/
-    │       ├── tokenizer.py        # EIS spectrum → transformer tokens
-    │       ├── transformer.py      # Physics-Informed Transformer
-    │       └── physics_loss.py     # K-K + passivity + HF-limit loss
-    │
-    └── knowledge/
-        ├── literature_engine.py
-        └── data/
-            └── electrochemistry_knowledge.json
+├── app.py                        # Streamlit web application
+├── train_eis_gpt.py              # EIS-GPT training script
+├── eisforge/
+│   ├── analysis/
+│   │   ├── cv_analyzer.py
+│   │   ├── lsv_analyzer.py
+│   │   ├── ecsa_calculator.py
+│   │   ├── koutecky_levich.py
+│   │   ├── eis_cv_correlator.py
+│   │   └── batch_analyzer.py
+│   ├── core/
+│   │   ├── analyzer.py
+│   │   ├── fitter.py
+│   │   ├── preprocessor.py
+│   │   └── validators.py
+│   ├── parsers/
+│   │   ├── gamry_parser.py
+│   │   ├── biologic_parser.py
+│   │   ├── autolab_parser.py
+│   │   └── generic_csv_parser.py
+│   ├── ml/
+│   │   ├── eis_gpt/              # Physics-informed Transformer
+│   │   └── uncertainty/          # Uncertainty quantification
+│   ├── knowledge/                # Literature-guided knowledge base (195 papers)
+│   ├── standards/                # Electrochemical reference standards
+│   ├── utils/
+│   └── visualization/
+├── tests/
+├── examples/
+├── paper.md                      # JOSS manuscript
+├── paper.bib
+├── CITATION.cff
+└── pyproject.toml
 ```
 
 ---
 
-## Roadmap
+## 🔗 Related Repositories
 
-- [x] CNLS fitting (direct scipy, χ² = 0.0008 on real data)
-- [x] Kramers-Kronig validation with fallback
-- [x] Autolab / Gamry / BioLogic file parsers
-- [x] CV analysis (E_onset, I_f/I_b, geometric and ECSA current density)
-- [x] LSV analysis (Tafel slope, overpotential, mass/specific activity)
-- [x] Robust data preprocessing (4 methods, including per-axis jump detection)
-- [x] Literature knowledge base for AOR and other electrochemical systems
-- [x] Streamlit web interface (CV / LSV / EIS / EIS-GPT / Correlation tabs)
-- [x] Physics-Informed Transformer architecture (EIS-GPT)
-- [ ] Train EIS-GPT on 10,000+ synthetic spectra
-- [x] iR compensation (R_s from EIS fit, E_corrected = E - I×R_s, applied to CV and LSV)
-- [ ] Automatic ECSA calculation (H_upd, CO stripping, Cdl methods)
-- [ ] DRT — Distribution of Relaxation Times
-- [ ] Statistical reproducibility (n=3 batch analysis, mean ± SD)
-- [ ] Faradaic efficiency calculator
-- [ ] Zenodo DOI registration
-- [ ] JOSS paper submission
+| Repo | Purpose |
+|---|---|
+| [CatLab-Tools](https://github.com/Hj1308/CatLab-Tools) | ODS kinetics, TOF/TON, reusability analysis |
+| [BET_analyser](https://github.com/Hj1308/BET_analyser) | BET, BJH, T-Plot, isotherm & hysteresis |
+| [sem-particle-analyzer](https://github.com/Hj1308/sem-particle-analyzer) | SEM particle sizing |
+| [Raman-analysis](https://github.com/Hj1308/Raman-analysis) | Raman spectroscopy toolkit |
 
 ---
 
-## References
+## 📌 Citation and Attribution
 
-1. Boukamp, B.A. (1995). *J. Electrochem. Soc.* **142**, 1885 — K-K validation
-2. Schönleber et al. (2014). *Electrochim. Acta* **131**, 20 — lin-KK
-3. Lamy et al. (2002). *Electrochim. Acta* **47**, 3701 — AOR mechanism
-4. Orazem & Tribollet (2008). *Electrochemical Impedance Spectroscopy* — reference textbook
-5. Vaswani et al. (2017). *NeurIPS* — Transformer architecture
+> ⚠️ **Citation is required.** If you use EISForge — including its analysis modules, curated `knowledge/` resources, or any derived outputs — in publications, theses, reports, presentations, or other software, you **must** cite the repository and the associated Zenodo record.
+
+```bibtex
+@software{jafari2026eisforge,
+  author       = {Jaafari, Hoda},
+  title        = {EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit},
+  year         = {2026},
+  doi          = {10.5281/zenodo.20649692},
+  publisher    = {Zenodo},
+  url          = {https://github.com/Hj1308/EISforge-},
+  version      = {0.2.0},
+  affiliation  = {CCERCI},
+  note         = {Automated CV / LSV / EIS analysis for the alcohol oxidation reaction}
+}
+```
+
+**DOI:** [10.5281/zenodo.20649692](https://doi.org/10.5281/zenodo.20649692)
+
+A `CITATION.cff` file is included for automatic citation parsing by GitHub and Zenodo.
+
+---
+
+## 🗺 Roadmap
+
+| Feature | Status |
+|---|---|
+| CV / LSV / EIS analysis engine | ✅ Implemented |
+| Batch processing (n ≥ 3) | ✅ Implemented |
+| Multi-instrument parsers (Gamry, BioLogic, Autolab) | ✅ Implemented |
+| Kramers–Kronig validation | ✅ Implemented |
+| Koutecký–Levich analysis | ✅ Implemented |
+| EIS-GPT Transformer model architecture | ✅ Implemented |
+| Pre-trained EIS-GPT model weights | 🔬 In development |
+| DRT (distribution of relaxation times) | 📋 Planned |
+| PyPI package release | 📋 Planned |
 
 ---
 
 ## License
 
-MIT License — Copyright (c) 2026 Hoda Jafari
-
-Free to use in academic and commercial applications.
-**Please cite this work if you use it in your publications.**
+MIT — free to use, modify, and distribute. **Citation is required** for any academic or research use. See **Citation and Attribution** above.

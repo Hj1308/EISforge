@@ -54,7 +54,7 @@ from eisforge.ml.eis_gpt.physics_loss import PhysicsInformedLoss
 N_CIRCUITS = 5
 
 # حداکثر تعداد پارامتر در یک مدار
-MAX_PARAMS = 7
+MAX_PARAMS = 9
 
 # نام مدارها
 CIRCUIT_NAMES = [

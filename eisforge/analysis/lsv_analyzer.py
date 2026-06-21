@@ -59,9 +59,16 @@ class LSVAnalysisResult:
     # Tafel
     tafel_slope           : float = 0.0   # mV/dec
     tafel_slope_std       : float = 0.0
-    exchange_current_density : float = 0.0  # j0 (mA/cm²)
+    exchange_current_density : float = 0.0  # j0 (mA/cm²) — valid only if j0_is_valid
+    j0_is_valid           : bool  = False   # True only when an equilibrium potential was supplied
     tafel_r_squared       : float = 0.0
-    tafel_region          : tuple = (0.0, 0.0)
+    tafel_region          : tuple = (0.0, 0.0)   # (E_low, E_high) of the fitted window, V
+    tafel_eta_region      : tuple = (float("nan"), float("nan"))  # overpotential span, V (needs E_eq)
+    tafel_n_points        : int   = 0       # points used in the fit
+    tafel_decades         : float = 0.0     # decades of current spanned by the fit
+    tafel_method          : str   = ""      # "auto-detected" | "user current window" | "failed"
+    equilibrium_potential : Optional[float] = None  # E_eq used for j0 (same frame as e_onset)
+    tafel_warnings        : list  = field(default_factory=list)  # diagnostic flags
 
     # Overpotential
     overpotential_10  : float = 0.0   # V
@@ -111,14 +118,30 @@ class LSVAnalysisResult:
             f"  E_onset             = {self.e_onset:.4f} V  ({self.e_onset_method})",
             "-" * 68,
             f"  Tafel slope         = {self.tafel_slope:.1f} ± {self.tafel_slope_std:.1f} mV/dec",
-            f"  j0                  = {self.exchange_current_density:.4e} mA/cm²",
+            f"  Tafel fit window    = {self.tafel_region[0]:.3f}–{self.tafel_region[1]:.3f} V"
+            f"  |  {self.tafel_decades:.2f} dec  |  n = {self.tafel_n_points}  ({self.tafel_method})",
             f"  R² (Tafel fit)      = {self.tafel_r_squared:.4f}",
         ]
+        if self.j0_is_valid:
+            lines.append(
+                f"  j0                  = {self.exchange_current_density:.4e} mA/cm²"
+                f"  (extrapolated to η = 0)"
+            )
+        else:
+            lines.append(
+                "  j0                  = n/a  (supply an equilibrium potential to compute a true j0)"
+            )
 
         if is_carbon_material:
             lines.append(
-                "  NOTE: Tafel > 120 mV/dec is NORMAL for metal-free catalysts"
+                "  NOTE: Tafel > 120 mV/dec can be normal for metal-free catalysts,"
             )
+            lines.append(
+                "        but verify the fit lies on the activation-controlled branch."
+            )
+
+        for w in self.tafel_warnings:
+            lines.append(f"  ! {w}")
 
         lines += [
             "-" * 68,
@@ -209,6 +232,10 @@ class LSVAnalyzer:
         e_ref_vs_rhe             : float = 0.0,
         tafel_current_range      : tuple = None,
         current_unit             : str   = "mA",
+        equilibrium_potential    : Optional[float] = None,
+        auto_tafel_region        : bool  = True,
+        min_tafel_decades        : float = 0.8,
+        tafel_r2_target          : float = 0.99,
     ) -> None:
         self.scan_rate        = scan_rate
         self.electrode_area   = max(electrode_area, 1e-10)
@@ -218,6 +245,15 @@ class LSVAnalyzer:
         self.e_ref_vs_rhe     = e_ref_vs_rhe
         self.current_unit     = current_unit
         self._unit_factor     = self._UNIT_TO_MA.get(current_unit, 1.0)
+
+        # Tafel configuration
+        # equilibrium_potential is interpreted in the SAME frame as the analysed
+        # potential (i.e. after e_ref_vs_rhe is applied). It is required to report
+        # a physically meaningful exchange current density (j0).
+        self.equilibrium_potential = equilibrium_potential
+        self.auto_tafel_region     = auto_tafel_region
+        self.min_tafel_decades     = float(min_tafel_decades)
+        self.tafel_r2_target       = float(tafel_r2_target)
 
         # Electrolyte
         if isinstance(electrolyte, ElectrolyteInfo):
@@ -314,8 +350,15 @@ class LSVAnalyzer:
             tafel_slope              = tafel["slope"],
             tafel_slope_std          = tafel["slope_std"],
             exchange_current_density = tafel["j0"],
+            j0_is_valid              = tafel["j0_valid"],
             tafel_r_squared          = tafel["r2"],
             tafel_region             = tafel["region"],
+            tafel_eta_region         = tafel["eta_region"],
+            tafel_n_points           = tafel["n_points"],
+            tafel_decades            = tafel["decades"],
+            tafel_method             = tafel["method"],
+            equilibrium_potential    = self.equilibrium_potential,
+            tafel_warnings           = tafel["warnings"],
             overpotential_10         = eta_10,
             overpotential_50         = eta_50,
             overpotential_100        = eta_100,
@@ -377,36 +420,235 @@ class LSVAnalyzer:
     # ── Tafel analysis ────────────────────────────────────────────────────────
 
     def _tafel_analysis(self, potential, j, e_onset) -> dict:
-        j_min, j_max_tafel = self.tafel_current_range
-        mask = (j >= j_min) & (j <= j_max_tafel) & (j > 0) & (potential >= e_onset - 0.05)
+        """
+        Tafel analysis with automatic activation-region detection.
 
-        if np.sum(mask) < 5:
-            mask = (j >= j_min * 0.1) & (j <= j_max_tafel * 5) & (j > 0)
+        The Tafel slope is obtained from a linear fit of E vs log10(j) over the
+        activation-controlled (low-overpotential) branch only. That branch is
+        bounded below by E_onset and above by the current peak, so the
+        mass-transport-limited / capacitive regions are excluded. Within it, the
+        longest contiguous window that is genuinely linear (R^2 >= target) and
+        spans a meaningful current range (>= min decades) is selected, instead of
+        trusting a fixed current window that may straddle two regimes.
 
-        if np.sum(mask) < 3:
-            return {"slope": float("nan"), "slope_std": float("nan"),
-                    "j0": float("nan"), "r2": 0.0, "region": (e_onset, e_onset)}
+        Exchange current density (j0) is reported ONLY when an equilibrium
+        potential is supplied; it is then obtained by extrapolating the Tafel line
+        to zero overpotential (eta = 0), per the IUPAC definition. Extrapolating
+        to E_onset is not a true j0 and is therefore not reported as one.
 
-        E_tafel = potential[mask]
-        log_j   = np.log10(j[mask])
+        Returns a dict with keys: slope, slope_std, j0, j0_valid, r2, region,
+        eta_region, n_points, decades, method, warnings.
+        """
+        warnings: list = []
 
-        try:
-            slope, intercept, r_val, _, slope_std = linregress(log_j, E_tafel)
-            tafel_mv = slope * 1000.0
-            try:
-                j0 = float(10 ** ((e_onset - intercept) / slope))
-            except Exception:
-                j0 = float("nan")
+        def _failed(msg):
             return {
-                "slope"    : tafel_mv,
-                "slope_std": slope_std * 1000.0,
-                "j0"       : j0,
-                "r2"       : r_val ** 2,
-                "region"   : (float(E_tafel[0]), float(E_tafel[-1])),
+                "slope": float("nan"), "slope_std": float("nan"),
+                "j0": float("nan"), "j0_valid": False, "r2": 0.0,
+                "region": (e_onset, e_onset),
+                "eta_region": (float("nan"), float("nan")),
+                "n_points": 0, "decades": 0.0, "method": "failed",
+                "warnings": warnings + [msg],
             }
-        except Exception:
-            return {"slope": float("nan"), "slope_std": float("nan"),
-                    "j0": float("nan"), "r2": 0.0, "region": (e_onset, e_onset)}
+
+        # 1) Activation-controlled domain: above onset, on the rising branch
+        #    (up to the current peak), positive current only.
+        j_peak_idx = int(np.argmax(j))
+        e_peak     = float(potential[j_peak_idx])
+        j_floor    = max(1e-4, 0.01 * float(j[j_peak_idx]))   # ignore baseline noise
+
+        domain = (potential >= e_onset) & (potential <= e_peak) & (j > j_floor)
+        if np.sum(domain) < 6:
+            domain = (potential <= e_peak) & (j > j_floor)
+            warnings.append("Few points above E_onset; kinetic domain relaxed.")
+        if np.sum(domain) < 4:
+            return _failed("Insufficient points in the activation-controlled domain.")
+
+        E_dom    = potential[domain]
+        logj_dom = np.log10(j[domain])
+
+        # 2) Region selection.
+        #    (a) If the user provided a current window AND auto-detection is off,
+        #        honour it when it yields a clean linear fit.
+        #    (b) Otherwise auto-detect the best linear sub-window.
+        region_idx = None
+        method     = ""
+
+        if (self.tafel_current_range is not None) and (not self.auto_tafel_region):
+            j_min, j_max = self.tafel_current_range
+            win = (j[domain] >= j_min) & (j[domain] <= j_max)
+            if np.sum(win) >= self._min_tafel_points(len(E_dom)):
+                idx = np.where(win)[0]
+                xs, ys = logj_dom[idx], E_dom[idx]
+                _, _, rv, _, _ = linregress(xs, ys)
+                dec = float(xs.max() - xs.min())
+                if (rv ** 2 >= 0.98) and (dec >= 0.5):
+                    region_idx = idx
+                    method = "user current window"
+            if region_idx is None:
+                warnings.append(
+                    "User current window was not a clean linear region; "
+                    "auto-detected window used instead."
+                )
+
+        if region_idx is None:
+            region_idx = self._find_linear_tafel_region(E_dom, logj_dom)
+            method = "auto-detected"
+
+        if region_idx is None or len(region_idx) < 3:
+            return _failed("Could not isolate a linear Tafel region.")
+
+        E_fit    = E_dom[region_idx]
+        logj_fit = logj_dom[region_idx]
+
+        # 3) Linear fit: E = intercept + slope * log10(j).
+        slope, intercept, r_val, _, slope_std = linregress(logj_fit, E_fit)
+        if not np.isfinite(slope) or abs(slope) < 1e-9:
+            return _failed("Degenerate Tafel fit (zero slope).")
+
+        tafel_mv = slope * 1000.0
+        r2       = r_val ** 2
+        decades  = float(logj_fit.max() - logj_fit.min())
+        n_pts    = int(len(region_idx))
+
+        # 4) Exchange current density — only with a known equilibrium potential.
+        j0, j0_valid = float("nan"), False
+        eta_region   = (float("nan"), float("nan"))
+        if self.equilibrium_potential is not None:
+            e_eq = float(self.equilibrium_potential)
+            # eta = (intercept - e_eq) + slope * log10(j); j0 at eta = 0.
+            try:
+                j0 = float(10 ** (-(intercept - e_eq) / slope))
+                j0_valid = bool(np.isfinite(j0) and j0 > 0)
+            except Exception:
+                j0, j0_valid = float("nan"), False
+            eta_region = (float(E_fit.min() - e_eq), float(E_fit.max() - e_eq))
+            if not j0_valid:
+                warnings.append("j0 extrapolation gave a non-physical value; check E_eq.")
+        else:
+            warnings.append(
+                "j0 not computed: no equilibrium potential supplied "
+                "(extrapolation to E_onset is not a true exchange current density)."
+            )
+
+        # 5) Literature-grounded quality checks for AOR.
+        if r2 < 0.99:
+            warnings.append(
+                f"R2 = {r2:.4f} (<0.99): the window may span more than one regime."
+            )
+        if decades < 1.0:
+            warnings.append(
+                f"Tafel window spans {decades:.2f} decade(s) of current (<1); "
+                "slope is less reliable."
+            )
+        if abs(tafel_mv) > 120.0:
+            warnings.append(
+                f"Slope = {tafel_mv:.0f} mV/dec (>120): in AOR this often indicates "
+                "mass-transport contamination or a change in rate-determining step; "
+                "confirm the fit is within the activation-controlled branch."
+            )
+        if E_fit.max() > e_peak - 0.02:
+            warnings.append(
+                "Upper edge of the Tafel window is close to the current peak; "
+                "possible mixed / mass-transport control."
+            )
+        if self.scan_rate > 20.0:
+            warnings.append(
+                f"Scan rate = {self.scan_rate:g} mV/s: kinetic Tafel from LSV is most "
+                "reliable at <= 5 mV/s to suppress capacitive / double-layer current."
+            )
+
+        return {
+            "slope": tafel_mv, "slope_std": slope_std * 1000.0,
+            "j0": j0, "j0_valid": j0_valid, "r2": r2,
+            "region": (float(E_fit.min()), float(E_fit.max())),
+            "eta_region": eta_region,
+            "n_points": n_pts, "decades": decades,
+            "method": method, "warnings": warnings,
+        }
+
+    # ── Tafel region detection ────────────────────────────────────────────────
+
+    def _min_tafel_points(self, n_domain: int) -> int:
+        """Minimum points for a trustworthy linear fit."""
+        return max(6, int(0.08 * n_domain))
+
+    def _find_linear_tafel_region(self, E, logj):
+        """
+        Find the contiguous window of (E vs log10 j) that represents the
+        activation-controlled Tafel line.
+
+        Physical basis: on an AOR polarisation curve the apparent slope can only
+        *increase* as mass-transport mixes in at higher overpotential, so the true
+        activation slope is the SMALLEST linear slope found at the foot of the
+        wave. The routine therefore scans candidate windows of width between
+        min_tafel_decades and ~1.2 decades, keeps those that are genuinely linear
+        (R^2 >= gate), and returns the one with the smallest |slope| (tie-broken by
+        more points, then lower foot). This rejects windows that creep into the
+        mixed/mass-transport region. If no window clears the linearity gate, the
+        highest-R^2 window meeting the span requirement is returned.
+
+        Regression statistics are computed in O(1) per window via prefix sums.
+        Assumes E is ordered by ascending potential and log10(j) is near-monotonic
+        on this branch. Returns an int index array into E/logj, or None.
+        """
+        x = np.asarray(logj, dtype=float)
+        y = np.asarray(E, dtype=float)
+        n = len(x)
+        min_pts = self._min_tafel_points(n)
+        if n < min_pts:
+            return None
+
+        max_decades = max(self.min_tafel_decades + 0.2, 1.2)
+        r2_gate     = min(self.tafel_r2_target, 0.997)
+
+        cx  = np.concatenate(([0.0], np.cumsum(x)))
+        cy  = np.concatenate(([0.0], np.cumsum(y)))
+        cxx = np.concatenate(([0.0], np.cumsum(x * x)))
+        cyy = np.concatenate(([0.0], np.cumsum(y * y)))
+        cxy = np.concatenate(([0.0], np.cumsum(x * y)))
+
+        stride = 1 if n <= 800 else int(np.ceil(n / 800.0))
+
+        best     = None   # (abs_slope, -n_points, i, k)  -> minimise
+        fallback = None   # (r2, i, k)
+
+        for i in range(0, n - min_pts + 1, stride):
+            for k in range(i + min_pts - 1, n, stride):
+                span = x[k] - x[i]
+                if span < self.min_tafel_decades:
+                    continue
+                if span > max_decades:
+                    break  # windows only widen as k grows (monotonic logj)
+                m = k - i + 1
+                sx  = cx[k + 1]  - cx[i]
+                sy  = cy[k + 1]  - cy[i]
+                sxx = cxx[k + 1] - cxx[i]
+                syy = cyy[k + 1] - cyy[i]
+                sxy = cxy[k + 1] - cxy[i]
+
+                Sxx = sxx - sx * sx / m
+                if Sxx <= 1e-12:
+                    continue
+                Syy = syy - sy * sy / m
+                if Syy <= 1e-12:
+                    continue
+                Sxy = sxy - sx * sy / m
+                r2  = (Sxy * Sxy) / (Sxx * Syy)
+                slope = Sxy / Sxx
+
+                if (fallback is None) or (r2 > fallback[0]):
+                    fallback = (r2, i, k)
+                if r2 >= r2_gate:
+                    cand = (abs(slope), -m, i, k)
+                    if (best is None) or (cand < best):
+                        best = cand
+
+        if best is not None:
+            return np.arange(best[2], best[3] + 1)
+        if fallback is not None:
+            return np.arange(fallback[1], fallback[2] + 1)
+        return None
 
     # ── Overpotential ─────────────────────────────────────────────────────────
 
