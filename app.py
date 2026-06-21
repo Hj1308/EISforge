@@ -321,14 +321,15 @@ with st.sidebar:
     st.divider()
     st.markdown('<p class="section-title">Electrode Parameters</p>', unsafe_allow_html=True)
 
-    # ── CHANGE 3: Geometric area — 4 decimal places ────────────────────────
-    area = st.number_input(
-        "Geometric area (cm²)",
-        value=1.0,
-        step=0.0001,
-        min_value=0.0001,
-        format="%.4f",
-    )
+    diameter_mm = st.number_input(
+        "Disk diameter (mm)", value=0.0, min_value=0.0, step=0.5,
+        help="If > 0, overrides area below. Standard GCE: 3 mm or 5 mm")
+    if diameter_mm > 0:
+        area = math.pi * (diameter_mm / 20.0) ** 2
+        st.caption(f"→ Area = {area:.4f} cm²")
+    else:
+        area = st.number_input("Geometric area (cm²)", value=1.0,
+            min_value=0.0001, step=0.0001, format="%.4f")
     _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "carbon_material" else "ECSA (cm²_metal)"
     ecsa    = st.number_input(_ecsa_label,             value=0.0, step=0.1,  min_value=0.0)
     loading = st.number_input("Loading (mg/cm²)",      value=0.0, step=0.01, min_value=0.0)
