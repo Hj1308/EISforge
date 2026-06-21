@@ -194,7 +194,15 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
 
     # Detect scan direction to split at correct turning points
 dE = np.diff(E_all[:min(50, len(E_all))])
-first_dir = "up" if np.median(dE) > 0 else "down"
+    first_dir = "up" if np.median(dE) > 0 else "down"
+    if first_dir == "up":
+        cycle_boundaries = vertices[1::2]
+    else:
+        cycle_boundaries = vertices[0::2]
+    if len(cycle_boundaries) == 0:
+        cycle_boundaries = vertices[:1]
+    cycle_starts = [0] + list(cycle_boundaries + 1)
+    cycle_ends   = list(cycle_boundaries + 1) + [len(E_all)]
 if first_dir == "up":
     cycle_boundaries = vertices[1::2]   # lower vertices = end of complete cycles
 else:
@@ -218,7 +226,12 @@ def _compute_charge(E, I_mA, scan_rate_mV_s):
     """Q (mC) = integral I dt = integral I dE / nu.
     Uses np.trapezoid (np.trapz removed in numpy 2.0)."""
     nu = max(scan_rate_mV_s / 1000.0, 1e-9)
-    dE = np.diff(E) if len(dE) < 2:     return 0.0, 0.0, 0.0 sign_changes = np.where(np.diff(np.sign(dE)) != 0)[0] vertex = int(sign_changes[0] + 1) if len(sign_changes) > 0 else len(E) // 2
+    dE = np.diff(E) if len(dE) < 2:         nu = max(scan_rate_mV_s / 1000.0, 1e-9)
+    dE = np.diff(E)
+    if len(dE) < 2:
+        return 0.0, 0.0, 0.0
+    sign_changes = np.where(np.diff(np.sign(dE)) != 0)[0]
+    vertex = int(sign_changes[0] + 1) if len(sign_changes) > 0 else len(E) // 2
     Q_f = float(np.trapezoid(I_mA[:vertex + 1], E[:vertex + 1]) / nu)
     Q_b = float(np.trapezoid(I_mA[vertex:],     E[vertex:])     / nu)
     return Q_f + Q_b, Q_f, Q_b
@@ -360,10 +373,11 @@ with st.sidebar:
     elec_conc = st.number_input("Electrolyte conc. (M)", value=1.0, step=0.001,
     min_value=0.0, format="%.4f", help="Used for pH and RHE conversion only")
 
-    def _auto_ph(compound: str, conc: float) -> float:
-        if compound == "H2SO4":
-    h1 = conc
-    Ka2 = 10**(-1.99)
+     if compound == "H2SO4":
+            h1 = conc
+            Ka2 = 10**(-1.99)
+            x = Ka2 * conc / (h1 + Ka2) if h1 > 0 else conc
+            return max(-math.log10(h1 + x), -1.0)
     x = Ka2 * conc / (h1 + Ka2) if h1 > 0 else conc
     return max(-math.log10(h1 + x), -1.0)
         elif compound in ("HCl", "HClO4", "HNO3"):
@@ -508,10 +522,10 @@ with tab1:
     with col2:
         if cv_file:
             try:
-                if Path(cv_file.name).suffix.lower() == ".idf":
-    pot, cur, _meta = _parse_idf_cached(cv_file.getvalue(), cycle_idx=int(cycle_idx))
-else:
-    pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor)
+                 if Path(cv_file.name).suffix.lower() == ".idf":
+                    pot, cur, _meta = _parse_idf_cached(cv_file.getvalue(), cycle_idx=int(cycle_idx))
+                else:
+                    pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor)
                 if "Scanrate" in _meta:
                     sr_cv = int(_meta["Scanrate"] * 1000)
                 if use_smooth:
