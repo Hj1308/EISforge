@@ -332,7 +332,15 @@ with st.sidebar:
             min_value=0.0001, step=0.0001, format="%.4f")
     _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "carbon_material" else "ECSA (cm²_metal)"
     ecsa    = st.number_input(_ecsa_label,             value=0.0, step=0.1,  min_value=0.0)
-    loading = st.number_input("Loading (mg/cm²)",      value=0.0, step=0.01, min_value=0.0)
+    mass_ug = st.number_input(
+        "Deposited mass (µg)", value=0.0, min_value=0.0, step=1.0,
+        help="If > 0, overrides loading below. e.g. 5 µg on 3 mm GCE")
+    if mass_ug > 0 and area > 0:
+        loading = (mass_ug / 1000.0) / area
+        st.caption(f"→ Loading = {loading:.4f} mg/cm²  |  mass = {mass_ug:.1f} µg")
+    else:
+        loading = st.number_input("Loading (mg/cm²)", value=0.0, step=0.01, min_value=0.0)
+    _mass_mg = mass_ug / 1000.0 if mass_ug > 0 else loading * area
 
     st.divider()
     st.markdown('<p class="section-title">Experimental Conditions</p>', unsafe_allow_html=True)
