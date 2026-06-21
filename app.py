@@ -587,29 +587,26 @@ with tab1:
         import plotly.graph_objects as go
         fig = go.Figure()
         x_plot = st.session_state.get("cv_pot_corr", st.session_state["cv_pot"])
-        fig.add_trace(go.Scatter(
-            x=x_plot, y=st.session_state["cv_cur"],
-            mode="lines", name="CV" + (" (iR-corrected)" if actual_rs>0 else ""),
-            line=dict(color="#2563eb", width=2),
-        ))
+        _cur_plot = st.session_state["cv_cur"]
+        j_arr = _cur_plot / area if area > 0 else _cur_plot
+        fig.add_trace(go.Scatter(x=x_plot, y=j_arr, mode="lines",
+            name="CV" + (" (iR-corrected)" if actual_rs>0 else ""),
+            line=dict(color="#2563eb", width=2)))
         fig.add_vline(x=r.e_onset, line_dash="dash", line_color="#d97706",
-                      annotation_text=f"E_onset = {r.e_onset:.3f} V",
-                      annotation_font=dict(color="#d97706"))
-        fig.add_trace(go.Scatter(
-            x=[r.e_forward_peak], y=[r.i_forward_peak], mode="markers",
-            name=f"I_f = {r.i_forward_peak:.3f} mA",
-            marker=dict(color="#16a34a", size=12, symbol="star"),
-        ))
-        fig.add_trace(go.Scatter(
-            x=[r.e_backward_peak], y=[r.i_backward_peak], mode="markers",
-            name=f"I_b = {r.i_backward_peak:.3f} mA",
-            marker=dict(color="#dc2626", size=12, symbol="star"),
-        ))
-        title = f"CV — {sr_cv} mV/s | {temperature}°C | {catalyst or 'Catalyst'}"
+            annotation_text=f"E_onset = {r.e_onset:.3f} V",
+            annotation_font=dict(color="#d97706"))
+        if r.e_forward_peak is not None:
+            fig.add_trace(go.Scatter(x=[r.e_forward_peak], y=[r.i_forward_peak/area],
+                mode="markers", name=f"j_f = {r.i_forward_peak/area:.3f} mA cm⁻²",
+                marker=dict(color="#16a34a", size=12, symbol="star")))
+        if r.e_backward_peak is not None and not _is_mf:
+            fig.add_trace(go.Scatter(x=[r.e_backward_peak], y=[r.i_backward_peak/area],
+                mode="markers", name=f"j_b = {r.i_backward_peak/area:.3f} mA cm⁻²",
+                marker=dict(color="#dc2626", size=12, symbol="star")))
+        title = f"j vs E — {sr_cv} mV/s | {temperature}°C | {catalyst or 'Catalyst'}"
         if actual_rs>0: title += f" | iR-corrected (R_s={actual_rs:.1f}Ω)"
         fig.update_layout(**PLOTLY_LAYOUT, title=title,
-                          xaxis_title=f"Potential (V vs {e_ref_type})",
-                          yaxis_title="Current (mA)")
+            xaxis_title=f"E (V vs {e_ref_type})", yaxis_title="j (mA cm⁻²)")
         st.plotly_chart(fig, use_container_width=True)
 
     # ── Batch CV ──────────────────────────────────────────────────────────────
