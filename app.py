@@ -179,7 +179,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
                            "µA" if unit_mult == 0.001 else "mA")
 
     rows = re.findall(
-        r"(-?\d\.\d+E[+-]\d+)\s+(-?\d\.\d+E[+-]\d+)\s+(-?\d\.\d+E[+-]\d+)", text)
+    r"(-?\d+\.?\d*E[+-]\d+)\s+(-?\d+\.?\d*E[+-]\d+)\s+(-?\d+\.?\d*E[+-]\d+)", text)
     if not rows:
         raise ValueError("No numeric data found in .idf file")
     arr   = np.array(rows, dtype=float)
@@ -192,8 +192,17 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
         meta["_n_cycles"] = 1; meta["_cycle_used"] = 1
         return E_all, I_all, meta
 
-    cycle_starts = [0] + list(vertices[::2] + 1)
-    cycle_ends   = list(vertices[::2] + 1) + [len(E_all)]
+    # Detect scan direction to split at correct turning points
+dE = np.diff(E_all[:min(50, len(E_all))])
+first_dir = "up" if np.median(dE) > 0 else "down"
+if first_dir == "up":
+    cycle_boundaries = vertices[1::2]   # lower vertices = end of complete cycles
+else:
+    cycle_boundaries = vertices[0::2]   # upper vertices = end of complete cycles
+if len(cycle_boundaries) == 0:
+    cycle_boundaries = vertices[:1]
+cycle_starts = [0] + list(cycle_boundaries + 1)
+cycle_ends   = list(cycle_boundaries + 1) + [len(E_all)]
     n_cycles = len(cycle_starts) - 1
     meta["_n_cycles"] = n_cycles
     if cycle_idx == -1:
@@ -209,7 +218,7 @@ def _compute_charge(E, I_mA, scan_rate_mV_s):
     """Q (mC) = integral I dt = integral I dE / nu.
     Uses np.trapezoid (np.trapz removed in numpy 2.0)."""
     nu = max(scan_rate_mV_s / 1000.0, 1e-9)
-    vertex = int(np.argmax(E))
+    dE = np.diff(E) if len(dE) < 2:     return 0.0, 0.0, 0.0 sign_changes = np.where(np.diff(np.sign(dE)) != 0)[0] vertex = int(sign_changes[0] + 1) if len(sign_changes) > 0 else len(E) // 2
     Q_f = float(np.trapezoid(I_mA[:vertex + 1], E[:vertex + 1]) / nu)
     Q_b = float(np.trapezoid(I_mA[vertex:],     E[vertex:])     / nu)
     return Q_f + Q_b, Q_f, Q_b
@@ -353,12 +362,15 @@ with st.sidebar:
     current_unit = st.selectbox("Current unit",["mA","A","μA","nA"])
     e_ref_type   = st.selectbox("Reference electrode", list(E_REF_MAP.keys()))
     e_ref_val    = E_REF_MAP[e_ref_type]
-    elec_conc = st.number_input("Electrolyte conc. (M)", value=1.0, step=0.1,
-        min_value=0.01, help="Used for pH and RHE conversion only")
+    elec_conc = st.number_input("Electrolyte conc. (M)", value=1.0, step=0.001,
+    min_value=0.0, format="%.4f", help="Used for pH and RHE conversion only")
 
     def _auto_ph(compound: str, conc: float) -> float:
         if compound == "H2SO4":
-            return max(-math.log10(2 * conc), -1.0)
+    h1 = conc
+    Ka2 = 10**(-1.99)
+    x = Ka2 * conc / (h1 + Ka2) if h1 > 0 else conc
+    return max(-math.log10(h1 + x), -1.0)
         elif compound in ("HCl", "HClO4", "HNO3"):
             return max(-math.log10(conc), -1.0)
         elif compound in ("KOH", "NaOH"):
@@ -508,7 +520,7 @@ with tab1:
                 if use_smooth:
                     from scipy.signal import savgol_filter
                     w = sg_window if sg_window % 2 == 1 else sg_window + 1
-                    cur = savgol_filter(cur, window_length=min(w, len(cur)//2*2-1), polyorder=3)
+                     w = sg_window if sg_window % 2 == 1 else sg_window + 1 min_w = 5  # polyorder=3 → حداقل 5 w = max(min_w, min(w, len(cur) - (1 if len(cur) % 2 == 0 else 0))) if w % 2 == 0: w -= 1 if w >= min_w:     cur = savgol_filter(cur, window_length=w, polyorder=3) else:     st.warning(f"Signal too short ({len(cur)} pts) for smoothing. Skipping.")
                 _nc = _meta.get("_n_cycles", "?"); _cu = _meta.get("_cycle_used", "?")
                 _ul = _meta.get("_unit_label", "mA")
                 st.success(f"✅ {len(pot)} points | {cv_file.name} | "
@@ -782,14 +794,17 @@ with tab2:
         fig = make_subplots(rows=1,cols=2,subplot_titles=("LSV Curve","Tafel Plot"))
 
         j_lsv = st.session_state["lsv_cur"]/area
-        if actual_rs>0:
-            from eisforge.analysis.lsv_analyzer import LSVAnalyzer
-            cur_ma_lsv = st.session_state["lsv_cur"]*unit_factor
-            p_lsv = LSVAnalyzer.apply_ir_compensation(
-                st.session_state["lsv_pot"]+e_ref_val, cur_ma_lsv, actual_rs
-            )
-        else:
-            p_lsv = st.session_state["lsv_pot"]+e_ref_val
+        _nernst = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
+_rhe_offset = e_ref_val + _nernst * ph_value
+if actual_rs > 0:
+    from eisforge.analysis.lsv_analyzer import LSVAnalyzer
+    cur_a_lsv = st.session_state["lsv_cur"] / 1000.0   # mA → A  ✅
+    p_lsv = LSVAnalyzer.apply_ir_compensation(           # iR FIRST
+        st.session_state["lsv_pot"], cur_a_lsv, actual_rs
+    )
+    p_lsv = p_lsv + _rhe_offset                         # THEN RHE  ✅
+else:
+    p_lsv = st.session_state["lsv_pot"] + _rhe_offset
 
         fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
                                  name="LSV"+(" (iR-corr.)" if actual_rs>0 else ""),
