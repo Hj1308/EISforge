@@ -481,6 +481,13 @@ with tab1:
         cv_file = st.file_uploader("Upload CV file", type=CV_FORMATS, key="cv_up")
         sr_cv   = st.number_input("Scan rate (mV/s)", value=50, min_value=1)
 
+        cycle_idx = st.number_input(
+            "Cycle to analyse (0=first, -1=last complete)",
+            value=-1, min_value=-1, step=1,
+            help="Ivium often saves the last cycle incomplete; -1 picks the last closed one")
+        use_smooth = st.checkbox("Smooth noisy curve (Savitzky-Golay)", value=False)
+        sg_window  = st.slider("SG window (odd)", 5, 31, 11, 2) if use_smooth else 11
+
         # ── CHANGE 4: E_onset method auto + override ───────────────────────
         st.caption(f"🤖 Auto-selected: **{default_onset_method}** (based on catalyst type)")
         om = st.radio(
@@ -494,22 +501,30 @@ with tab1:
     with col2:
         if cv_file:
             try:
-                if Path(cv_file.name).suffix.lower()==".idf":
-                    pot,cur = load_cv_lsv(cv_file, unit_factor=1.0)
-                    st.info("Current auto-converted from A → mA (Autolab)")
-                else:
-                    pot,cur = load_cv_lsv(cv_file, unit_factor=unit_factor)
-
-                st.success(f"✅ {len(pot)} points | {cv_file.name}")
-
+                pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor,
+                                               cycle_idx=int(cycle_idx))
+                if "Scanrate" in _meta:
+                    sr_cv = int(_meta["Scanrate"] * 1000)
+                if use_smooth:
+                    from scipy.signal import savgol_filter
+                    w = sg_window if sg_window % 2 == 1 else sg_window + 1
+                    cur = savgol_filter(cur, window_length=min(w, len(cur)//2*2-1), polyorder=3)
+                _nc = _meta.get("_n_cycles", "?"); _cu = _meta.get("_cycle_used", "?")
+                _ul = _meta.get("_unit_label", "mA")
+                st.success(f"✅ {len(pot)} points | {cv_file.name} | "
+                           f"cycle {_cu}/{_nc} | unit: {_ul} | sr: {sr_cv} mV/s"
+                           + (" | smoothed" if use_smooth else ""))
+                Q_total, Q_f, Q_b = _compute_charge(pot, cur, sr_cv)
+                st.session_state.update({"cv_Q_total": Q_total, "cv_Q_f": Q_f, "cv_Q_b": Q_b})
                 from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
                 _el = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
                 ana = CVAnalyzer(scan_rate=sr_cv, electrode_area=area, ecsa=ecsa,
                                  catalyst_loading=loading, onset_method=om,
                                  electrolyte=_el, catalyst_type=catalyst_type)
                 r = ana.analyze(pot, cur, r_s_ohms=actual_rs)
-                st.session_state.update({"cv_r":r,"cv_pot":pot,"cv_cur":cur,"cv_pot_corr":
-                    CVAnalyzer.apply_ir_compensation(pot, cur, actual_rs) if actual_rs>0 else pot})
+                st.session_state.update({"cv_r": r, "cv_pot": pot, "cv_cur": cur,
+                    "cv_pot_corr": CVAnalyzer.apply_ir_compensation(pot, cur, actual_rs)
+                                   if actual_rs > 0 else pot})
             except Exception as e:
                 st.error(f"Error: {e}")
 
