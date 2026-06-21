@@ -316,6 +316,11 @@ with st.sidebar:
     }
     alcohol_key = _ALCOHOL_KEY_MAP.get(alcohol, alcohol)
 
+    alcohol_conc = st.number_input(
+        "Alcohol conc. (M)", value=0.25, step=0.05, min_value=0.0,
+        help="Concentration of alcohol in solution",
+        disabled=(system_type != "AOR"))
+
     eis_pot = st.number_input("EIS potential (V)", value=0.5, step=0.01)
 
     st.divider()
