@@ -115,8 +115,10 @@ def smart_bounds(circuit_str, p0):
 def read_csv_safe(path):
     for enc in ["latin-1", "cp1252", "utf-8", "utf-16"]:
         try:
-            return pd.read_csv(path, encoding=enc, sep=None, engine="python",
-                               comment="#", skip_blank_lines=True)
+            return pd.read_csv(
+                path, encoding=enc, sep=None, engine="python",
+                comment="#", skip_blank_lines=True,
+            )
         except (UnicodeDecodeError, UnicodeError):
             continue
     return pd.read_csv(path, encoding="latin-1", errors="replace",
@@ -146,12 +148,18 @@ def load_eis(f):
             from galvani import BioLogic
             mpr = BioLogic.MPRfile(tmp)
             df = mpr.DF
-            return (df["freq/Hz"].to_numpy(), df["Re(Z)/Ohm"].to_numpy(),
-                    -df["-Im(Z)/Ohm"].to_numpy(), {"source": "BioLogic"})
+            return (
+                df["freq/Hz"].to_numpy(),
+                df["Re(Z)/Ohm"].to_numpy(),
+                -df["-Im(Z)/Ohm"].to_numpy(),
+                {"source": "BioLogic"},
+            )
         else:
             df = read_csv_safe(tmp)
             c = df.columns.tolist()
-            fr, zr, zi = df[c[0]].to_numpy(float), df[c[1]].to_numpy(float), df[c[2]].to_numpy(float)
+            fr = df[c[0]].to_numpy(float)
+            zr = df[c[1]].to_numpy(float)
+            zi = df[c[2]].to_numpy(float)
             if zi.mean() < 0:
                 zi = -zi
             return fr, zr, zi, {}
@@ -176,7 +184,7 @@ def _parse_ivium_current_unit(text: str) -> float:
 
 
 def _load_ivium_cv(path: str, cycle_idx: int = -1):
-    """Load Ivium .idf CV. Returns (E, I_mA, meta).
+    """Load Ivium .idf CV. Returns (E_arr, I_mA, meta).
     Auto-detects current unit; supports cycle selection (-1 = last complete)."""
     text = open(path, "rb").read().decode("latin-1")
     meta = {}
@@ -198,18 +206,18 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
     if not rows:
         raise ValueError("No numeric data found in .idf file")
     arr = np.array(rows, dtype=float)
-    E_all = arr[:, 0]
-    I_all = arr[:, 1] * unit_mult   # -> mA
+    E_arr = arr[:, 0]
+    I_mA = arr[:, 1] * unit_mult   # -> mA
 
-    sign_ch = np.diff(np.sign(np.diff(E_all)))
+    sign_ch = np.diff(np.sign(np.diff(E_arr)))
     vertices = np.where(sign_ch != 0)[0] + 1
     if len(vertices) < 2:
         meta["_n_cycles"] = 1
         meta["_cycle_used"] = 1
-        return E_all, I_all, meta
+        return E_arr, I_mA, meta
 
     # Detect scan direction to split at correct turning points
-    dE = np.diff(E_all[:min(50, len(E_all))])
+    dE = np.diff(E_arr[:min(50, len(E_arr))])
     first_dir = "up" if np.median(dE) > 0 else "down"
     if first_dir == "up":
         cycle_boundaries = vertices[1::2]
@@ -218,7 +226,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
     if len(cycle_boundaries) == 0:
         cycle_boundaries = vertices[:1]
     cycle_starts = [0] + list(cycle_boundaries + 1)
-    cycle_ends = list(cycle_boundaries + 1) + [len(E_all)]
+    cycle_ends = list(cycle_boundaries + 1) + [len(E_arr)]
 
     n_cycles = len(cycle_starts) - 1
     meta["_n_cycles"] = n_cycles
@@ -228,7 +236,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
         chosen = max(0, min(cycle_idx, n_cycles - 1))
     meta["_cycle_used"] = chosen + 1
     s, e_ = cycle_starts[chosen], cycle_ends[chosen]
-    return E_all[s:e_], I_all[s:e_], meta
+    return E_arr[s:e_], I_mA[s:e_], meta
 
 
 def _compute_charge(E, I_mA, scan_rate_mV_s):
@@ -253,15 +261,15 @@ def load_cv_lsv(f, unit_factor=1.0):
         if suffix == ".dta":
             from eisforge.parsers.gamry_parser import GamryParser
             ds = GamryParser().parse(tmp)
-            E = ds.potential
-            I = ds.current * unit_factor
-            return E, I, ds.metadata
+            pot = ds.potential
+            cur = ds.current * unit_factor
+            return pot, cur, ds.metadata
         else:
             df = read_csv_safe(tmp)
             c = df.columns.tolist()
-            E = df[c[0]].to_numpy(float)
-            I = df[c[1]].to_numpy(float) * unit_factor
-            return E, I, {}
+            pot = df[c[0]].to_numpy(float)
+            cur = df[c[1]].to_numpy(float) * unit_factor
+            return pot, cur, {}
     finally:
         os.unlink(tmp)
 
@@ -446,7 +454,7 @@ with st.sidebar:
         st.markdown(
             f'<div class="ir-box">✅ iR compensation active<br>'
             f'R_s = {r_s:.3f} Ω<br>'
-            f'iR drop @ 1 mA ≈ {r_s*1e-3*1000:.2f} mV</div>',
+            f'iR drop @ 1 mA ≈ {r_s * 1e-3 * 1000:.2f} mV</div>',
             unsafe_allow_html=True,
         )
     elif use_ir and r_s == 0:
@@ -463,12 +471,16 @@ with st.sidebar:
             help=f"Literature default: {ref_range.cdl_min_uF:.0f}–{ref_range.cdl_max_uF:.0f} μF/cm²",
         )
         if use_custom_cdl:
-            cdl_user_min = st.number_input("C_dl min (μF/cm²)", value=float(ref_range.cdl_min_uF), step=1.0, min_value=0.1)
-            cdl_user_max = st.number_input("C_dl max (μF/cm²)", value=float(ref_range.cdl_max_uF), step=1.0, min_value=1.0)
+            cdl_user_min = st.number_input(
+                "C_dl min (μF/cm²)", value=float(ref_range.cdl_min_uF), step=1.0, min_value=0.1)
+            cdl_user_max = st.number_input(
+                "C_dl max (μF/cm²)", value=float(ref_range.cdl_max_uF), step=1.0, min_value=1.0)
         else:
             cdl_user_min = None
             cdl_user_max = None
-        st.caption(f"Literature range: **{ref_range.cdl_min_uF:.0f}–{ref_range.cdl_max_uF:.0f} μF/cm²** ({ref_range.material})")
+        st.caption(
+            f"Literature range: **{ref_range.cdl_min_uF:.0f}–{ref_range.cdl_max_uF:.0f} μF/cm²**"
+            f" ({ref_range.material})")
     else:
         use_custom_cdl = False
         cdl_user_min = None
@@ -605,7 +617,7 @@ with tab1:
             cq1, cq2, cq3 = st.columns(3)
             cq1.metric("Q_forward (mC)", f"{_Qf:.3f}")
             cq2.metric("Q_backward (mC)", f"{abs(_Qb):.3f}")
-            cq3.metric("Q_f / |Q_b|", f"{abs(_Qf/_Qb):.3f}" if _Qb != 0 else "N/A",
+            cq3.metric("Q_f / |Q_b|", f"{abs(_Qf / _Qb):.3f}" if _Qb != 0 else "N/A",
                        help="≈1 = reversible")
         st.caption(f"Alcohol: **{alcohol}** {alcohol_conc} M | "
                    f"Electrolyte: **{elec_compound}** {elec_conc} M | pH = {ph_value:.2f}")
@@ -634,15 +646,19 @@ with tab1:
                       annotation_text=f"E_onset = {r.e_onset:.3f} V",
                       annotation_font=dict(color="#d97706"))
         if r.e_forward_peak is not None:
-            fig.add_trace(go.Scatter(x=[r.e_forward_peak], y=[r.i_forward_peak / area],
-                                     mode="markers",
-                                     name=f"j_f = {r.i_forward_peak/area:.3f} mA cm⁻²",
-                                     marker=dict(color="#16a34a", size=12, symbol="star")))
+            fig.add_trace(go.Scatter(
+                x=[r.e_forward_peak], y=[r.i_forward_peak / area],
+                mode="markers",
+                name=f"j_f = {r.i_forward_peak / area:.3f} mA cm⁻²",
+                marker=dict(color="#16a34a", size=12, symbol="star"),
+            ))
         if r.e_backward_peak is not None and not _is_mf:
-            fig.add_trace(go.Scatter(x=[r.e_backward_peak], y=[r.i_backward_peak / area],
-                                     mode="markers",
-                                     name=f"j_b = {r.i_backward_peak/area:.3f} mA cm⁻²",
-                                     marker=dict(color="#dc2626", size=12, symbol="star")))
+            fig.add_trace(go.Scatter(
+                x=[r.e_backward_peak], y=[r.i_backward_peak / area],
+                mode="markers",
+                name=f"j_b = {r.i_backward_peak / area:.3f} mA cm⁻²",
+                marker=dict(color="#dc2626", size=12, symbol="star"),
+            ))
         title = f"j vs E — {sr_cv} mV/s | {temperature}°C | {catalyst or 'Catalyst'}"
         if actual_rs > 0:
             title += f" | iR-corrected (R_s={actual_rs:.1f}Ω)"
@@ -665,10 +681,14 @@ with tab1:
                 try:
                     from eisforge.analysis.batch_analyzer import BatchCVAnalyzer
                     from eisforge.analysis.cv_analyzer import ElectrolyteInfo
-                    _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
+                    _el_b = ElectrolyteInfo(
+                        media=ekey, compound=elec_compound_key, concentration=elec_conc)
                     pots_b, curs_b = [], []
                     for f in batch_cv_files:
-                        p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower() == ".idf" else unit_factor)
+                        p, c, _ = load_cv_lsv(
+                            f,
+                            unit_factor=1.0 if Path(f.name).suffix.lower() == ".idf" else unit_factor,
+                        )
                         pots_b.append(p)
                         curs_b.append(c)
                     batch_ana = BatchCVAnalyzer(
@@ -782,9 +802,12 @@ with tab2:
         c2.metric("Tafel slope", f"{r.tafel_slope:.1f} mV/dec")
         c3.metric("j₀", f"{r.exchange_current_density:.3e} mA/cm²")
         c4, c5, c6 = st.columns(3)
-        c4.metric("η @ 10 mA/cm²", f"{r.overpotential_10*1000:.1f} mV" if not math.isnan(r.overpotential_10) else "N/A")
-        c5.metric("η @ 50 mA/cm²", f"{r.overpotential_50*1000:.1f} mV" if not math.isnan(r.overpotential_50) else "N/A")
-        c6.metric("η @ 100 mA/cm²", f"{r.overpotential_100*1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
+        c4.metric("η @ 10 mA/cm²",
+                  f"{r.overpotential_10 * 1000:.1f} mV" if not math.isnan(r.overpotential_10) else "N/A")
+        c5.metric("η @ 50 mA/cm²",
+                  f"{r.overpotential_50 * 1000:.1f} mV" if not math.isnan(r.overpotential_50) else "N/A")
+        c6.metric("η @ 100 mA/cm²",
+                  f"{r.overpotential_100 * 1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
         if loading > 0:
             st.metric("Mass activity", f"{r.mass_activity:.3f} mA/mg_cat")
         _sa_unit = "cm²_BET" if catalyst_type == "carbon_material" else "cm²_Pt"
@@ -810,7 +833,8 @@ with tab2:
         if actual_rs > 0:
             from eisforge.analysis.lsv_analyzer import LSVAnalyzer
             cur_a_lsv = st.session_state["lsv_cur"] / 1000.0
-            p_lsv = LSVAnalyzer.apply_ir_compensation(st.session_state["lsv_pot"], cur_a_lsv, actual_rs)
+            p_lsv = LSVAnalyzer.apply_ir_compensation(
+                st.session_state["lsv_pot"], cur_a_lsv, actual_rs)
             p_lsv = p_lsv + _rhe_offset
         else:
             p_lsv = st.session_state["lsv_pot"] + _rhe_offset
@@ -849,10 +873,14 @@ with tab2:
                 try:
                     from eisforge.analysis.batch_analyzer import BatchLSVAnalyzer
                     from eisforge.analysis.lsv_analyzer import ElectrolyteInfo
-                    _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
+                    _el_b = ElectrolyteInfo(
+                        media=ekey, compound=elec_compound_key, concentration=elec_conc)
                     pots_b, curs_b = [], []
                     for f in batch_lsv_files:
-                        p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower() == ".idf" else unit_factor)
+                        p, c, _ = load_cv_lsv(
+                            f,
+                            unit_factor=1.0 if Path(f.name).suffix.lower() == ".idf" else unit_factor,
+                        )
                         pots_b.append(p)
                         curs_b.append(c)
                     batch_lsv = BatchLSVAnalyzer(
@@ -883,12 +911,21 @@ with tab2:
         c2.metric(f"Tafel ({n_str})", f"{blr.tafel_mean:.1f} mV/dec{_tafel_note}", delta=f"± {blr.tafel_std:.1f}")
         c3.metric(f"j₀ ({n_str})", f"{blr.j0_mean:.3e} mA/cm²", delta=f"± {blr.j0_std:.3e}")
         c4, c5, c6 = st.columns(3)
-        c4.metric(f"η@10 ({n_str})", f"{blr.eta10_mean*1000:.1f} mV" if not math.isnan(blr.eta10_mean) else "N/A",
-                  delta=f"± {blr.eta10_std*1000:.1f} mV" if not math.isnan(blr.eta10_std) else None)
-        c5.metric(f"η@50 ({n_str})", f"{blr.eta50_mean*1000:.1f} mV" if not math.isnan(blr.eta50_mean) else "N/A",
-                  delta=f"± {blr.eta50_std*1000:.1f} mV" if not math.isnan(blr.eta50_std) else None)
-        c6.metric(f"η@100 ({n_str})", f"{blr.eta100_mean*1000:.1f} mV" if not math.isnan(blr.eta100_mean) else "N/A",
-                  delta=f"± {blr.eta100_std*1000:.1f} mV" if not math.isnan(blr.eta100_std) else None)
+        c4.metric(
+            f"η@10 ({n_str})",
+            f"{blr.eta10_mean * 1000:.1f} mV" if not math.isnan(blr.eta10_mean) else "N/A",
+            delta=f"± {blr.eta10_std * 1000:.1f} mV" if not math.isnan(blr.eta10_std) else None,
+        )
+        c5.metric(
+            f"η@50 ({n_str})",
+            f"{blr.eta50_mean * 1000:.1f} mV" if not math.isnan(blr.eta50_mean) else "N/A",
+            delta=f"± {blr.eta50_std * 1000:.1f} mV" if not math.isnan(blr.eta50_std) else None,
+        )
+        c6.metric(
+            f"η@100 ({n_str})",
+            f"{blr.eta100_mean * 1000:.1f} mV" if not math.isnan(blr.eta100_mean) else "N/A",
+            delta=f"± {blr.eta100_std * 1000:.1f} mV" if not math.isnan(blr.eta100_std) else None,
+        )
         if blr.potential_common is not None:
             import plotly.graph_objects as go
             fig_blsv = go.Figure()
@@ -935,7 +972,10 @@ with tab3:
                 catalyst_type=catalyst_type, electrolyte=ekey, user_circuit=None,
             )
             _suggested_circuit = eec_suggestion["circuit"]
-            _suggested_p0 = ", ".join(f"{v:.3e}" for v in eec_suggestion["p0"]) if eec_suggestion["p0"] else ""
+            _suggested_p0 = (
+                ", ".join(f"{v:.3e}" for v in eec_suggestion["p0"])
+                if eec_suggestion["p0"] else ""
+            )
             st.info(f"🤖 Suggested EEC: `{_suggested_circuit}` — " + eec_suggestion["note"])
         else:
             _suggested_circuit = "R0-p(R1,CPE1)"
@@ -945,7 +985,10 @@ with tab3:
             _suggested_circuit = g.recommended_circuit
             _suggested_p0 = ", ".join(f"{v:.3e}" for v in g.initial_guess.values())
         circ = st.text_input("Equivalent circuit (edit or accept suggestion)", value=_suggested_circuit)
-        p0s = st.text_input("Initial guess (comma-separated)", value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78")
+        p0s = st.text_input(
+            "Initial guess (comma-separated)",
+            value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78",
+        )
         use_bounds = st.checkbox("Use smart bounds", value=False)
         st.caption("💡 Tip: After fit, use R0 value as R_s for iR compensation in CV/LSV tabs.")
     with col2:
@@ -1029,7 +1072,8 @@ with tab5:
         st.markdown("#### Parameter Correlation Table")
         corr_data = {
             "R_s (Ω)": [next((v for n, v in zip(fit_r.param_names, fit_r.params) if n == "R0"), "N/A")],
-            "R_ct (Ω)": [next((v for n, v in zip(fit_r.param_names, fit_r.params) if n in ("R1", "Rct")), "N/A")],
+            "R_ct (Ω)": [next(
+                (v for n, v in zip(fit_r.param_names, fit_r.params) if n in ("R1", "Rct")), "N/A")],
             "E_onset (V)": [cv_r.e_onset],
             "j_f (mA/cm²)": [cv_r.j_forward_peak],
         }
