@@ -84,7 +84,7 @@ _ONSET_METHOD_MAP = {
 try:
     from eisforge.standards.carbon_standards import (
         CarbonValidator, suggest_eec, CDL_RANGES,
-        CARBON_SUBTYPE_MAP, RECOMMENDED_EEC,
+        CARBON_SUBTYPE_MAP,
     )
     _STANDARDS_AVAILABLE = True
 except ImportError:
@@ -146,8 +146,8 @@ def load_eis(f):
             from galvani import BioLogic
             mpr = BioLogic.MPRfile(tmp)
             df = mpr.DF
-            return df["freq/Hz"].to_numpy(), df["Re(Z)/Ohm"].to_numpy(), \
-                   -df["-Im(Z)/Ohm"].to_numpy(), {"source": "BioLogic"}
+            return (df["freq/Hz"].to_numpy(), df["Re(Z)/Ohm"].to_numpy(),
+                    -df["-Im(Z)/Ohm"].to_numpy(), {"source": "BioLogic"})
         else:
             df = read_csv_safe(tmp)
             c = df.columns.tolist()
