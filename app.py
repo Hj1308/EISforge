@@ -149,17 +149,85 @@ def load_eis(f):
         os.unlink(tmp)
 
 
-def load_cv_lsv(f, unit_factor=1.0):
+def _parse_ivium_current_unit(text: str) -> float:
+    """Parse 'Current Range=' from Ivium metadata -> multiplier to mA."""
+    m = re.search(r"Current Range\s*=\s*([\d.]+)\s*([A-Za-zµ]+)", text)
+    if not m:
+        return 1.0
+    _, unit = m.groups()
+    unit = unit.lower().strip()
+    if unit == "a":             return 1000.0
+    elif unit == "ma":          return 1.0
+    elif unit in ("ua", "µa"): return 0.001
+    return 1.0
+
+
+def _load_ivium_cv(path: str, cycle_idx: int = -1):
+    """Load Ivium .idf CV. Returns (E, I_mA, meta).
+    Auto-detects current unit; supports cycle selection (-1 = last complete)."""
+    text = open(path, "rb").read().decode("latin-1")
+    meta = {}
+    for key in ["Scanrate", "N scans", "E start", "Vertex 1", "Vertex 2"]:
+        mm = re.search(re.escape(key) + r"=([^\r\n]+)", text)
+        if mm:
+            try:    meta[key] = float(mm.group(1).strip())
+            except: meta[key] = mm.group(1).strip()
+
+    unit_mult = _parse_ivium_current_unit(text)
+    meta["_unit_mult"]  = unit_mult
+    meta["_unit_label"] = ("A" if unit_mult == 1000.0 else
+                           "µA" if unit_mult == 0.001 else "mA")
+
+    rows = re.findall(
+        r"(-?\d\.\d+E[+-]\d+)\s+(-?\d\.\d+E[+-]\d+)\s+(-?\d\.\d+E[+-]\d+)", text)
+    if not rows:
+        raise ValueError("No numeric data found in .idf file")
+    arr   = np.array(rows, dtype=float)
+    E_all = arr[:, 0]
+    I_all = arr[:, 1] * unit_mult   # -> mA
+
+    sign_ch  = np.diff(np.sign(np.diff(E_all)))
+    vertices = np.where(sign_ch != 0)[0] + 1
+    if len(vertices) < 2:
+        meta["_n_cycles"] = 1; meta["_cycle_used"] = 1
+        return E_all, I_all, meta
+
+    cycle_starts = [0] + list(vertices[::2] + 1)
+    cycle_ends   = list(vertices[::2] + 1) + [len(E_all)]
+    n_cycles = len(cycle_starts) - 1
+    meta["_n_cycles"] = n_cycles
+    if cycle_idx == -1:
+        chosen = max(0, n_cycles - 2) if n_cycles >= 2 else 0
+    else:
+        chosen = max(0, min(cycle_idx, n_cycles - 1))
+    meta["_cycle_used"] = chosen + 1
+    s, e_ = cycle_starts[chosen], cycle_ends[chosen]
+    return E_all[s:e_], I_all[s:e_], meta
+
+
+def _compute_charge(E, I_mA, scan_rate_mV_s):
+    """Q (mC) = integral I dt = integral I dE / nu.
+    Uses np.trapezoid (np.trapz removed in numpy 2.0)."""
+    nu = max(scan_rate_mV_s / 1000.0, 1e-9)
+    vertex = int(np.argmax(E))
+    Q_f = float(np.trapezoid(I_mA[:vertex + 1], E[:vertex + 1]) / nu)
+    Q_b = float(np.trapezoid(I_mA[vertex:],     E[vertex:])     / nu)
+    return Q_f + Q_b, Q_f, Q_b
+
+
+def load_cv_lsv(f, unit_factor=1.0, cycle_idx=-1):
+    """Unified CV/LSV loader: Ivium .idf (unit+cycle aware) or CSV/TXT.
+    Always returns (E, I_mA, meta) — 3 values."""
     suffix = Path(f.name).suffix.lower()
     tmp = save_upload(f)
     try:
-        if suffix==".idf":
-            from eisforge.parsers.autolab_parser import AutolabIDFParser
-            ds=AutolabIDFParser().parse(tmp)
-            return ds.z_real, ds.z_imag*unit_factor
+        if suffix == ".idf":
+            return _load_ivium_cv(tmp, cycle_idx=cycle_idx)
         else:
-            df=read_csv_safe(tmp); c=df.columns.tolist()
-            return df[c[0]].to_numpy(float), df[c[1]].to_numpy(float)*unit_factor
+            df = read_csv_safe(tmp); c = df.columns.tolist()
+            E  = df[c[0]].to_numpy(float)
+            I  = df[c[1]].to_numpy(float) * unit_factor
+            return E, I, {}
     finally:
         os.unlink(tmp)
 
@@ -510,7 +578,7 @@ with tab1:
                     _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
                     pots_b, curs_b = [], []
                     for f in batch_cv_files:
-                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
                         pots_b.append(p); curs_b.append(c)
 
                     batch_ana = BatchCVAnalyzer(
@@ -610,9 +678,9 @@ with tab2:
         if lsv_file:
             try:
                 if Path(lsv_file.name).suffix.lower()==".idf":
-                    pot_lsv,cur_lsv = load_cv_lsv(lsv_file, unit_factor=1.0)
+                    pot_lsv,cur_lsv,_ = load_cv_lsv(lsv_file, unit_factor=1.0)
                 else:
-                    pot_lsv,cur_lsv = load_cv_lsv(lsv_file, unit_factor=unit_factor)
+                    pot_lsv,cur_lsv,_ = load_cv_lsv(lsv_file, unit_factor=unit_factor)
 
                 st.success(f"✅ {len(pot_lsv)} points | {lsv_file.name}")
 
@@ -714,7 +782,7 @@ with tab2:
                     _el_b = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
                     pots_b, curs_b = [], []
                     for f in batch_lsv_files:
-                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
                         pots_b.append(p); curs_b.append(c)
 
                     batch_lsv = BatchLSVAnalyzer(
@@ -1137,7 +1205,7 @@ with tab6:
 
                     pots_kl, curs_kl = [], []
                     for f in kl_files:
-                        p, c = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
+                        p, c, _ = load_cv_lsv(f, unit_factor=1.0 if Path(f.name).suffix.lower()==".idf" else unit_factor)
                         pots_kl.append(p)
                         curs_kl.append(c)
 
