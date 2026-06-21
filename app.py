@@ -353,17 +353,28 @@ with st.sidebar:
     current_unit = st.selectbox("Current unit",["mA","A","μA","nA"])
     e_ref_type   = st.selectbox("Reference electrode", list(E_REF_MAP.keys()))
     e_ref_val    = E_REF_MAP[e_ref_type]
-    elec_conc    = st.number_input("Electrolyte conc. (M)", value=0.5, step=0.1)
+    elec_conc = st.number_input("Electrolyte conc. (M)", value=1.0, step=0.1,
+        min_value=0.01, help="Used for pH and RHE conversion only")
 
-    _PH_MAP = {
-        "H2SO4": 0.3, "HClO4": 0.3, "HCl": 0.0, "HNO3": 0.0,
-        "KOH": 14.0,  "NaOH": 14.0, "Na2CO3": 11.6, "NH3": 11.6,
-    }
-    _ph_default = float(_PH_MAP.get(elec_compound_key, 14.0 if ekey == "alkaline" else 0.0))
-    ph_value = st.number_input(
-        "Solution pH", min_value=0.0, max_value=14.0,
-        value=_ph_default, step=0.1,
-    )
+    def _auto_ph(compound: str, conc: float) -> float:
+        if compound == "H2SO4":
+            return max(-math.log10(2 * conc), -1.0)
+        elif compound in ("HCl", "HClO4", "HNO3"):
+            return max(-math.log10(conc), -1.0)
+        elif compound in ("KOH", "NaOH"):
+            return min(14.0 + math.log10(conc), 15.0)
+        elif compound in ("Na2CO3", "NH3"):
+            return 11.6
+        return 14.0 if ekey == "alkaline" else 7.0
+
+    _ph_auto = _auto_ph(elec_compound_key, elec_conc)
+    _ph_override = st.checkbox("Override pH manually", value=False)
+    if _ph_override:
+        ph_value = st.number_input("pH (manual)",
+            value=float(round(_ph_auto, 2)), min_value=0.0, max_value=14.0, step=0.1)
+    else:
+        ph_value = _ph_auto
+        st.caption(f"pH = **{ph_value:.2f}** (auto — {elec_compound_key} {elec_conc} M)")
 
     sub_conc     = st.number_input("Substrate conc. (M)",   value=1.0, step=0.1)
     unit_factor  = UNIT_MAP.get(current_unit, 1.0)
