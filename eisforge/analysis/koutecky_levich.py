@@ -19,7 +19,7 @@ Where:
     ν     : kinematic viscosity of electrolyte (cm²/s)
     C     : bulk concentration of alcohol (mol/cm³)
 
-For B4C specifically:
+For AOR specifically:
 ---------------------
     n < 2  → incomplete oxidation — product is mostly aldehyde
     n = 2  → two-electron oxidation — common for primary alcohols
@@ -37,13 +37,12 @@ Usage:
         temperature_C=25.0,
     )
 
-    # Provide LSV data at multiple rotation speeds
     result = ana.analyze(
         rotation_speeds_rpm=[400, 900, 1600, 2500],
-        potentials=[E1, E2, E3, E4],   # one array per speed
+        potentials=[E1, E2, E3, E4],
         currents=[j1, j2, j3, j4],
         electrode_area=0.196,
-        analysis_potential=0.5,        # V vs RHE — where to read j
+        analysis_potential=0.5,
     )
 
     print(result.summary())
@@ -61,12 +60,11 @@ from scipy.stats import linregress
 
 logger = logging.getLogger(__name__)
 
-# ── Physical constants ────────────────────────────────────────────────────────
+# ── Physical constants ─────────────────────────────────────────────────────
 FARADAY   = 96485.0    # C/mol
 GAS_CONST = 8.31446    # J/mol/K
 
-# ── Diffusion coefficients (cm²/s at 25°C) ───────────────────────────────────
-# Literature values for common AOR alcohols
+# ── Diffusion coefficients (cm²/s at 25°C) ────────────────────────────────────
 DIFFUSION_COEFF = {
     "methanol"       : 1.60e-5,   # 0.1M KOH, 25°C [Lamy et al., 2002]
     "ethanol"        : 1.08e-5,   # 0.1M KOH, 25°C [Sen Gupta et al., 2005]
@@ -77,13 +75,13 @@ DIFFUSION_COEFF = {
 
 # ── Kinematic viscosities (cm²/s at 25°C) ────────────────────────────────────
 KINEMATIC_VISCOSITY = {
-    "KOH_01M"  : 0.01007,   # cm²/s ≈ water at 25°C
-    "KOH_1M"   : 0.01030,
-    "NaOH_01M" : 0.01005,
-    "NaOH_1M"  : 0.01025,
-    "H2SO4_05M": 0.01020,
-    "HClO4_01M": 0.01002,
-    "default"  : 0.01007,
+    "KOH_01M"  : 0.00893,   # cm²/s — water at 25°C (corrected from dynamic)
+    "KOH_1M"   : 0.00910,
+    "NaOH_01M" : 0.00891,
+    "NaOH_1M"  : 0.00908,
+    "H2SO4_05M": 0.00902,
+    "HClO4_01M": 0.00890,
+    "default"  : 0.00893,
 }
 
 
@@ -98,7 +96,6 @@ class KLResult:
         Potential at which K-L analysis was performed (V vs RHE).
     j_kinetic : float
         Kinetic current density — intrinsic catalyst activity (mA/cm²).
-        This is what you report in publications as the true catalytic rate.
     n_electrons : float
         Number of electrons transferred per alcohol molecule.
     levich_slope : float
@@ -114,7 +111,8 @@ class KLResult:
     j_measured : list
         Measured current densities at each rotation speed (mA/cm²).
     diffusion_controlled_fraction : float
-        Fraction of total current limited by mass transport (0–1).
+        Fraction of total current limited by mass transport (0–1),
+        or ``nan`` when the electrode is not in the limiting-current region.
     interpretation : str
         Human-readable interpretation of the result.
     """
@@ -133,6 +131,11 @@ class KLResult:
     catalyst_type                : str = "noble_metal"
 
     def summary(self) -> str:
+        dc_str = (
+            f"{self.diffusion_controlled_fraction:.1%}"
+            if np.isfinite(self.diffusion_controlled_fraction)
+            else "N/A (kinetic region)"
+        )
         lines = [
             "=" * 65,
             f"  Koutecky-Levich Analysis — E = {self.potential_V:.3f} V vs RHE",
@@ -145,7 +148,7 @@ class KLResult:
             f"  K-L slope (exp.)     = {self.levich_slope:.6f} mA·s^0.5/cm²",
             f"  K-L slope (theory)   = {self.levich_slope_theoretical:.6f} mA·s^0.5/cm²",
             f"  R² (K-L fit)         = {self.r_squared:.4f}",
-            f"  Mass-transport frac. = {self.diffusion_controlled_fraction:.1%}",
+            f"  Mass-transport frac. = {dc_str}",
             "-" * 65,
             f"  Interpretation: {self.interpretation}",
             "=" * 65,
@@ -160,7 +163,11 @@ class KLResult:
             "K-L slope (exp.)"          : f"{self.levich_slope:.6f}",
             "K-L slope (theory)"        : f"{self.levich_slope_theoretical:.6f}",
             "R² (K-L fit)"              : f"{self.r_squared:.4f}",
-            "Mass-transport fraction"   : f"{self.diffusion_controlled_fraction:.1%}",
+            "Mass-transport fraction"   : (
+                f"{self.diffusion_controlled_fraction:.1%}"
+                if np.isfinite(self.diffusion_controlled_fraction)
+                else "N/A"
+            ),
         }
 
 
@@ -176,7 +183,6 @@ class KLFullResult:
     temperature_C        : float
     electrode_area_cm2   : float
 
-    # Potential-dependent arrays
     potentials_V         : np.ndarray = field(default_factory=lambda: np.array([]))
     j_kinetic_arr        : np.ndarray = field(default_factory=lambda: np.array([]))
     n_electrons_arr      : np.ndarray = field(default_factory=lambda: np.array([]))
@@ -190,7 +196,7 @@ class KLFullResult:
 
     @property
     def best_result(self) -> Optional[KLResult]:
-        """Return the result with best R² fit."""
+        """Return the KLResult with the highest R²."""
         if not self.results_per_potential:
             return None
         return max(self.results_per_potential, key=lambda r: r.r_squared)
@@ -198,7 +204,7 @@ class KLFullResult:
     def summary(self) -> str:
         lines = [
             "=" * 65,
-            f"  Koutecky-Levich Full Analysis",
+            "  Koutecky-Levich Full Analysis",
             f"  Alcohol: {self.alcohol} | Electrolyte: {self.electrolyte}",
             f"  Temperature: {self.temperature_C}°C | Area: {self.electrode_area_cm2} cm²",
             "=" * 65,
@@ -215,8 +221,7 @@ class KLFullResult:
         return "\n".join(lines)
 
     def to_dataframe(self) -> pd.DataFrame:
-        rows = [r.to_dict() for r in self.results_per_potential]
-        return pd.DataFrame(rows)
+        return pd.DataFrame([r.to_dict() for r in self.results_per_potential])
 
     def to_markdown_table(self) -> str:
         df = self.to_dataframe()
@@ -251,9 +256,10 @@ class KLAnalyzer:
     Parameters
     ----------
     alcohol : str
-        Alcohol type: 'methanol', 'ethanol', '2-propanol', 'glycerol', 'ethylene_glycol'.
+        Alcohol type: ``'methanol'``, ``'ethanol'``, ``'2-propanol'``,
+        ``'glycerol'``, ``'ethylene_glycol'``.
     electrolyte : str
-        Electrolyte description: 'KOH', 'NaOH', 'H2SO4', etc.
+        Electrolyte description: ``'KOH'``, ``'NaOH'``, ``'H2SO4'``, etc.
     concentration_M : float
         Alcohol bulk concentration in mol/L (M). Default: 1.0.
     temperature_C : float
@@ -261,9 +267,9 @@ class KLAnalyzer:
     catalyst_type : str
         Catalyst family for interpretation.
     D_cm2_s : float or None
-        Custom diffusion coefficient (cm²/s). If None, uses literature value.
+        Custom diffusion coefficient (cm²/s). If ``None``, uses literature value.
     nu_cm2_s : float or None
-        Custom kinematic viscosity (cm²/s). If None, uses literature value.
+        Custom **kinematic** viscosity (cm²/s). If ``None``, uses literature value.
     """
 
     def __init__(
@@ -282,24 +288,21 @@ class KLAnalyzer:
         self.temperature_C   = temperature_C
         self.catalyst_type   = catalyst_type
 
-        # Diffusion coefficient
         self.D = D_cm2_s or DIFFUSION_COEFF.get(alcohol, 1.0e-5)
 
-        # Kinematic viscosity
         visc_key = f"{electrolyte.split()[0]}_{str(concentration_M).replace('.', '')}M"
         self.nu  = nu_cm2_s or KINEMATIC_VISCOSITY.get(
             visc_key, KINEMATIC_VISCOSITY["default"]
         )
 
-        # Alcohol concentration in mol/cm³
         self.C = concentration_M * 1e-3   # mol/L → mol/cm³
 
         logger.info(
-            f"KLAnalyzer: D={self.D:.2e} cm²/s  ν={self.nu:.5f} cm²/s  "
-            f"C={self.C:.4e} mol/cm³"
+            "KLAnalyzer: D=%.2e cm²/s  \u03bd=%.5f cm²/s  C=%.4e mol/cm³",
+            self.D, self.nu, self.C,
         )
 
-    # ── Main analysis ─────────────────────────────────────────────────────────
+    # ── Main analysis ─────────────────────────────────────────────────────
 
     def analyze(
         self,
@@ -317,21 +320,20 @@ class KLAnalyzer:
         Parameters
         ----------
         rotation_speeds_rpm : list of float
-            RDE rotation speeds in rpm. e.g. [400, 900, 1600, 2500].
-            Minimum 3 speeds required for linear fit.
+            RDE rotation speeds in rpm. e.g. ``[400, 900, 1600, 2500]``.
+            Minimum 3 speeds required for a reliable linear fit.
         potentials : list of np.ndarray
-            Potential arrays (V vs RHE), one per rotation speed.
+            Potential arrays (V vs RHE), one array per rotation speed.
         currents : list of np.ndarray
-            Current arrays (in current_unit), one per rotation speed.
+            Current arrays (in *current_unit*), one array per rotation speed.
         electrode_area : float
             Geometric electrode area in cm².
         analysis_potential : float or None
-            Single potential (V) at which to perform K-L analysis.
-            If None, analysis is performed across the full potential range.
+            Single potential (V) at which to perform the K-L analysis.
         analysis_potentials : list of float or None
             Multiple potentials for potential-dependent K-L analysis.
         current_unit : str
-            Input current unit: 'mA', 'A', 'uA', 'nA'.
+            Input current unit: ``'mA'``, ``'A'``, ``'uA'``, ``'nA'``.
 
         Returns
         -------
@@ -343,9 +345,10 @@ class KLAnalyzer:
                 f"Got {len(rotation_speeds_rpm)}."
             )
         if len(rotation_speeds_rpm) != len(potentials):
-            raise ValueError("rotation_speeds_rpm and potentials must have same length.")
+            raise ValueError(
+                "rotation_speeds_rpm and potentials must have the same length."
+            )
 
-        # Convert current to mA/cm²
         unit_map = {"A": 1000.0, "mA": 1.0, "uA": 1e-3, "nA": 1e-6}
         factor   = unit_map.get(current_unit, 1.0)
         j_arrays = [
@@ -353,16 +356,13 @@ class KLAnalyzer:
             for cur in currents
         ]
 
-        # ω in rad/s
         omega = [rpm * 2 * np.pi / 60.0 for rpm in rotation_speeds_rpm]
 
-        # Determine analysis potentials
         if analysis_potentials is not None:
             E_list = analysis_potentials
         elif analysis_potential is not None:
             E_list = [analysis_potential]
         else:
-            # Use a range across the common potential window
             e_min = max(p.min() for p in potentials)
             e_max = min(p.max() for p in potentials)
             E_list = list(np.linspace(e_min + 0.05, e_max - 0.05, 8))
@@ -371,20 +371,19 @@ class KLAnalyzer:
         for E in E_list:
             try:
                 r = self._analyze_at_potential(
-                    E, potentials, j_arrays, omega,
-                    rotation_speeds_rpm,
+                    E, potentials, j_arrays, omega, rotation_speeds_rpm,
                 )
                 if r is not None:
                     results.append(r)
             except Exception as exc:
-                logger.warning(f"K-L analysis at E={E:.3f}V failed: {exc}")
+                logger.warning("K-L analysis at E=%.3f V failed: %s", E, exc)
 
         if not results:
             raise ValueError("K-L analysis failed at all requested potentials.")
 
-        pot_arr = np.array([r.potential_V     for r in results])
-        jk_arr  = np.array([r.j_kinetic       for r in results])
-        n_arr   = np.array([r.n_electrons      for r in results])
+        pot_arr = np.array([r.potential_V  for r in results])
+        jk_arr  = np.array([r.j_kinetic    for r in results])
+        n_arr   = np.array([r.n_electrons  for r in results])
 
         return KLFullResult(
             results_per_potential = results,
@@ -405,23 +404,17 @@ class KLAnalyzer:
         omega     : list[float],
         rpm_list  : list[float],
     ) -> Optional[KLResult]:
-        """Run K-L analysis at one potential E."""
+        """Run K-L analysis at one potential *E*."""
 
-        # Read j at potential E for each rotation speed
         j_at_E = []
         for pot, j_arr in zip(potentials, j_arrays):
-            # Sort by potential
             order = np.argsort(pot)
             pot_s, j_s = pot[order], j_arr[order]
-            # Interpolate
-            j_val = float(np.interp(E, pot_s, j_s))
-            j_at_E.append(j_val)
+            j_at_E.append(float(np.interp(E, pot_s, j_s)))
 
-        # Koutecky-Levich: 1/j vs 1/√ω
         inv_j   = [1.0 / j if abs(j) > 1e-10 else np.nan for j in j_at_E]
         inv_sqw = [1.0 / np.sqrt(w) for w in omega]
 
-        # Remove NaN pairs
         valid = [(x, y) for x, y in zip(inv_sqw, inv_j)
                  if not np.isnan(x) and not np.isnan(y)]
         if len(valid) < 3:
@@ -438,31 +431,39 @@ class KLAnalyzer:
         if abs(slope) < 1e-12:
             return None
 
-        # j_kinetic from intercept: 1/j_k = intercept → j_k = 1/intercept
         j_kinetic = 1.0 / intercept if abs(intercept) > 1e-12 else float("nan")
 
-        # Theoretical B = 0.62 × n × F × D^(2/3) × ν^(-1/6) × C
-        # Rearrange to find n: n = B_exp / (0.62 × F × D^(2/3) × ν^(-1/6) × C)
-        B_experimental  = 1.0 / slope   # mA·s^0.5/cm²  (from 1/j = 1/j_k + 1/(B√ω))
-        base_B          = 0.62 * FARADAY * (self.D ** (2/3)) * (self.nu ** (-1/6)) * self.C
-        # base_B is in A·s^0.5/cm² — convert to mA
-        base_B_mA       = base_B * 1000.0
+        B_experimental = 1.0 / slope
+        base_B         = 0.62 * FARADAY * (self.D ** (2/3)) * (self.nu ** (-1/6)) * self.C
+        base_B_mA      = base_B * 1000.0
 
-        n_electrons = B_experimental / base_B_mA if base_B_mA > 1e-12 else float("nan")
+        n_electrons       = B_experimental / base_B_mA if base_B_mA > 1e-12 else float("nan")
+        B_theoretical_n2  = base_B_mA * 2.0
 
-        # Theoretical B with n=2 for comparison
-        B_theoretical_n2 = base_B_mA * 2.0
+        # ── Diffusion-controlled fraction ──────────────────────────────────────
+        # Only meaningful when j vs sqrt(ω) is linear with R² > 0.85
+        # (i.e., the electrode is in or near the limiting-current plateau).
+        # Using R² avoids a scale-dependent slope threshold.
+        try:
+            sqrt_w_arr = np.sqrt(np.array(omega))
+            j_arr_chk  = np.array(j_at_E)
+            _, _, r_jw, _, _ = linregress(sqrt_w_arr, j_arr_chk)
+            if r_jw ** 2 > 0.85:
+                j_diff_max  = B_experimental * np.sqrt(max(omega))
+                j_total_max = max(j_at_E)
+                diff_frac   = (
+                    abs(j_diff_max / j_total_max)
+                    if abs(j_total_max) > 1e-10
+                    else 0.5
+                )
+                diff_frac = min(1.0, max(0.0, diff_frac))
+            else:
+                # Not in limiting-current region — fraction is not meaningful
+                diff_frac = float("nan")
+        except Exception:
+            diff_frac = float("nan")
 
-        # Diffusion-controlled fraction at this E
-        # j_diffusion = B × √ω (at highest rotation speed)
-        omega_max     = max(omega)
-        j_diff_max    = B_experimental * np.sqrt(omega_max)
-        j_total_max   = float(np.interp(E,
-                                        np.sort(potentials[-1]),
-                                        j_arrays[-1][np.argsort(potentials[-1])]))
-        diff_frac     = abs(j_diff_max / j_total_max) if abs(j_total_max) > 1e-10 else 0.5
-
-        interpretation = self._interpret(n_electrons, j_kinetic, r_val**2)
+        interpretation = self._interpret(n_electrons, j_kinetic, r_val ** 2)
 
         return KLResult(
             potential_V                  = E,
@@ -474,13 +475,13 @@ class KLAnalyzer:
             intercept                    = intercept,
             rotation_speeds_rpm          = rpm_list,
             j_measured                   = j_at_E,
-            diffusion_controlled_fraction= min(1.0, max(0.0, diff_frac)),
+            diffusion_controlled_fraction= diff_frac,
             interpretation               = interpretation,
             alcohol                      = self.alcohol,
             catalyst_type                = self.catalyst_type,
         )
 
-    # ── Levich-only analysis ──────────────────────────────────────────────────
+    # ── Levich-only analysis ─────────────────────────────────────────────────
 
     def levich_plot_data(
         self,
@@ -488,10 +489,9 @@ class KLAnalyzer:
         j_limiting         : list[float],
     ) -> dict:
         """
-        Simple Levich plot: j_L vs √ω (no intercept — mass transport only).
+        Simple Levich plot: j_L vs √ω (mass-transport only, no intercept).
 
-        Use this when you want the limiting current only,
-        not the kinetic current. Simpler than full K-L.
+        Use this when you want the limiting current only, not j_kinetic.
 
         Parameters
         ----------
@@ -500,53 +500,52 @@ class KLAnalyzer:
 
         Returns
         -------
-        dict with slope, n_electrons, D_estimate, fit arrays.
+        dict with slope, n_electrons, D_estimate, and fit arrays.
         """
-        omega    = np.array([rpm * 2 * np.pi / 60.0 for rpm in rotation_speeds_rpm])
-        sqrt_w   = np.sqrt(omega)
-        j_arr    = np.array(j_limiting)
+        omega  = np.array([rpm * 2 * np.pi / 60.0 for rpm in rotation_speeds_rpm])
+        sqrt_w = np.sqrt(omega)
+        j_arr  = np.array(j_limiting)
 
         try:
             slope, intercept, r_val, _, _ = linregress(sqrt_w, j_arr)
         except Exception as exc:
-            raise ValueError(f"Levich plot fit failed: {exc}")
+            raise ValueError(f"Levich plot fit failed: {exc}") from exc
 
-        # B = slope → n = B / (0.62 × F × D^(2/3) × ν^(-1/6) × C)
-        base_B_mA = 0.62 * FARADAY * (self.D**(2/3)) * (self.nu**(-1/6)) * self.C * 1000.0
+        base_B_mA     = 0.62 * FARADAY * (self.D**(2/3)) * (self.nu**(-1/6)) * self.C * 1000.0
         n_from_levich = slope / base_B_mA if base_B_mA > 1e-12 else float("nan")
 
         return {
-            "slope"           : slope,
-            "intercept"       : intercept,
-            "r_squared"       : r_val ** 2,
-            "n_electrons"     : n_from_levich,
-            "sqrt_omega"      : sqrt_w,
-            "j_limiting"      : j_arr,
-            "fit_line"        : slope * sqrt_w + intercept,
+            "slope"       : slope,
+            "intercept"   : intercept,
+            "r_squared"   : r_val ** 2,
+            "n_electrons" : n_from_levich,
+            "sqrt_omega"  : sqrt_w,
+            "j_limiting"  : j_arr,
+            "fit_line"    : slope * sqrt_w + intercept,
         }
 
-    # ── Interpretation ────────────────────────────────────────────────────────
+    # ── Interpretation ─────────────────────────────────────────────────────
 
     def _interpret(self, n: float, j_k: float, r2: float) -> str:
         parts = []
 
         if r2 < 0.95:
             parts.append(
-                f"Poor K-L linearity (R²={r2:.3f}) — check data quality, "
-                f"ensure steady-state LSV at each rotation speed."
+                f"Poor K-L linearity (R²={r2:.3f}) — check data quality; "
+                f"ensure steady-state LSV was recorded at each rotation speed."
             )
 
         if np.isnan(n):
             parts.append("n electrons could not be determined.")
         elif n < 1.0:
             parts.append(
-                f"n = {n:.2f} — unusually low. Check diffusion coefficient "
-                f"or concentration value."
+                f"n = {n:.2f} — unusually low. Verify diffusion coefficient "
+                f"and alcohol concentration."
             )
         elif n < 2.5:
             parts.append(
                 f"n = {n:.2f} — two-electron process. "
-                f"Product likely: aldehyde or ketone (partial oxidation)."
+                f"Product: aldehyde or ketone (partial oxidation)."
             )
         elif n < 3.5:
             parts.append(
@@ -556,21 +555,21 @@ class KLAnalyzer:
         elif n < 4.5:
             parts.append(
                 f"n = {n:.2f} — four-electron process. "
-                f"Product: carboxylic acid (deeper oxidation)."
+                f"Product: carboxylic acid."
             )
         elif n < 6.5:
             parts.append(
-                f"n = {n:.2f} — near complete oxidation. "
-                f"Product: CO2 or deep oxidation pathway."
+                f"n = {n:.2f} — near-complete oxidation. "
+                f"Product: CO₂ or deep oxidation pathway."
             )
         else:
             parts.append(
                 f"n = {n:.2f} — unusually high. Check experimental conditions."
             )
 
-        if self.catalyst_type == "metal_free":
+        if self.catalyst_type in ("metal_free", "carbon_material"):
             parts.append(
-                "Metal-free catalyst (B4C/carbon): n < 2 is common — "
+                "Metal-free/carbon catalyst: n < 2 is common — "
                 "reaction proceeds via surface defects without d-band facilitation."
             )
 
@@ -584,7 +583,7 @@ class KLAnalyzer:
 
         return " | ".join(parts)
 
-    # ── Convenience: single-potential quick analysis ──────────────────────────
+    # ── Convenience: single-potential quick analysis ────────────────────────────
 
     def quick_analyze(
         self,
@@ -592,19 +591,21 @@ class KLAnalyzer:
         j_at_potential     : list[float],
     ) -> KLResult:
         """
-        Quick K-L analysis when you already have j values at one potential.
+        Quick K-L analysis when j values at one potential are already known.
 
         Parameters
         ----------
-        rotation_speeds_rpm : list  e.g. [400, 900, 1600, 2500]
+        rotation_speeds_rpm : list  e.g. ``[400, 900, 1600, 2500]``
         j_at_potential : list       j (mA/cm²) at each rotation speed
 
         Returns
         -------
-        KLResult at a single potential.
+        KLResult at a single potential (potential_V = 0.0 placeholder).
         """
         if len(rotation_speeds_rpm) != len(j_at_potential):
-            raise ValueError("rotation_speeds_rpm and j_at_potential must match.")
+            raise ValueError(
+                "rotation_speeds_rpm and j_at_potential must have equal length."
+            )
 
         omega   = [rpm * 2 * np.pi / 60.0 for rpm in rotation_speeds_rpm]
         inv_j   = [1.0 / j if abs(j) > 1e-10 else np.nan for j in j_at_potential]
@@ -636,7 +637,7 @@ class KLAnalyzer:
             intercept                    = intercept,
             rotation_speeds_rpm          = list(rotation_speeds_rpm),
             j_measured                   = list(j_at_potential),
-            diffusion_controlled_fraction= 0.5,
+            diffusion_controlled_fraction= float("nan"),
             interpretation               = self._interpret(n_electrons, j_kinetic, r_val**2),
             alcohol                      = self.alcohol,
             catalyst_type                = self.catalyst_type,

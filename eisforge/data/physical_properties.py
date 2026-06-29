@@ -1,79 +1,82 @@
 """
-eisforge.data.physical_properties
-==================================
-Central database for physical constants used in electrochemical calculations.
-Author: Hoda Jafari | June 2026
+Physical Property Database for Electrochemistry.
+Author: Hoda Jafari | May 2026
 
-Handles:
-    * Diffusion coefficients D(T) with linear temperature correction
-    * Kinematic viscosities nu(T) with linear temperature correction
-    * Levich base constant B_base for n = 1
+Manages diffusion coefficients and kinematic viscosities with temperature correction.
 
-Temperature model (linear approximation, valid ±30°C around 25°C):
-    X(T) = X(25°C) × [1 + coeff × (T - 25)]
+All returned values are in CGS units:
+    D  : cm\u00b2/s  (diffusion coefficient)
+    nu : cm\u00b2/s  (kinematic viscosity = dynamic / density)
 
-All values loaded from ``properties.json`` in the same directory.
-Users may supply a custom JSON path or override individual values via
-``D_custom`` / ``nu_custom`` keyword arguments.
+Temperature correction uses a **linear approximation**:
+    X(T) = X(25\u00b0C) \u00d7 [1 + coeff \u00d7 (T - 25)]
 
-Typical usage
--------------
-    from eisforge.data.physical_properties import PhysicalPropertyDB
-
-    db = PhysicalPropertyDB()           # uses bundled properties.json
-    D  = db.get_diffusion_coeff("ethanol", temperature_C=40)
-    B  = db.get_levich_base("ethanol", "KOH_1M", concentration_M=1.0, temperature_C=40)
+Valid range: 20\u201360\u00b0C. For wider ranges, use the Andrade equation.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Faraday constant (C/mol)
-_FARADAY = 96485.0
+# JSON key for kinematic viscosity (updated from old 'viscosity' key)
+_VISC_KEY = "kinematic_viscosity_cm2_per_s"
 
 
 class PhysicalPropertyDB:
     """
-    Central database for physical properties with temperature correction.
+    Central database for physical properties (D, \u03bd) with temperature correction.
+
+    Loads data from a JSON configuration file. Custom values provided at call
+    time override the database values and are returned without any temperature
+    correction (the caller is assumed to have already corrected them).
 
     Parameters
     ----------
     config_path : str or Path, optional
         Path to the JSON configuration file.  Defaults to
-        ``properties.json`` located in the same directory as this module.
+        ``<this_file_directory>/properties.json``.
     """
 
-    def __init__(self, config_path: Optional[Union[Path, str]] = None) -> None:
+    def __init__(self, config_path: Optional[Path | str] = None) -> None:
         if config_path is None:
             config_path = Path(__file__).parent / "properties.json"
 
         self.config_path = Path(config_path)
         if not self.config_path.exists():
             raise FileNotFoundError(
-                f"Properties file not found: {self.config_path}. "
-                "Ensure eisforge/data/properties.json is present."
+                f"Properties file not found: {self.config_path}"
             )
 
-        with self.config_path.open("r", encoding="utf-8") as fh:
+        with open(self.config_path, "r") as fh:
             self._data = json.load(fh)
 
-        self._default_temp: float = float(self._data.get("default_temperature", 25.0))
-        self._nu_temp_coeff: float = float(
-            self._data.get("viscosity_temp_coeff_per_C", -0.021)
-        )
-        logger.debug(
-            "PhysicalPropertyDB: loaded %d alcohol entries from %s",
-            len(self._data.get("diffusion", {})),
-            self.config_path,
+        self._default_temp: float = self._data.get("default_temperature", 25.0)
+        self._visc_temp_coeff: float = self._data.get(
+            "viscosity_temp_coeff_per_C", -0.021
         )
 
+        # Support both the old key name and the new explicit key
+        if _VISC_KEY in self._data:
+            self._visc_table: dict = self._data[_VISC_KEY]
+        elif "viscosity" in self._data:
+            logger.warning(
+                "properties.json uses deprecated key 'viscosity'. "
+                "Rename it to 'kinematic_viscosity_cm2_per_s' and verify "
+                "values are kinematic (cm\u00b2/s), not dynamic (Pa\u00b7s)."
+            )
+            self._visc_table = self._data["viscosity"]
+        else:
+            raise KeyError(
+                "properties.json must contain 'kinematic_viscosity_cm2_per_s'."
+            )
+
     # ------------------------------------------------------------------
-    # Diffusion coefficient
+    # Public API
     # ------------------------------------------------------------------
 
     def get_diffusion_coeff(
@@ -83,25 +86,11 @@ class PhysicalPropertyDB:
         custom_D: Optional[float] = None,
     ) -> float:
         """
-        Return diffusion coefficient D (cm²/s) at *temperature_C*.
+        Return diffusion coefficient (cm\u00b2/s) at *temperature_C*.
 
-        If *custom_D* is supplied it is returned as-is (no T-correction).
-        Falls back to 1.0e-5 cm²/s with a warning when the alcohol is not
-        in the database.
-
-        Parameters
-        ----------
-        alcohol : str
-            Alcohol name, e.g. ``'ethanol'``, ``'methanol'``.
-        temperature_C : float
-            Measurement temperature in degrees Celsius.
-        custom_D : float, optional
-            Override value (cm²/s).  Bypasses the database entirely.
-
-        Returns
-        -------
-        float
-            Diffusion coefficient in cm²/s (always > 0).
+        If *custom_D* is provided it is returned as-is (no correction).
+        Falls back to ``1.0e-5 cm\u00b2/s`` with a warning when the alcohol
+        key is absent from the database.
         """
         if custom_D is not None:
             return float(custom_D)
@@ -109,22 +98,27 @@ class PhysicalPropertyDB:
         entry = self._data["diffusion"].get(alcohol)
         if entry is None:
             logger.warning(
-                "PhysicalPropertyDB: diffusion coefficient for '%s' not found. "
-                "Using fallback 1.0e-5 cm²/s. "
-                "Add an entry to properties.json to suppress this warning.",
+                "Diffusion coefficient for '%s' not in DB. "
+                "Falling back to 1.0e-5 cm\u00b2/s.",
                 alcohol,
             )
             return 1.0e-5
 
-        D25: float = float(entry["value_25C"])
-        coeff: float = float(entry.get("temp_coeff_per_C", 0.020))
-        D_T = D25 * (1.0 + coeff * (temperature_C - self._default_temp))
-        # Safety floor: physically impossible to have D <= 0
-        return max(D_T, 1.0e-8)
+        D25: float = entry["value_25C"]
+        coeff: float = entry.get("temp_coeff_per_C", 0.020)
+        delta_T = temperature_C - self._default_temp
+        D_T = D25 * (1.0 + coeff * delta_T)
 
-    # ------------------------------------------------------------------
-    # Kinematic viscosity
-    # ------------------------------------------------------------------
+        if D_T <= 0:
+            logger.warning(
+                "Temperature correction yielded D <= 0 at %.1f\u00b0C for '%s'. "
+                "Clamping to 1e-8 cm\u00b2/s. Consider using a custom value.",
+                temperature_C,
+                alcohol,
+            )
+            return 1e-8
+
+        return D_T
 
     def get_viscosity(
         self,
@@ -133,45 +127,34 @@ class PhysicalPropertyDB:
         custom_nu: Optional[float] = None,
     ) -> float:
         """
-        Return kinematic viscosity nu (cm²/s) at *temperature_C*.
+        Return **kinematic** viscosity (cm\u00b2/s) at *temperature_C*.
 
-        If *custom_nu* is supplied it is returned as-is.
-        Unknown electrolyte keys fall back to the ``'default'`` entry.
+        If *custom_nu* is provided it is returned as-is.
 
-        Parameters
-        ----------
-        electrolyte_key : str
-            Key from the ``viscosity`` section of ``properties.json``,
-            e.g. ``'KOH_1M'``, ``'H2SO4_05M'``.
-        temperature_C : float
-            Measurement temperature in degrees Celsius.
-        custom_nu : float, optional
-            Override value (cm²/s).
-
-        Returns
-        -------
-        float
-            Kinematic viscosity in cm²/s (always > 0).
+        .. note::
+            The temperature correction is a linear approximation valid only
+            between 20\u201360\u00b0C.  Outside this range provide *custom_nu*
+            or use the Andrade / WLF equation externally.
         """
         if custom_nu is not None:
             return float(custom_nu)
 
-        visc_map = self._data.get("viscosity", {})
-        nu25: float = float(visc_map.get(electrolyte_key, visc_map.get("default", 0.01007)))
+        nu25: float = self._visc_table.get(
+            electrolyte_key, self._visc_table["default"]
+        )
+        delta_T = temperature_C - self._default_temp
+        nu_T = nu25 * (1.0 + self._visc_temp_coeff * delta_T)
 
-        if electrolyte_key not in visc_map:
+        if nu_T <= 0:
             logger.warning(
-                "PhysicalPropertyDB: viscosity key '%s' not found; using default %.5f cm²/s.",
+                "Viscosity correction yielded nu <= 0 at %.1f\u00b0C for '%s'. "
+                "Clamping to 0.001 cm\u00b2/s.",
+                temperature_C,
                 electrolyte_key,
-                nu25,
             )
+            return 0.001
 
-        nu_T = nu25 * (1.0 + self._nu_temp_coeff * (temperature_C - self._default_temp))
-        return max(nu_T, 1.0e-5)  # absolute floor: liquid water never goes below ~0.004 cm²/s
-
-    # ------------------------------------------------------------------
-    # Levich base constant
-    # ------------------------------------------------------------------
+        return nu_T
 
     def get_levich_base(
         self,
@@ -183,57 +166,34 @@ class PhysicalPropertyDB:
         nu_custom: Optional[float] = None,
     ) -> float:
         """
-        Calculate the Levich base constant B for n = 1 (mA·s^0.5/cm²).
+        Calculate the **n=1 Levich prefactor** B\u2080 (mA\u00b7s\u00b2/cm\u00b2).
 
-        The full Levich constant for *n* electrons is ``n × B_base``.
+        .. math::
 
-        Formula::
+            B_0 = 0.62 \\cdot F \\cdot D^{2/3} \\cdot \\nu^{-1/6} \\cdot C
 
-            B_base = 0.62 × F × D^(2/3) × ν^(−1/6) × C   [A·s^0.5/cm²]
-
-        Returned in **mA·s^0.5/cm²** (×1000 conversion applied).
-
-        Parameters
-        ----------
-        alcohol : str
-        electrolyte_key : str
-        concentration_M : float
-            Bulk alcohol concentration in mol/L.
-        temperature_C : float
-        D_custom : float, optional
-        nu_custom : float, optional
+        Multiply by *n* (number of electrons) to obtain the full Levich slope.
 
         Returns
         -------
         float
-            B_base in mA·s^0.5/cm².
+            B\u2080 in mA\u00b7s^0.5/cm\u00b2.
         """
-        D  = self.get_diffusion_coeff(alcohol, temperature_C, D_custom)
+        D = self.get_diffusion_coeff(alcohol, temperature_C, D_custom)
         nu = self.get_viscosity(electrolyte_key, temperature_C, nu_custom)
-        C_mol_per_cm3 = float(concentration_M) * 1.0e-3  # mol/L → mol/cm³
+        C_mol_per_cm3 = concentration_M * 1e-3  # mol/L \u2192 mol/cm\u00b3
 
-        B_base_A = (
+        FARADAY = 96485.0  # C/mol
+
+        B0_A = (
             0.62
-            * _FARADAY
-            * (D  ** (2.0 / 3.0))
+            * FARADAY
+            * (D ** (2.0 / 3.0))
             * (nu ** (-1.0 / 6.0))
             * C_mol_per_cm3
         )
-        return B_base_A * 1000.0  # → mA·s^0.5/cm²
-
-    # ------------------------------------------------------------------
-    # Introspection
-    # ------------------------------------------------------------------
-
-    def available_alcohols(self) -> list[str]:
-        """Return list of alcohols in the database."""
-        return list(self._data.get("diffusion", {}).keys())
-
-    def available_electrolytes(self) -> list[str]:
-        """Return list of electrolyte viscosity keys in the database."""
-        return [k for k in self._data.get("viscosity", {}).keys() if k != "default"]
+        return B0_A * 1000.0  # A \u2192 mA
 
     def to_dict(self) -> dict:
-        """Return a copy of the raw database for inspection."""
-        import copy
-        return copy.deepcopy(self._data)
+        """Return the raw database dictionary for inspection."""
+        return dict(self._data)

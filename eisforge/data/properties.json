@@ -1,41 +1,43 @@
 {
-  "_comment": "Central physical-property database for EISForge. Edit here to add new alcohols or electrolytes.",
+  "_comment": "Physical properties for electrochemistry. All values in CGS units (cm, g, s). Kinematic viscosity in cm\u00b2/s, diffusion coefficients in cm\u00b2/s.",
   "diffusion": {
     "methanol": {
       "value_25C": 1.60e-5,
       "temp_coeff_per_C": 0.022,
-      "reference": "Lamy et al., J. Appl. Electrochem. 2002"
+      "reference": "Lamy et al., 2002, 0.1M KOH 25\u00b0C"
     },
     "ethanol": {
       "value_25C": 1.08e-5,
       "temp_coeff_per_C": 0.020,
-      "reference": "Sen Gupta et al., Electrochem. Commun. 2005"
+      "reference": "Sen Gupta et al., 2005, 0.1M KOH 25\u00b0C"
     },
     "2-propanol": {
       "value_25C": 0.97e-5,
       "temp_coeff_per_C": 0.018,
-      "reference": "Mangoufis-Giasin, Electrochim. Acta 2021"
+      "reference": "Mangoufis-Giasin, 2021, 0.1M KOH 25\u00b0C"
     },
     "ethylene_glycol": {
       "value_25C": 0.94e-5,
       "temp_coeff_per_C": 0.019,
-      "reference": "Various, estimated from viscosity correlation"
+      "reference": "Various, 0.1M KOH 25\u00b0C"
     },
     "glycerol": {
       "value_25C": 0.72e-5,
       "temp_coeff_per_C": 0.017,
-      "reference": "Verma et al., ACS Catal. 2022"
+      "reference": "Verma et al., 2022, 0.1M KOH 25\u00b0C"
     }
   },
-  "viscosity": {
-    "KOH_01M":   0.01007,
-    "KOH_1M":    0.01030,
-    "NaOH_01M":  0.01005,
-    "NaOH_1M":   0.01025,
-    "H2SO4_05M": 0.01020,
-    "HClO4_01M": 0.01002,
-    "default":   0.01007
+  "kinematic_viscosity_cm2_per_s": {
+    "_comment": "True kinematic viscosity (nu = dynamic/density) at 25\u00b0C. Water: 0.00893 cm\u00b2/s. KOH/NaOH dilute solutions are close to water.",
+    "KOH_01M":   0.00893,
+    "KOH_1M":    0.00910,
+    "NaOH_01M":  0.00891,
+    "NaOH_1M":   0.00908,
+    "H2SO4_05M": 0.00902,
+    "HClO4_01M": 0.00890,
+    "default":   0.00893
   },
   "viscosity_temp_coeff_per_C": -0.021,
+  "_temp_coeff_note": "Linear approximation valid for 20-60\u00b0C only. For wider ranges use Andrade equation.",
   "default_temperature": 25.0
 }
