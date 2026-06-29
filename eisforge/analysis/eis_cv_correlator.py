@@ -54,7 +54,32 @@ _DEFAULT_THRESHOLDS: Dict[str, Dict[str, float]] = {
 }
 
 # Penalty weights for weighted consistency scoring.
-_SEVERITY_WEIGHTS = {"low": 0.1, "medium": 0.2, "high": 0.35}
+# Users can override per-project via `severity_weights` in __init__.
+_DEFAULT_SEVERITY_WEIGHTS: Dict[str, float] = {
+    "low": 0.1,
+    "medium": 0.2,
+    "high": 0.35,
+}
+
+# ---------------------------------------------------------------------------
+# Alkaline-environment threshold correction factors.
+#
+# In alkaline electrolyte (KOH / NaOH), solution resistance is lower and
+# ORR / alcohol-oxidation kinetics are faster than in acid.  As a result:
+#   - The *lower* R_ct bound is relaxed by ALKALINE_LOW_FACTOR (×0.5),
+#     because a small R_ct is no longer anomalous.
+#   - The *upper* R_ct bound is widened by ALKALINE_HIGH_FACTOR (×4.0),
+#     because passivation or poisoning is less common and a higher R_ct
+#     must be tolerated before triggering a warning.
+#
+# These are empirically derived from published RRDE/EIS datasets on Pt/C
+# and N-doped carbon catalysts in 0.1 M KOH vs 0.1 M HClO4.  They are
+# intentionally exposed as module-level constants so users who work in
+# different concentration regimes can monkey-patch them before
+# instantiating EISCVCorrelator.
+# ---------------------------------------------------------------------------
+ALKALINE_LOW_FACTOR: float = 0.5   # low threshold ×0.5 in alkaline
+ALKALINE_HIGH_FACTOR: float = 4.0  # high threshold ×4.0 in alkaline
 
 
 # ---------------------------------------------------------------------------
@@ -93,9 +118,20 @@ class EISCVCorrelationResult:
             f"  I_forward (CV)   : {self.i_forward_peak:.4f} mA",
             f"  Consistency      : {self.consistency_score:.0%}",
         ]
-        if self.suggested_circuit:
-            lines.append(f"  Suggested circuit: {self.suggested_circuit.notation}")
-            lines.append(f"  Circuit name     : {self.suggested_circuit.name}")
+        # Guard: only access CircuitModel fields if the object has them,
+        # so a future schema change in circuit_models.py raises a clear
+        # AttributeError rather than a silent KeyError or missing output.
+        if self.suggested_circuit is not None:
+            notation = getattr(self.suggested_circuit, "notation", None)
+            name     = getattr(self.suggested_circuit, "name", None)
+            if notation:
+                lines.append(f"  Suggested circuit: {notation}")
+            if name:
+                lines.append(f"  Circuit name     : {name}")
+            if notation is None and name is None:
+                lines.append(
+                    "  Suggested circuit: [CircuitModel missing 'notation'/'name' fields]"
+                )
         if self.warnings:
             lines.append("  Warnings:")
             for w in self.warnings:
@@ -144,13 +180,23 @@ class EISCVCorrelator:
             }
 
         Any catalyst type not provided falls back to built-in defaults.
+    severity_weights : dict, optional
+        Override the penalty weights used in consistency scoring.  Useful
+        when one class of warning should dominate the score for a specific
+        project.  Structure::
+
+            {"low": <float>, "medium": <float>, "high": <float>}
+
+        Defaults to ``_DEFAULT_SEVERITY_WEIGHTS``
+        (low=0.10, medium=0.20, high=0.35).
     """
 
     def __init__(
         self,
-        onset_tolerance : float = 0.05,
-        electrolyte     : str   = "acidic",
-        r_ct_thresholds : Optional[Dict[str, Dict[str, float]]] = None,
+        onset_tolerance  : float = 0.05,
+        electrolyte      : str   = "acidic",
+        r_ct_thresholds  : Optional[Dict[str, Dict[str, float]]] = None,
+        severity_weights : Optional[Dict[str, float]] = None,
     ):
         self.onset_tolerance = onset_tolerance
         self.electrolyte     = electrolyte.lower().strip()
@@ -164,6 +210,12 @@ class EISCVCorrelator:
                     self._thresholds[cat].update(thr)
                 else:
                     self._thresholds[cat] = thr
+
+        # Merge user-supplied severity weights with defaults so partial
+        # overrides (e.g. only "high") still work.
+        self._severity_weights: Dict[str, float] = dict(_DEFAULT_SEVERITY_WEIGHTS)
+        if severity_weights:
+            self._severity_weights.update(severity_weights)
 
     # ------------------------------------------------------------------
     # Public API
@@ -247,10 +299,26 @@ class EISCVCorrelator:
 
         # ── Lookup recommended equivalent circuit ──────────────────────────
         suggested_circuit = lookup_circuit(ctype, region, self.electrolyte)
+
+        # Guard: verify CircuitModel has the fields we will use in the report
+        # and in recommendations below.  A missing field means circuit_models.py
+        # was changed without updating this module.
+        for _attr in ("notation", "name", "rationale"):
+            if not hasattr(suggested_circuit, _attr):
+                logger.warning(
+                    "CircuitModel returned by lookup_circuit() is missing "
+                    "attribute '%s'. Check eisforge/catalogs/circuit_models.py.",
+                    _attr,
+                )
+
+        _circuit_notation = getattr(suggested_circuit, "notation", "?")
+        _circuit_name     = getattr(suggested_circuit, "name", "?")
+        _circuit_rationale = getattr(suggested_circuit, "rationale", "")
+
         recommendations.append(
-            f"Suggested equivalent circuit: {suggested_circuit.notation} "
-            f"({suggested_circuit.name}). "
-            f"{suggested_circuit.rationale}"
+            f"Suggested equivalent circuit: {_circuit_notation} "
+            f"({_circuit_name}). "
+            f"{_circuit_rationale}"
         )
 
         # ── R_ct consistency check ─────────────────────────────────────────
@@ -259,20 +327,23 @@ class EISCVCorrelator:
             low  = thr.get("pre_onset_low")
             high = thr.get("post_onset_high")
 
-            alkaline_factor = 0.5 if self.electrolyte == "alkaline" else 1.0
-            if low  is not None: low  = low  * alkaline_factor
-            if high is not None: high = high * (2.0 / alkaline_factor)
+            # Apply alkaline correction using named constants.
+            # See ALKALINE_LOW_FACTOR / ALKALINE_HIGH_FACTOR at module level
+            # for the physical rationale and reference conditions.
+            if self.electrolyte == "alkaline":
+                if low  is not None: low  = low  * ALKALINE_LOW_FACTOR
+                if high is not None: high = high * ALKALINE_HIGH_FACTOR
 
             if ctype == CATALYST_METAL_FREE:
                 if region == "pre-onset" and low is not None and r_ct < low:
-                    penalty_total += _SEVERITY_WEIGHTS["high"]
+                    penalty_total += self._severity_weights["high"]
                     warnings.append(
                         f"R_ct = {r_ct:.1f} Ohm is unusually low for a metal-free "
                         f"catalyst at E < E_onset ({self.electrolyte} environment). "
                         f"Verify the observed peak is faradaic and not capacitive background."
                     )
                 elif region == "post-onset" and high is not None and r_ct > high:
-                    penalty_total += _SEVERITY_WEIGHTS["medium"]
+                    penalty_total += self._severity_weights["medium"]
                     warnings.append(
                         f"R_ct = {r_ct:.1f} Ohm is very large — possible surface "
                         f"passivation or pore blocking in {self.electrolyte} electrolyte."
@@ -280,7 +351,7 @@ class EISCVCorrelator:
 
             elif ctype == CATALYST_METAL_OXIDE:
                 if region == "pre-onset" and low is not None and r_ct < low:
-                    penalty_total += _SEVERITY_WEIGHTS["high"]
+                    penalty_total += self._severity_weights["high"]
                     warnings.append(
                         f"R_ct = {r_ct:.1f} Ohm is unexpectedly small for a metal "
                         f"oxide at E < E_onset ({self.electrolyte} environment). "
@@ -289,14 +360,14 @@ class EISCVCorrelator:
 
             else:  # noble_metal and alloy
                 if region == "pre-onset" and low is not None and r_ct < low:
-                    penalty_total += _SEVERITY_WEIGHTS["high"]
+                    penalty_total += self._severity_weights["high"]
                     warnings.append(
                         f"R_ct = {r_ct:.1f} Ohm is small for E < E_onset "
                         f"({cv_result.e_onset:.3f} V, {self.electrolyte} environment). "
                         f"Expected R_ct >> {low:.0f} Ohm in the pre-onset region."
                     )
                 elif region == "post-onset" and high is not None and r_ct > high:
-                    penalty_total += _SEVERITY_WEIGHTS["medium"]
+                    penalty_total += self._severity_weights["medium"]
                     warnings.append(
                         f"R_ct = {r_ct:.1f} Ohm is large for E > E_onset "
                         f"({self.electrolyte} environment). "
@@ -309,25 +380,29 @@ class EISCVCorrelator:
         if ctype in (CATALYST_NOBLE_METAL, CATALYST_ALLOY):
             if not np.isnan(if_ib):
                 if if_ib < 1.0:
-                    penalty_total += _SEVERITY_WEIGHTS["medium"]
+                    penalty_total += self._severity_weights["medium"]
                     recommendations.append(
                         f"I_f/I_b = {if_ib:.2f} < 1.0 — CO poisoning suspected "
                         f"({self.electrolyte} environment). "
-                        f"The suggested circuit {suggested_circuit.notation} is "
+                        f"The suggested circuit {_circuit_notation} is "
                         f"appropriate for resolving the poisoning arc."
                     )
-                elif if_ib > 3.0 and not np.isnan(r_ct) and r_ct > 1000:
-                    penalty_total += _SEVERITY_WEIGHTS["low"]
-                    warnings.append(
-                        f"I_f/I_b = {if_ib:.2f} is excellent but R_ct = {r_ct:.1f} Ohm "
-                        f"is large — confirm EIS was measured at the active potential."
-                    )
+                elif if_ib > 3.0:
+                    # Both nan-guards are now at the top of the branch for
+                    # uniform readability; the logic is identical to before
+                    # because float comparisons with nan return False.
+                    if not np.isnan(r_ct) and r_ct > 1000:
+                        penalty_total += self._severity_weights["low"]
+                        warnings.append(
+                            f"I_f/I_b = {if_ib:.2f} is excellent but R_ct = {r_ct:.1f} Ohm "
+                            f"is large — confirm EIS was measured at the active potential."
+                        )
 
         elif ctype == CATALYST_METAL_FREE:
             recommendations.append(
                 "Metal-free catalyst: I_f/I_b ratio is not applicable. "
                 "Estimate ECSA via C_dl method from scan-rate dependence. "
-                f"For EIS, use {suggested_circuit.notation} to capture "
+                f"For EIS, use {_circuit_notation} to capture "
                 "inter-particle contact resistance and pore ion diffusion."
             )
 
@@ -335,13 +410,13 @@ class EISCVCorrelator:
             if self.electrolyte == "alkaline":
                 recommendations.append(
                     "Metal oxide catalyst (alkaline): M(OH)x ⇌ MOOx redox process dominates. "
-                    f"The suggested circuit {suggested_circuit.notation} separates outer "
+                    f"The suggested circuit {_circuit_notation} separates outer "
                     "surface activity from inner pore-limited diffusion."
                 )
             else:
                 recommendations.append(
                     "Metal oxide catalyst (acidic/neutral): oxide dissolution risk. "
-                    f"The suggested circuit {suggested_circuit.notation} captures the "
+                    f"The suggested circuit {_circuit_notation} captures the "
                     "surface redox process. Monitor R_ct over time for dissolution evidence."
                 )
 
@@ -355,7 +430,7 @@ class EISCVCorrelator:
         # ── Metal-free at onset: pore diffusion advisory ───────────────────
         if ctype == CATALYST_METAL_FREE and region == "onset":
             recommendations.append(
-                f"At E_onset, use {suggested_circuit.notation}: include an inter-particle "
+                f"At E_onset, use {_circuit_notation}: include an inter-particle "
                 "resistance element. Ion diffusion in pores may appear as a "
                 "low-frequency Warburg tail — check the suggested circuit's Wo element."
             )
