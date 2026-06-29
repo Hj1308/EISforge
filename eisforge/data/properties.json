@@ -1,43 +1,53 @@
 {
-  "_comment": "Physical properties for electrochemistry. All values in CGS units (cm, g, s). Kinematic viscosity in cm\u00b2/s, diffusion coefficients in cm\u00b2/s.",
-  "diffusion": {
+  "comment": "Physical transport properties for alcohol electrooxidation. Diffusion coefficients are INFINITE DILUTION values in pure water at 25°C (cgs: cm²/s). These must be corrected for real electrolyte conditions using the Wilke-Chang or Stokes-Einstein equation. Kinematic viscosities are for electrolyte solutions (cm²/s).",
+  "_unit_warning": "All diffusion coefficients are infinite-dilution values in pure water. In 1 M KOH/H2SO4, effective D can be 5-15x lower. Use only with Levich/Cottrell corrections or supply custom_D.",
+
+  "diffusion_infinite_dilution_cm2_per_s": {
+    "_reference": "Derlacki et al. J.Phys.Chem 1985; Lee & Li JCED 1991; CRC Handbook 2007",
     "methanol": {
-      "value_25C": 1.60e-5,
+      "value_25C": 1.58e-5,
       "temp_coeff_per_C": 0.022,
-      "reference": "Lamy et al., 2002, 0.1M KOH 25\u00b0C"
+      "uncertainty": 0.08e-5
     },
     "ethanol": {
       "value_25C": 1.08e-5,
       "temp_coeff_per_C": 0.020,
-      "reference": "Sen Gupta et al., 2005, 0.1M KOH 25\u00b0C"
+      "uncertainty": 0.05e-5
     },
     "2-propanol": {
       "value_25C": 0.97e-5,
       "temp_coeff_per_C": 0.018,
-      "reference": "Mangoufis-Giasin, 2021, 0.1M KOH 25\u00b0C"
+      "uncertainty": 0.06e-5,
+      "_electrochemical_note": "Infinite-dilution value in pure water. In 1 M KOH on Pd electrode, effective D ≈ 1.04e-6 cm²/s (Wang et al., Open Electrochem. J. 2010). Use custom_D for RDE/Levich calculations in alkaline media."
     },
     "ethylene_glycol": {
       "value_25C": 0.94e-5,
       "temp_coeff_per_C": 0.019,
-      "reference": "Various, 0.1M KOH 25\u00b0C"
+      "uncertainty": 0.05e-5
     },
     "glycerol": {
       "value_25C": 0.72e-5,
       "temp_coeff_per_C": 0.017,
-      "reference": "Verma et al., 2022, 0.1M KOH 25\u00b0C"
+      "uncertainty": 0.04e-5
     }
   },
+
   "kinematic_viscosity_cm2_per_s": {
-    "_comment": "True kinematic viscosity (nu = dynamic/density) at 25\u00b0C. Water: 0.00893 cm\u00b2/s. KOH/NaOH dilute solutions are close to water.",
-    "KOH_01M":   0.00893,
-    "KOH_1M":    0.00910,
-    "NaOH_01M":  0.00891,
-    "NaOH_1M":   0.00908,
-    "H2SO4_05M": 0.00902,
-    "HClO4_01M": 0.00890,
-    "default":   0.00893
+    "_reference": "Lide CRC Handbook 2007; Tesis doctoral IEI Barcelona 2015",
+    "_note": "All values at 25°C in cm²/s.",
+    "KOH_01M":  {"value": 0.01000, "uncertainty": 0.0003},
+    "KOH_1M":   {"value": 0.01020, "uncertainty": 0.0005},
+    "NaOH_01M": {"value": 0.00920, "uncertainty": 0.0003},
+    "NaOH_1M":  {"value": 0.00940, "uncertainty": 0.0005},
+    "H2SO4_05M":{"value": 0.00902, "uncertainty": 0.0003},
+    "HClO4_01M":{"value": 0.00890, "uncertainty": 0.0003},
+    "default":  {"value": 0.00893, "note": "pure water at 25°C — fallback when electrolyte is unknown"}
   },
-  "viscosity_temp_coeff_per_C": -0.021,
-  "_temp_coeff_note": "Linear approximation valid for 20-60\u00b0C only. For wider ranges use Andrade equation.",
-  "default_temperature": 25.0
+
+  "viscosity_temp_coeff_per_C": {
+    "value": -0.021,
+    "_note": "Linear approximation valid for 15–45°C only. For wider temperature ranges use Arrhenius: ln(η) = A + B/T. Value calibrated on dilute aqueous electrolytes."
+  },
+
+  "default_temperature_C": 25.0
 }
