@@ -1,0 +1,41 @@
+{
+  "_comment": "Central physical-property database for EISForge. Edit here to add new alcohols or electrolytes.",
+  "diffusion": {
+    "methanol": {
+      "value_25C": 1.60e-5,
+      "temp_coeff_per_C": 0.022,
+      "reference": "Lamy et al., J. Appl. Electrochem. 2002"
+    },
+    "ethanol": {
+      "value_25C": 1.08e-5,
+      "temp_coeff_per_C": 0.020,
+      "reference": "Sen Gupta et al., Electrochem. Commun. 2005"
+    },
+    "2-propanol": {
+      "value_25C": 0.97e-5,
+      "temp_coeff_per_C": 0.018,
+      "reference": "Mangoufis-Giasin, Electrochim. Acta 2021"
+    },
+    "ethylene_glycol": {
+      "value_25C": 0.94e-5,
+      "temp_coeff_per_C": 0.019,
+      "reference": "Various, estimated from viscosity correlation"
+    },
+    "glycerol": {
+      "value_25C": 0.72e-5,
+      "temp_coeff_per_C": 0.017,
+      "reference": "Verma et al., ACS Catal. 2022"
+    }
+  },
+  "viscosity": {
+    "KOH_01M":   0.01007,
+    "KOH_1M":    0.01030,
+    "NaOH_01M":  0.01005,
+    "NaOH_1M":   0.01025,
+    "H2SO4_05M": 0.01020,
+    "HClO4_01M": 0.01002,
+    "default":   0.01007
+  },
+  "viscosity_temp_coeff_per_C": -0.021,
+  "default_temperature": 25.0
+}
