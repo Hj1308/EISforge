@@ -232,6 +232,7 @@ class LSVAnalyzer:
         e_ref_vs_rhe             : float = 0.0,
         tafel_current_range      : tuple = None,
         current_unit             : str   = "mA",
+        onset_method             : str   = "tangent",
         equilibrium_potential    : Optional[float] = None,
         auto_tafel_region        : bool  = True,
         min_tafel_decades        : float = 0.8,
@@ -245,6 +246,7 @@ class LSVAnalyzer:
         self.e_ref_vs_rhe     = e_ref_vs_rhe
         self.current_unit     = current_unit
         self._unit_factor     = self._UNIT_TO_MA.get(current_unit, 1.0)
+        self.onset_method     = (str(onset_method) or "tangent").lower()
 
         # Tafel configuration
         # equilibrium_potential is interpreted in the SAME frame as the analysed
@@ -324,8 +326,18 @@ class LSVAnalyzer:
 
         j = current_ma / self.electrode_area    # mA/cm²
 
-        e_onset, onset_method = self._detect_onset(potential, j)
-        tafel  = self._tafel_analysis(potential, j, e_onset)
+        # find upper boundary of AOR wave (before OER or second wave)
+        e_aor_limit = self._find_aor_upper_limit(potential, j)
+
+        e_onset, onset_method = self._detect_onset(
+            potential[potential <= e_aor_limit],
+            j[potential <= e_aor_limit],
+        )
+        tafel = self._tafel_analysis(
+            potential[potential <= e_aor_limit],
+            j[potential <= e_aor_limit],
+            e_onset,
+        )
         eta_10  = self._overpotential_at_j(potential, j, 10.0,  e_onset)
         eta_50  = self._overpotential_at_j(potential, j, 50.0,  e_onset)
         eta_100 = self._overpotential_at_j(potential, j, 100.0, e_onset)
@@ -340,6 +352,12 @@ class LSVAnalyzer:
         spec_act = (
             j_at_onset * self.electrode_area / self.ecsa
             if self.ecsa > 0 else 0.0
+        )
+
+        _aor_note = (
+            f"AOR wave clipped at E={e_aor_limit:.3f} V (valley/plateau detected)"
+            if e_aor_limit < potential[-1] - 0.05
+            else "No second wave detected — full curve used"
         )
 
         return LSVAnalysisResult(
@@ -358,7 +376,7 @@ class LSVAnalyzer:
             tafel_decades            = tafel["decades"],
             tafel_method             = tafel["method"],
             equilibrium_potential    = self.equilibrium_potential,
-            tafel_warnings           = tafel["warnings"],
+            tafel_warnings           = tafel["warnings"] + [_aor_note],
             overpotential_10         = eta_10,
             overpotential_50         = eta_50,
             overpotential_100        = eta_100,
@@ -377,68 +395,144 @@ class LSVAnalyzer:
             performance_rating       = self._rate_performance(e_onset, tafel["slope"], eta_10),
         )
 
+    # ── Wave segmentation ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _find_aor_upper_limit(potential: np.ndarray, j: np.ndarray) -> float:
+        # Find upper potential boundary of AOR wave.
+        # Locates valley (min dj/dE) separating AOR from OER/second wave.
+        # Returns E_upper (V). If no valley found, returns last potential.
+        E  = np.asarray(potential, dtype=float)
+        jj = np.asarray(j, dtype=float)
+        n  = len(E)
+
+        # orient so activation branch is positive-going
+        seg = max(int(0.15 * n), 3)
+        if np.mean(np.abs(jj[-seg:])) < np.mean(np.abs(jj[:seg])):
+            jj = -jj
+
+        dj = np.gradient(jj, E)
+
+        # search for valley only after the first 25% of scan
+        # (avoid the initial noisy region)
+        search_start = max(int(0.25 * n), 5)
+
+        # valley = first index where dj has a local minimum AND is below
+        # 20% of its maximum value in the search region
+        dj_search = dj[search_start:]
+        E_search  = E[search_start:]
+
+        dj_max = float(np.max(dj_search))
+        # threshold: dj must drop to < 20% of peak slope
+        threshold = 0.20 * dj_max
+
+        below = np.where(dj_search < threshold)[0]
+        if len(below) == 0:
+            return float(E[-1])   # no valley → use full curve
+
+        # among points below threshold, find the one with minimum dj
+        # (the flattest point = centre of plateau)
+        valley_idx = below[int(np.argmin(dj_search[below]))]
+        e_valley   = float(E_search[valley_idx])
+
+        # sanity: valley must be at least 0.1V after scan start
+        if e_valley < E[0] + 0.10:
+            return float(E[-1])
+
+        return e_valley
+
     # ── E_onset ───────────────────────────────────────────────────────────────
 
     def _detect_onset(self, potential, j) -> tuple[float, str]:
-        n       = len(potential)
-        bl_end  = max(int(n * 0.15), 5)
-        j_max   = float(np.max(j))
-        baseline = float(np.mean(j[:bl_end]))
+        """
+        E_onset -- hybrid (zero-crossing anchor + sign-robust).
+        Combines our zero-crossing tangent with fallbacks.
+        """
+        n  = int(len(potential))
+        E  = np.asarray(potential, dtype=float)
+        jj = np.asarray(j,         dtype=float)
 
-        # Metal-free: gentler threshold (3% instead of 5%)
-        thresh_pct = 0.03 if self.catalyst_type == CATALYST_METAL_FREE else 0.05
-        threshold  = baseline + thresh_pct * j_max
+        # --- sign detection using |j| magnitude ------------------------------
+        seg = max(int(0.15 * n), 3)
+        j_abs_lo = float(np.mean(np.abs(jj[:seg])))   # low-E end
+        j_abs_hi = float(np.mean(np.abs(jj[-seg:])))  # high-E end
+        # anodic AOR: magnitude should be LARGER at high-E (oxidation current grows)
+        # if low-E end is larger → current stored negative → flip
+        jw = jj.copy() if j_abs_hi >= j_abs_lo else -jj
 
-        try:
-            m_bl, b_bl = np.polyfit(potential[:bl_end], j[:bl_end], 1)
-        except Exception:
-            m_bl, b_bl = 0.0, baseline
+        # shift baseline to ~0
+        bl_end  = max(int(0.15 * n), 5)
+        jw      = jw - float(np.min(jw[:bl_end]))
 
-        above = np.where(j > threshold)[0]
-        if len(above) == 0:
-            return float(potential[n // 2]), "threshold"
+        baseline = float(np.median(jw[:bl_end]))
+        std_base = float(np.std(jw[:bl_end])) or 1e-12
+        j_span   = float(np.max(jw) - baseline) or 1e-12
+        method   = getattr(self, "onset_method", "tangent").lower()
 
-        region_s = int(above[0])
-        region_e = min(region_s + int(n * 0.15), n - 1)
-        if region_e <= region_s + 2:
-            return float(potential[region_s]), "threshold"
+        def _tangent():
+            if bl_end >= n - 4:
+                return None
+            dj = np.gradient(jw, E)
+            k  = int(np.argmax(dj[bl_end:])) + bl_end
+            w  = max(int(0.05 * n), 3)
+            r0 = max(k - w, bl_end); r1 = min(k + w + 1, n)
+            if r1 - r0 < 3:
+                return None
+            try:
+                m_r, b_r = np.polyfit(E[r0:r1], jw[r0:r1], 1)
+                m_b, b_b = np.polyfit(E[:bl_end], jw[:bl_end], 1)
+            except Exception:
+                return None
+            denom = m_r - m_b
+            if abs(denom) < 1e-12:
+                return None
+            return float(np.clip((b_b - b_r) / denom, E.min(), E.max()))
 
-        try:
-            m_rise, b_rise = np.polyfit(
-                potential[region_s:region_e], j[region_s:region_e], 1
-            )
-            denom = m_rise - m_bl
-            if abs(denom) < 1e-10:
-                return float(potential[region_s]), "threshold"
-            onset = float(np.clip(
-                (b_bl - b_rise) / denom, potential.min(), potential.max()
-            ))
-            return onset, "tangent (LSV)"
-        except Exception:
-            return float(potential[region_s]), "threshold"
+        def _threshold():
+            thr   = baseline + 5.0 * std_base
+            above = np.where(jw > thr)[0]
+            above = above[above >= bl_end]
+            if len(above) == 0:
+                return None
+            return float(E[int(above[0])])
+
+        def _derivative():
+            if n <= bl_end + 2:
+                return None
+            dj     = np.gradient(jw, E)
+            dj_max = float(np.max(dj[bl_end:]))
+            if dj_max <= 0:
+                return None
+            knee = np.where(dj[bl_end:] >= 0.10 * dj_max)[0]
+            if len(knee) == 0:
+                return None
+            return float(E[bl_end + int(knee[0])])
+
+        order = {
+            "tangent":    [_tangent,    _threshold,  _derivative],
+            "threshold":  [_threshold,  _tangent,    _derivative],
+            "derivative": [_derivative, _tangent,    _threshold],
+        }.get(method, [_tangent, _threshold, _derivative])
+
+        for fn in order:
+            try:
+                val = fn()
+            except Exception:
+                val = None
+            if val is not None and np.isfinite(val):
+                tag = fn.__name__.strip("_")
+                label = tag if tag == method else f"{method}->{tag} (fallback)"
+                return float(val), label
+
+        # last resort: 5% of current span
+        cross = np.where(jw - baseline >= 0.05 * j_span)[0]
+        cross = cross[cross >= bl_end]
+        idx   = int(cross[0]) if len(cross) else n // 2
+        return float(E[idx]), "fallback-5%"
 
     # ── Tafel analysis ────────────────────────────────────────────────────────
 
     def _tafel_analysis(self, potential, j, e_onset) -> dict:
-        """
-        Tafel analysis with automatic activation-region detection.
-
-        The Tafel slope is obtained from a linear fit of E vs log10(j) over the
-        activation-controlled (low-overpotential) branch only. That branch is
-        bounded below by E_onset and above by the current peak, so the
-        mass-transport-limited / capacitive regions are excluded. Within it, the
-        longest contiguous window that is genuinely linear (R^2 >= target) and
-        spans a meaningful current range (>= min decades) is selected, instead of
-        trusting a fixed current window that may straddle two regimes.
-
-        Exchange current density (j0) is reported ONLY when an equilibrium
-        potential is supplied; it is then obtained by extrapolating the Tafel line
-        to zero overpotential (eta = 0), per the IUPAC definition. Extrapolating
-        to E_onset is not a true j0 and is therefore not reported as one.
-
-        Returns a dict with keys: slope, slope_std, j0, j0_valid, r2, region,
-        eta_region, n_points, decades, method, warnings.
-        """
         warnings: list = []
 
         def _failed(msg):
@@ -451,112 +545,122 @@ class LSVAnalyzer:
                 "warnings": warnings + [msg],
             }
 
-        # 1) Activation-controlled domain: above onset, on the rising branch
-        #    (up to the current peak), positive current only.
-        j_peak_idx = int(np.argmax(j))
-        e_peak     = float(potential[j_peak_idx])
-        j_floor    = max(1e-4, 0.01 * float(j[j_peak_idx]))   # ignore baseline noise
+        j_abs = np.abs(j)
+        j_peak_idx = int(np.argmax(j_abs))
+        e_peak = float(potential[j_peak_idx])
+        j_floor = max(1e-8, 0.005 * float(np.max(j_abs)))
 
-        domain = (potential >= e_onset) & (potential <= e_peak) & (j > j_floor)
+        # Hybrid Tafel domain (ChatGPT OER detection + Grok noise floor + our valley)
+        _dj_full = np.gradient(j, potential)
+        _zc_idx  = int(np.argmin(np.abs(j)))
+        _after   = _dj_full[_zc_idx:]; _E_after = potential[_zc_idx:]
+        _dj_thr  = float(np.quantile(np.abs(_dj_full), 0.80))
+        _E_oer   = None
+        for _k in range(len(_after)-2):
+            if _after[_k] >= _dj_thr and _after[_k+1] >= _dj_thr and _after[_k+2] >= _dj_thr:
+                _E_oer = float(_E_after[_k]); break
+        if _E_oer is None:
+            _E_oer = float(np.quantile(potential, 0.85))
+        _n   = len(potential)
+        _ss  = max(int(0.25*_n), 5)
+        _djs = _dj_full[_ss:]; _Es = potential[_ss:]
+        _djmax = float(np.max(_djs))
+        _below = np.where(_djs < 0.15*_djmax)[0]
+        _e_valley = float(_Es[_below[int(np.argmin(_djs[_below]))]]) \
+                    if len(_below) else _E_oer
+        E_upper = min(_E_oer - 0.03, _e_valley)
+        if E_upper <= e_onset:
+            E_upper = _e_valley
+        j_max     = float(j_abs.max())
+        j_upper_v = abs(float(np.interp(E_upper, potential, j)))
+        j_act_lim = max(0.40 * j_upper_v, 0.01 * j_max)
+        j_noise   = 0.01 * j_max
+        if e_onset <= E_upper:
+            domain = (
+                (potential >= e_onset) &
+                (potential <= E_upper) &
+                (j > 0) &
+                (j_abs > j_noise) &
+                (j_abs <= j_act_lim)
+            )
+        else:
+            domain = (potential <= E_upper) & (j > 0) & (j_abs > j_noise)
+            warnings.append("E_onset > E_upper; domain set to [start, E_upper].")
         if np.sum(domain) < 6:
-            domain = (potential <= e_peak) & (j > j_floor)
-            warnings.append("Few points above E_onset; kinetic domain relaxed.")
+            domain = (potential <= E_upper) & (j > 0) & (j_abs > j_noise)
+            warnings.append("Activation domain relaxed.")
         if np.sum(domain) < 4:
-            return _failed("Insufficient points in the activation-controlled domain.")
+            return _failed("Insufficient points in activation region.")
+        E_dom     = potential[domain]
+        j_dom     = j[domain]
+        j_abs_dom = j_abs[domain]
+        _diffs = np.diff(j_dom)
+        _nm    = np.where(_diffs <= 0)[0]
+        if len(_nm) and _nm[0] + 1 >= 4:
+            E_dom     = E_dom[:_nm[0]+1]
+            j_abs_dom = j_abs_dom[:_nm[0]+1]
+            warnings.append("Tafel window trimmed at first non-monotonic point.")
+        if len(E_dom) < 4:
+            return _failed("Insufficient monotonic points in activation region.")
+        logj_dom = np.log10(j_abs_dom)
 
-        E_dom    = potential[domain]
-        logj_dom = np.log10(j[domain])
-
-        # 2) Region selection.
-        #    (a) If the user provided a current window AND auto-detection is off,
-        #        honour it when it yields a clean linear fit.
-        #    (b) Otherwise auto-detect the best linear sub-window.
         region_idx = None
-        method     = ""
+        method = ""
 
         if (self.tafel_current_range is not None) and (not self.auto_tafel_region):
-            j_min, j_max = self.tafel_current_range
-            win = (j[domain] >= j_min) & (j[domain] <= j_max)
+            j_min, j_max = sorted([abs(x) for x in self.tafel_current_range])
+            win = (j_abs[domain] >= j_min) & (j_abs[domain] <= j_max)
             if np.sum(win) >= self._min_tafel_points(len(E_dom)):
                 idx = np.where(win)[0]
                 xs, ys = logj_dom[idx], E_dom[idx]
                 _, _, rv, _, _ = linregress(xs, ys)
                 dec = float(xs.max() - xs.min())
-                if (rv ** 2 >= 0.98) and (dec >= 0.5):
+                if (rv ** 2 >= 0.97) and (dec >= 0.5):
                     region_idx = idx
-                    method = "user current window"
+                    method = "user current window (absolute)"
             if region_idx is None:
-                warnings.append(
-                    "User current window was not a clean linear region; "
-                    "auto-detected window used instead."
-                )
+                warnings.append("Manual window not linear enough → fallback to auto")
 
         if region_idx is None:
             region_idx = self._find_linear_tafel_region(E_dom, logj_dom)
             method = "auto-detected"
 
         if region_idx is None or len(region_idx) < 3:
-            return _failed("Could not isolate a linear Tafel region.")
+            return _failed("Could not find linear Tafel region.")
 
-        E_fit    = E_dom[region_idx]
+        E_fit = E_dom[region_idx]
         logj_fit = logj_dom[region_idx]
 
-        # 3) Linear fit: E = intercept + slope * log10(j).
         slope, intercept, r_val, _, slope_std = linregress(logj_fit, E_fit)
-        if not np.isfinite(slope) or abs(slope) < 1e-9:
-            return _failed("Degenerate Tafel fit (zero slope).")
-
+        if slope < 0:
+            warnings.append("Negative Tafel slope -- using |slope|.")
+            slope = abs(slope)
         tafel_mv = slope * 1000.0
-        r2       = r_val ** 2
-        decades  = float(logj_fit.max() - logj_fit.min())
-        n_pts    = int(len(region_idx))
+        r2 = r_val ** 2
+        decades = float(logj_fit.max() - logj_fit.min())
+        n_pts = int(len(region_idx))
 
-        # 4) Exchange current density — only with a known equilibrium potential.
         j0, j0_valid = float("nan"), False
-        eta_region   = (float("nan"), float("nan"))
+        eta_region = (float("nan"), float("nan"))
         if self.equilibrium_potential is not None:
             e_eq = float(self.equilibrium_potential)
-            # eta = (intercept - e_eq) + slope * log10(j); j0 at eta = 0.
             try:
                 j0 = float(10 ** (-(intercept - e_eq) / slope))
                 j0_valid = bool(np.isfinite(j0) and j0 > 0)
             except Exception:
-                j0, j0_valid = float("nan"), False
+                pass
             eta_region = (float(E_fit.min() - e_eq), float(E_fit.max() - e_eq))
-            if not j0_valid:
-                warnings.append("j0 extrapolation gave a non-physical value; check E_eq.")
         else:
-            warnings.append(
-                "j0 not computed: no equilibrium potential supplied "
-                "(extrapolation to E_onset is not a true exchange current density)."
-            )
+            warnings.append("j0 not computed: no equilibrium potential supplied.")
 
-        # 5) Literature-grounded quality checks for AOR.
         if r2 < 0.99:
-            warnings.append(
-                f"R2 = {r2:.4f} (<0.99): the window may span more than one regime."
-            )
+            warnings.append(f"R2 = {r2:.4f} (<0.99)")
         if decades < 1.0:
-            warnings.append(
-                f"Tafel window spans {decades:.2f} decade(s) of current (<1); "
-                "slope is less reliable."
-            )
+            warnings.append(f"Only {decades:.2f} decades spanned (<1).")
         if abs(tafel_mv) > 120.0:
-            warnings.append(
-                f"Slope = {tafel_mv:.0f} mV/dec (>120): in AOR this often indicates "
-                "mass-transport contamination or a change in rate-determining step; "
-                "confirm the fit is within the activation-controlled branch."
-            )
+            warnings.append(f"Slope = {tafel_mv:.0f} mV/dec (>120)")
         if E_fit.max() > e_peak - 0.02:
-            warnings.append(
-                "Upper edge of the Tafel window is close to the current peak; "
-                "possible mixed / mass-transport control."
-            )
-        if self.scan_rate > 20.0:
-            warnings.append(
-                f"Scan rate = {self.scan_rate:g} mV/s: kinetic Tafel from LSV is most "
-                "reliable at <= 5 mV/s to suppress capacitive / double-layer current."
-            )
+            warnings.append("Upper edge near current peak → possible mass-transport.")
 
         return {
             "slope": tafel_mv, "slope_std": slope_std * 1000.0,
@@ -566,8 +670,6 @@ class LSVAnalyzer:
             "n_points": n_pts, "decades": decades,
             "method": method, "warnings": warnings,
         }
-
-    # ── Tafel region detection ────────────────────────────────────────────────
 
     def _min_tafel_points(self, n_domain: int) -> int:
         """Minimum points for a trustworthy linear fit."""
