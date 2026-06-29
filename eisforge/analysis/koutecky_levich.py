@@ -36,14 +36,17 @@ import numpy as np
 import pandas as pd
 from scipy.stats import linregress
 
+from eisforge.data.physical_property_db import PhysicalPropertyDB
+
 logger = logging.getLogger(__name__)
 
 # ── Physical constants ──────────────────────────────────────────────────────
 FARADAY = 96485.0  # C/mol
 GAS_CONST = 8.31446  # J/mol/K
 
-# ── Diffusion coefficients (cm²/s at 25°C) ────────────────────────────────
-DIFFUSION_COEFF = {
+# ── Fallback diffusion coefficients (cm²/s at 25°C) ───────────────────────
+# Used only if PhysicalPropertyDB does not have the requested alcohol.
+_DEFAULT_DIFFUSION = {
     "methanol": 1.60e-5,         # 0.1M KOH, 25°C [Lamy et al., 2002]
     "ethanol": 1.08e-5,          # 0.1M KOH, 25°C [Sen Gupta et al., 2005]
     "2-propanol": 0.97e-5,       # 0.1M KOH, 25°C [Mangoufis-Giasin, 2021]
@@ -51,9 +54,9 @@ DIFFUSION_COEFF = {
     "glycerol": 0.72e-5,         # 0.1M KOH, 25°C [Verma et al., 2022]
 }
 
-# ── Kinematic viscosities (cm²/s at 25°C) ──────────────────────────────────
-# NOTE: These are KINEMATIC viscosities (cm²/s), not dynamic (Poise)
-KINEMATIC_VISCOSITY = {
+# ── Fallback kinematic viscosities (cm²/s at 25°C) ────────────────────────
+# Used only if PhysicalPropertyDB does not have the requested electrolyte key.
+_DEFAULT_VISCOSITY = {
     "KOH_01M": 0.01000,
     "KOH_1M": 0.01020,
     "NaOH_01M": 0.00920,
@@ -62,6 +65,25 @@ KINEMATIC_VISCOSITY = {
     "HClO4_01M": 0.00890,
     "default": 0.00893,  # pure water at 25°C
 }
+
+
+# ── Helper: build electrolyte key for viscosity lookup ─────────────────────
+def _build_viscosity_key(electrolyte: str, concentration_M: float) -> str:
+    """
+    Build a consistent viscosity key like 'KOH_1M' or 'NaOH_01M'.
+
+    Examples:
+        electrolyte='KOH', concentration_M=1.0   → 'KOH_1M'
+        electrolyte='KOH', concentration_M=0.1   → 'KOH_01M'
+        electrolyte='H2SO4', concentration_M=0.5 → 'H2SO4_05M'
+    """
+    base = electrolyte.split()[0]  # e.g. 'KOH' from 'KOH 1M'
+    if concentration_M == int(concentration_M):
+        conc_tag = str(int(concentration_M))       # 1.0 → '1'
+    else:
+        # e.g. 0.1 → '01', 0.5 → '05'
+        conc_tag = f"{concentration_M:.1f}".replace(".", "")
+    return f"{base}_{conc_tag}M"
 
 
 # ── Result dataclasses ──────────────────────────────────────────────────────
@@ -206,6 +228,10 @@ class KLAnalyzer:
     """
     Koutecky-Levich analyzer for RDE measurements.
 
+    Uses the central PhysicalPropertyDB for diffusion coefficients and
+    kinematic viscosities, with fallback to built-in dictionaries when
+    the requested substance is not found in the database.
+
     Parameters
     ----------
     alcohol : str
@@ -220,9 +246,9 @@ class KLAnalyzer:
     catalyst_type : str
         Catalyst family for interpretation.
     D_cm2_s : float or None
-        Custom diffusion coefficient (cm²/s). If None, uses literature value.
+        Custom diffusion coefficient (cm²/s). Overrides database and fallback.
     nu_cm2_s : float or None
-        Custom kinematic viscosity (cm²/s). If None, uses literature value.
+        Custom kinematic viscosity (cm²/s). Overrides database and fallback.
     """
 
     def __init__(
@@ -241,38 +267,81 @@ class KLAnalyzer:
         self.temperature_C = temperature_C
         self.catalyst_type = catalyst_type
 
-        # FIX #5: use 'is not None' so D_cm2_s=0.0 doesn't silently fall through
-        if D_cm2_s is not None:
-            self.D = D_cm2_s
-        else:
-            self.D = DIFFUSION_COEFF.get(alcohol, 1.0e-5)
+        # Instantiate the central database
+        self._db = PhysicalPropertyDB()
 
-        if nu_cm2_s is not None:
-            self.nu = nu_cm2_s
-        else:
-            # FIX #3: build viscosity key correctly.
-            # e.g. concentration_M=1.0 → "KOH_1M", not "KOH_10M"
-            # Strategy: try integer representation first, then one-decimal float.
-            base = electrolyte.split()[0]
-            if concentration_M == int(concentration_M):
-                conc_tag = str(int(concentration_M))      # 1.0 → "1"
-            else:
-                conc_tag = f"{concentration_M:.1f}".replace(".", "")  # 0.1 → "01"
-            visc_key = f"{base}_{conc_tag}M"
-            self.nu = KINEMATIC_VISCOSITY.get(visc_key, KINEMATIC_VISCOSITY["default"])
-            if visc_key not in KINEMATIC_VISCOSITY:
-                logger.warning(
-                    "Viscosity key '%s' not found in table. "
-                    "Using default (pure water, 0.00893 cm²/s).",
-                    visc_key,
-                )
+        # Store custom values (if provided) — they will override everything
+        self._D_custom = D_cm2_s
+        self._nu_custom = nu_cm2_s
 
+        # Pre-compute the effective D and nu for use in all calculations
+        # using the new database with fallback logic.
+        self.D = self._get_diffusion_coeff()
+        self.nu = self._get_kinematic_viscosity()
         self.C = concentration_M * 1e-3  # mol/L → mol/cm³
 
         logger.info(
             "KLAnalyzer: D=%.2e cm²/s  ν=%.5f cm²/s  C=%.4e mol/cm³",
             self.D, self.nu, self.C,
         )
+
+    # ── Internal helpers for property lookup ──────────────────────────────
+
+    def _get_diffusion_coeff(self) -> float:
+        """
+        Return the diffusion coefficient using the database, with fallback.
+
+        Priority:
+            1. Custom D (if provided via __init__)
+            2. PhysicalPropertyDB
+            3. Built-in _DEFAULT_DIFFUSION dictionary
+            4. Hard-coded 1.0e-5 (last resort)
+        """
+        if self._D_custom is not None:
+            return float(self._D_custom)
+
+        try:
+            return self._db.get_diffusion_coeff(
+                self.alcohol,
+                self.temperature_C,
+                custom_D=None,
+            )
+        except (KeyError, ValueError) as e:
+            logger.debug(
+                "PhysicalPropertyDB lookup failed for '%s': %s. "
+                "Falling back to built-in table.",
+                self.alcohol, e,
+            )
+            return _DEFAULT_DIFFUSION.get(self.alcohol, 1.0e-5)
+
+    def _get_kinematic_viscosity(self) -> float:
+        """
+        Return the kinematic viscosity using the database, with fallback.
+
+        Priority:
+            1. Custom nu (if provided via __init__)
+            2. PhysicalPropertyDB
+            3. Built-in _DEFAULT_VISCOSITY dictionary
+            4. Hard-coded 0.00893 (water at 25°C)
+        """
+        if self._nu_custom is not None:
+            return float(self._nu_custom)
+
+        visc_key = _build_viscosity_key(self.electrolyte, self.concentration_M)
+
+        try:
+            return self._db.get_kinematic_viscosity(
+                visc_key,
+                self.temperature_C,
+                custom_nu=None,
+            )
+        except (KeyError, ValueError) as e:
+            logger.debug(
+                "PhysicalPropertyDB lookup failed for key '%s': %s. "
+                "Falling back to built-in table.",
+                visc_key, e,
+            )
+            return _DEFAULT_VISCOSITY.get(visc_key, _DEFAULT_VISCOSITY["default"])
 
     # ── Main analysis ──────────────────────────────────────────────────────
 
@@ -384,7 +453,7 @@ class KLAnalyzer:
             pot_s, j_s = pot[order], j_arr[order]
             j_at_E.append(float(np.interp(E, pot_s, j_s)))
 
-        # FIX #2: warn if all currents are negative (likely sign convention issue)
+        # Warn if all currents are negative (likely sign convention issue)
         if all(j < 0 for j in j_at_E):
             warnings.warn(
                 f"All currents at E={E:.3f} V are negative. "
@@ -422,6 +491,7 @@ class KLAnalyzer:
         j_kinetic = 1.0 / intercept if abs(intercept) > 1e-12 else float("nan")
 
         B_experimental = 1.0 / slope
+        # Use the pre-computed D, nu, C
         base_B = (
             0.62
             * FARADAY
@@ -536,7 +606,6 @@ class KLAnalyzer:
         if np.isnan(n):
             parts.append("n electrons could not be determined.")
         elif n < 1.0:
-            # FIX #4: emit logger warning for physically impossible n
             logger.warning(
                 "Unusually low n=%.2f — verify D, ν, and concentration.", n
             )
@@ -565,7 +634,6 @@ class KLAnalyzer:
                 "Product: CO₂ or deep oxidation pathway."
             )
         else:
-            # FIX #4: emit logger warning for physically impossible n
             logger.warning(
                 "Unusually high n=%.2f — check experimental conditions.", n
             )
@@ -589,7 +657,7 @@ class KLAnalyzer:
 
         return " | ".join(parts)
 
-    # ── Convenience: single-potential quick analysis ────────────────────────
+    # ── Convenience: single-potential quick analysis ──────────────────────
 
     def quick_analyze(
         self,
@@ -610,14 +678,13 @@ class KLAnalyzer:
 
         Notes
         -----
-        FIX #1: requires ≥ 3 rotation speeds (previously accepted ≥ 2,
+        Requires ≥ 3 rotation speeds (previously accepted ≥ 2,
         which produced a perfect R²=1 fit with no statistical meaning).
         """
         if len(rotation_speeds_rpm) != len(j_at_potential):
             raise ValueError(
                 "rotation_speeds_rpm and j_at_potential must have equal length."
             )
-        # FIX #1: enforce minimum 3 speeds — same as analyze()
         if len(rotation_speeds_rpm) < 3:
             raise ValueError(
                 f"Koutecky-Levich requires at least 3 rotation speeds. "
@@ -625,7 +692,7 @@ class KLAnalyzer:
             )
 
         omega = [rpm * 2 * np.pi / 60.0 for rpm in rotation_speeds_rpm]
-        # FIX #2: use abs(j) to handle sign convention safely
+        # Use abs(j) to handle sign convention safely
         inv_j = [1.0 / abs(j) if abs(j) > 1e-10 else np.nan for j in j_at_potential]
         inv_sqw = [1.0 / np.sqrt(w) for w in omega]
 
