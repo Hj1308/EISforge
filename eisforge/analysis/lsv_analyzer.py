@@ -256,6 +256,9 @@ class LSVAnalyzer:
         self.auto_tafel_region     = auto_tafel_region
         self.min_tafel_decades     = float(min_tafel_decades)
         self.tafel_r2_target       = float(tafel_r2_target)
+        # (E_lo, E_hi) in the analysis (RHE) frame. When set, the Tafel
+        # line is fitted directly on this window (overrides auto-detection).
+        self.tafel_potential_range = None
 
         # Electrolyte
         if isinstance(electrolyte, ElectrolyteInfo):
@@ -439,6 +442,17 @@ class LSVAnalyzer:
         if e_valley < E[0] + 0.10:
             return float(E[-1])
 
+        # sanity: a genuine AOR wave-END valley follows a current PEAK
+        # (current rose, peaked, then fell into the valley). If the current
+        # only rises monotonically up to the valley, the 'valley' is the
+        # pre-wave background gap (double-layer plateau before the real
+        # oxidation wave), not a wave end -- do not clip there.
+        global_valley = search_start + valley_idx
+        peak_before   = float(np.max(jj[:global_valley + 1]))
+        j_valley_val  = float(jj[global_valley])
+        if peak_before <= 1.10 * j_valley_val:
+            return float(E[-1])
+
         return e_valley
 
     # ── E_onset ───────────────────────────────────────────────────────────────
@@ -549,6 +563,49 @@ class LSVAnalyzer:
         j_peak_idx = int(np.argmax(j_abs))
         e_peak = float(potential[j_peak_idx])
         j_floor = max(1e-8, 0.005 * float(np.max(j_abs)))
+
+        # ── Manual potential window (highest priority) ─────────────────────
+        # Robust for curves with no current peak (monotonic exponential rise)
+        # where auto-detection of the activation branch is unreliable.
+        if getattr(self, "tafel_potential_range", None) is not None:
+            e_lo, e_hi = sorted(self.tafel_potential_range)
+            mwin = ((potential >= e_lo) & (potential <= e_hi)
+                    & (j > 0) & (j_abs > j_floor))
+            if int(np.sum(mwin)) >= 4:
+                E_m    = potential[mwin]
+                logj_m = np.log10(j_abs[mwin])
+                slope, intercept, r_val, _, slope_std = linregress(logj_m, E_m)
+                if slope < 0:
+                    warnings.append("Negative Tafel slope -- using |slope|.")
+                    slope = abs(slope)
+                tafel_mv = slope * 1000.0
+                r2  = r_val ** 2
+                dec = float(logj_m.max() - logj_m.min())
+                j0, j0_valid = float("nan"), False
+                eta_region = (float("nan"), float("nan"))
+                if self.equilibrium_potential is not None:
+                    e_eq = float(self.equilibrium_potential)
+                    try:
+                        j0 = float(10 ** (-(intercept - e_eq) / slope))
+                        j0_valid = bool(np.isfinite(j0) and j0 > 0)
+                    except Exception:
+                        pass
+                    eta_region = (float(E_m.min() - e_eq), float(E_m.max() - e_eq))
+                else:
+                    warnings.append("j0 not computed: no equilibrium potential supplied.")
+                if r2 < 0.99:
+                    warnings.append(f"R2 = {r2:.4f} (<0.99)")
+                if dec < 1.0:
+                    warnings.append(f"Only {dec:.2f} decades spanned (<1).")
+                return {
+                    "slope": tafel_mv, "slope_std": slope_std * 1000.0,
+                    "j0": j0, "j0_valid": j0_valid, "r2": r2,
+                    "region": (float(E_m.min()), float(E_m.max())),
+                    "eta_region": eta_region,
+                    "n_points": int(np.sum(mwin)), "decades": dec,
+                    "method": "user potential window", "warnings": warnings,
+                }
+            warnings.append("Manual potential window has <4 valid points -> auto.")
 
         # Hybrid Tafel domain (ChatGPT OER detection + Grok noise floor + our valley)
         _dj_full = np.gradient(j, potential)
