@@ -55,6 +55,8 @@ class LSVAnalysisResult:
     # E_onset
     e_onset        : float = 0.0
     e_onset_method : str   = ""
+    e_onset_threshold : float = float("nan")   # E at fixed j threshold (mA/cm2)
+    e_onset_zerocross : float = float("nan")   # E where (net) current turns sustained-positive
 
     # Tafel
     tafel_slope           : float = 0.0   # mV/dec
@@ -276,6 +278,37 @@ class LSVAnalyzer:
                 catalyst_type, (0.1, 2.0)
             )
 
+    # ── Blank subtraction ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def subtract_blank(
+        e_alcohol : np.ndarray,
+        i_alcohol : np.ndarray,
+        e_blank   : np.ndarray,
+        i_blank   : np.ndarray,
+        e_min     : float = -0.1,
+    ) -> tuple:
+        """Subtract a blank (electrolyte-only) scan from an alcohol scan.
+
+        The blank is interpolated onto the alcohol potential grid (so the two
+        scans need not share identical E points), subtracted, and the result is
+        restricted to E >= e_min. The default e_min = -0.1 V discards the
+        scan-start capacitive transient that is typically present in the blank
+        but not in the alcohol scan; raise or lower it to suit the data.
+
+        Returns (E_net, I_net) with I_net in the SAME current unit as the
+        inputs. Both scans must be in the same current unit.
+        """
+        e_alcohol = np.asarray(e_alcohol, dtype=float)
+        i_alcohol = np.asarray(i_alcohol, dtype=float)
+        e_blank   = np.asarray(e_blank,   dtype=float)
+        i_blank   = np.asarray(i_blank,   dtype=float)
+        order = np.argsort(e_blank)
+        i_blank_on_alc = np.interp(e_alcohol, e_blank[order], i_blank[order])
+        i_net = i_alcohol - i_blank_on_alc
+        mask = e_alcohol >= e_min
+        return e_alcohol[mask], i_net[mask]
+
     # ── iR Compensation ───────────────────────────────────────────────────────
 
     @staticmethod
@@ -329,13 +362,21 @@ class LSVAnalyzer:
 
         j = current_ma / self.electrode_area    # mA/cm²
 
-        # find upper boundary of AOR wave (before OER or second wave)
-        e_aor_limit = self._find_aor_upper_limit(potential, j)
+        # find upper boundary of AOR wave (before OER or second wave).
+        # When the user has pinned a manual Tafel potential window, do NOT
+        # pre-clip the data -- the window itself defines the fit range, and
+        # clipping could drop the entire window (e.g. on blank-subtracted net
+        # current whose mid-region dips negative and confuses valley detection).
+        if getattr(self, "tafel_potential_range", None) is not None:
+            e_aor_limit = float(potential[-1])
+        else:
+            e_aor_limit = self._find_aor_upper_limit(potential, j)
 
         e_onset, onset_method = self._detect_onset(
             potential[potential <= e_aor_limit],
             j[potential <= e_aor_limit],
         )
+        e_onset_thr, e_onset_zc = self._dual_onset(potential, j)
         tafel = self._tafel_analysis(
             potential[potential <= e_aor_limit],
             j[potential <= e_aor_limit],
@@ -368,6 +409,8 @@ class LSVAnalyzer:
             electrolyte              = self.electrolyte_info,
             e_onset                  = e_onset,
             e_onset_method           = onset_method + (" (iR-corrected)" if ir_compensated else ""),
+            e_onset_threshold        = e_onset_thr,
+            e_onset_zerocross        = e_onset_zc,
             tafel_slope              = tafel["slope"],
             tafel_slope_std          = tafel["slope_std"],
             exchange_current_density = tafel["j0"],
@@ -543,6 +586,38 @@ class LSVAnalyzer:
         cross = cross[cross >= bl_end]
         idx   = int(cross[0]) if len(cross) else n // 2
         return float(E[idx]), "fallback-5%"
+
+    # ── Dual E_onset (reported alongside the primary onset) ────────────────────
+
+    @staticmethod
+    def _dual_onset(potential, j, j_threshold=0.01, search_above=0.4,
+                    zero_tol=0.002) -> tuple:
+        """Return (e_onset_threshold, e_onset_zerocross) in the same frame as
+        `potential`. j is current density (mA/cm2).
+
+        threshold : first potential (above search_above) where j reaches
+                    j_threshold, linearly interpolated.
+        zerocross : first potential (above search_above) where j becomes
+                    positive and stays >= -zero_tol for the rest of the scan
+                    (the point where the wave departs sustainedly from zero).
+        """
+        E = np.asarray(potential, dtype=float)
+        jj = np.asarray(j, dtype=float)
+        e_thr = float("nan")
+        idx = np.where((jj >= j_threshold) & (E > search_above))[0]
+        if len(idx):
+            i0 = int(idx[0])
+            if i0 > 0:
+                e_thr = float(np.interp(j_threshold, [jj[i0 - 1], jj[i0]],
+                                        [E[i0 - 1], E[i0]]))
+            else:
+                e_thr = float(E[i0])
+        e_zc = float("nan")
+        for k in range(len(E)):
+            if E[k] > search_above and jj[k] > 0 and np.all(jj[k:] >= -zero_tol):
+                e_zc = float(E[k])
+                break
+        return e_thr, e_zc
 
     # ── Tafel analysis ────────────────────────────────────────────────────────
 

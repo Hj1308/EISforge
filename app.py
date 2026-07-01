@@ -290,7 +290,9 @@ def load_cv_lsv(f, unit_factor=1.0):
 
 
 @st.cache_data(show_spinner=False)
-def _parse_idf_cached(_file_bytes: bytes, cycle_idx: int = -1):
+def _parse_idf_cached(content_hash: str, _file_bytes: bytes, cycle_idx: int = -1):
+    # content_hash (hashable) drives the Streamlit cache key; _file_bytes is
+    # underscore-prefixed so Streamlit does not try to hash the raw bytes.
     import tempfile
     import os
     with tempfile.NamedTemporaryFile(delete=False, suffix=".idf") as t:
@@ -563,7 +565,10 @@ with tab1:
         if cv_file:
             try:
                 if Path(cv_file.name).suffix.lower() == ".idf":
-                    pot, cur, _meta = _parse_idf_cached(cv_file.getvalue(), cycle_idx=int(cycle_idx))
+                    import hashlib as _hl
+                    _cvb = cv_file.getvalue()
+                    pot, cur, _meta = _parse_idf_cached(
+                        _hl.md5(_cvb).hexdigest(), _cvb, cycle_idx=int(cycle_idx))
                 else:
                     pot, cur, _meta = load_cv_lsv(cv_file, unit_factor=unit_factor)
                 if "Scanrate" in _meta:
@@ -788,6 +793,17 @@ with tab2:
     col1, col2 = st.columns([1, 1])
     with col1:
         lsv_file = st.file_uploader("Upload LSV file", type=CV_FORMATS, key="lsv_up")
+        blank_lsv_file = st.file_uploader(
+            "Blank LSV (electrolyte only, optional)", type=CV_FORMATS, key="lsv_blank_up",
+            help="If provided, the blank is subtracted from the alcohol scan to "
+                 "isolate the faradaic (net) current before analysis.",
+        )
+        blank_emin = st.number_input(
+            "Blank subtraction lower limit (V, measured frame)", value=-0.10,
+            step=0.05, format="%.2f", disabled=(blank_lsv_file is None),
+            help="Data below this potential is dropped before subtraction "
+                 "(removes the scan-start transient present in the blank).",
+        )
         sr_lsv = st.number_input("Scan rate (mV/s)", value=5, min_value=1, key="sr_lsv")
         tafel_mode_lsv = st.radio(
             "Tafel region selection",
@@ -825,12 +841,32 @@ with tab2:
         if lsv_file:
             try:
                 if Path(lsv_file.name).suffix.lower() == ".idf":
-                    pot_lsv, cur_lsv, _ = _parse_idf_cached(lsv_file.getvalue())
+                    import hashlib as _hl
+                    _lvb = lsv_file.getvalue()
+                    pot_lsv, cur_lsv, _ = _parse_idf_cached(
+                        _hl.md5(_lvb).hexdigest(), _lvb)
                 else:
                     pot_lsv, cur_lsv, _ = load_cv_lsv(lsv_file, unit_factor=unit_factor)
                 st.success(f"✅ {len(pot_lsv)} points | {lsv_file.name}")
                 from eisforge.analysis.lsv_analyzer import LSVAnalyzer, ElectrolyteInfo
                 _el = ElectrolyteInfo(media=ekey, compound=elec_compound_key, concentration=elec_conc)
+                # ── optional blank subtraction ─────────────────────────────
+                _blank_active = False
+                if blank_lsv_file is not None:
+                    if Path(blank_lsv_file.name).suffix.lower() == ".idf":
+                        import hashlib as _hl
+                        _blb = blank_lsv_file.getvalue()
+                        pot_blk, cur_blk, _ = _parse_idf_cached(
+                            _hl.md5(_blb).hexdigest(), _blb)
+                    else:
+                        pot_blk, cur_blk, _ = load_cv_lsv(blank_lsv_file, unit_factor=unit_factor)
+                    _raw_alc_pot, _raw_alc_cur = pot_lsv.copy(), cur_lsv.copy()
+                    _raw_blk_pot, _raw_blk_cur = pot_blk.copy(), cur_blk.copy()
+                    pot_lsv, cur_lsv = LSVAnalyzer.subtract_blank(
+                        pot_lsv, cur_lsv, pot_blk, cur_blk, e_min=blank_emin)
+                    _blank_active = True
+                    st.info(f"🧪 Blank subtracted ({blank_lsv_file.name}) | "
+                            f"net current, {len(pot_lsv)} points, E ≥ {blank_emin:.2f} V")
                 la = LSVAnalyzer(scan_rate=sr_lsv, electrode_area=area, ecsa=ecsa,
                                  catalyst_loading=loading, electrolyte=_el,
                                  catalyst_type=catalyst_type, e_ref_vs_rhe=e_ref_val,
@@ -855,7 +891,18 @@ with tab2:
                 else:
                     la.tafel_potential_range = None
                 lr = la.analyze(pot_lsv, cur_lsv, r_s_ohms=actual_rs)
-                st.session_state.update({"lsv_r": lr, "lsv_pot": pot_lsv, "lsv_cur": cur_lsv})
+                _sess = {"lsv_r": lr, "lsv_pot": pot_lsv, "lsv_cur": cur_lsv,
+                         "lsv_blank_active": _blank_active}
+                if _blank_active:
+                    _sess.update({
+                        "lsv_raw_alc_pot": _raw_alc_pot, "lsv_raw_alc_cur": _raw_alc_cur,
+                        "lsv_raw_blk_pot": _raw_blk_pot, "lsv_raw_blk_cur": _raw_blk_cur,
+                    })
+                else:
+                    for _k in ("lsv_raw_alc_pot", "lsv_raw_alc_cur",
+                               "lsv_raw_blk_pot", "lsv_raw_blk_cur"):
+                        st.session_state.pop(_k, None)
+                st.session_state.update(_sess)
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -869,6 +916,22 @@ with tab2:
         c1.metric("E_onset", f"{r.e_onset:.4f} V")
         c2.metric("Tafel slope", f"{r.tafel_slope:.1f} mV/dec")
         c3.metric("j₀", f"{r.exchange_current_density:.3e} mA/cm²")
+        # dual E_onset (threshold + zero-cross) -- most useful on net current
+        _ot = getattr(r, "e_onset_threshold", float("nan"))
+        _oz = getattr(r, "e_onset_zerocross", float("nan"))
+        if not (math.isnan(_ot) and math.isnan(_oz)):
+            _rhe_add = e_ref_val + 0.059 * ph_value
+            co1, co2 = st.columns(2)
+            co1.metric(
+                "E_onset (j-threshold)",
+                f"{_ot:.3f} V" if not math.isnan(_ot) else "N/A",
+                help=(f"= {_ot + _rhe_add:.3f} V vs RHE" if not math.isnan(_ot)
+                      else "first E where j reaches 0.01 mA/cm²"))
+            co2.metric(
+                "E_onset (zero-cross)",
+                f"{_oz:.3f} V" if not math.isnan(_oz) else "N/A",
+                help=(f"= {_oz + _rhe_add:.3f} V vs RHE" if not math.isnan(_oz)
+                      else "first E where current turns sustained-positive"))
         c4, c5, c6 = st.columns(3)
         c4.metric("η @ 10 mA/cm²",
                   f"{r.overpotential_10 * 1000:.1f} mV" if not math.isnan(r.overpotential_10) else "N/A")
@@ -910,9 +973,25 @@ with tab2:
             p_lsv = p_lsv + _off
         else:
             p_lsv = st.session_state["lsv_pot"] + _off
-        fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
-                                 name="LSV" + ("+iR-corr." if actual_rs > 0 else ""),
-                                 line=dict(color="#2563eb", width=2)), row=1, col=1)
+        if st.session_state.get("lsv_blank_active") and "lsv_raw_alc_cur" in st.session_state:
+            # three-curve overlay: raw alcohol, blank, net (green = analysed)
+            _rap = st.session_state["lsv_raw_alc_pot"] + _off
+            _rac = st.session_state["lsv_raw_alc_cur"] / area if area > 0 else st.session_state["lsv_raw_alc_cur"]
+            _rbp = st.session_state["lsv_raw_blk_pot"] + _off
+            _rbc = st.session_state["lsv_raw_blk_cur"] / area if area > 0 else st.session_state["lsv_raw_blk_cur"]
+            fig.add_trace(go.Scatter(x=_rap, y=_rac, mode="lines",
+                                     name="Alcohol (raw)",
+                                     line=dict(color="#2563eb", width=2)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=_rbp, y=_rbc, mode="lines",
+                                     name="Blank (electrolyte)",
+                                     line=dict(color="#9ca3af", width=1.5, dash="dash")), row=1, col=1)
+            fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
+                                     name="Net (alcohol - blank)",
+                                     line=dict(color="#059669", width=2.5)), row=1, col=1)
+        else:
+            fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
+                                     name="LSV" + ("+iR-corr." if actual_rs > 0 else ""),
+                                     line=dict(color="#2563eb", width=2)), row=1, col=1)
         fig.add_vline(x=r.e_onset + _off, line_dash="dash", line_color="#d97706",
                       annotation_text=f"E_onset={r.e_onset + _off:.3f}V",
                       annotation_font=dict(color="#d97706"), row=1, col=1)
