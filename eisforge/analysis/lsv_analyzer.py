@@ -72,10 +72,19 @@ class LSVAnalysisResult:
     equilibrium_potential : Optional[float] = None  # E_eq used for j0 (same frame as e_onset)
     tafel_warnings        : list  = field(default_factory=list)  # diagnostic flags
 
-    # Overpotential
-    overpotential_10  : float = 0.0   # V
-    overpotential_50  : float = 0.0
-    overpotential_100 : float = 0.0
+    # Potential at fixed current densities (analysis frame, i.e. after
+    # e_ref_vs_rhe and iR correction). These are always reported.
+    e_at_j10  : float = float("nan")   # E where j first reaches 10 mA/cm² (rising branch)
+    e_at_j50  : float = float("nan")
+    e_at_j100 : float = float("nan")
+
+    # Overpotential — ONLY meaningful vs a supplied equilibrium potential.
+    # η(j) = E_at_j − E_eq. When no E_eq is given these stay NaN and
+    # eta_is_valid is False (mirrors the j0_is_valid pattern).
+    overpotential_10  : float = float("nan")   # V
+    overpotential_50  : float = float("nan")
+    overpotential_100 : float = float("nan")
+    eta_is_valid      : bool  = False
 
     # Activity
     j_at_onset      : float = 0.0
@@ -83,6 +92,7 @@ class LSVAnalysisResult:
     e_half_wave     : float = 0.0
     mass_activity   : float = 0.0   # mA/mg
     specific_activity: float = 0.0  # mA/cm²_ECSA or mA/cm²_BET
+    activity_reference : str = ""   # where activities were evaluated (peak / user E)
 
     # iR compensation
     ir_compensated : bool  = False
@@ -119,7 +129,9 @@ class LSVAnalysisResult:
         lines += [
             f"  E_onset             = {self.e_onset:.4f} V  ({self.e_onset_method})",
             "-" * 68,
-            f"  Tafel slope         = {self.tafel_slope:.1f} ± {self.tafel_slope_std:.1f} mV/dec",
+            f"  Apparent Tafel slope = {self.tafel_slope:.1f} ± {self.tafel_slope_std:.1f} mV/dec",
+            f"  (LSV-derived slope; treat as apparent — intermediate coverage",
+            f"   varies with E. Confirm with steady-state / staircase data.)",
             f"  Tafel fit window    = {self.tafel_region[0]:.3f}–{self.tafel_region[1]:.3f} V"
             f"  |  {self.tafel_decades:.2f} dec  |  n = {self.tafel_n_points}  ({self.tafel_method})",
             f"  R² (Tafel fit)      = {self.tafel_r_squared:.4f}",
@@ -147,12 +159,27 @@ class LSVAnalysisResult:
 
         lines += [
             "-" * 68,
-            f"  η @ 10 mA/cm²       = {self.overpotential_10*1000:.1f} mV"
-            if not np.isnan(self.overpotential_10) else "  η @ 10 mA/cm²       = not reached",
-            f"  η @ 50 mA/cm²       = {self.overpotential_50*1000:.1f} mV"
-            if not np.isnan(self.overpotential_50) else "  η @ 50 mA/cm²       = not reached",
-            f"  η @ 100 mA/cm²      = {self.overpotential_100*1000:.1f} mV"
-            if not np.isnan(self.overpotential_100) else "  η @ 100 mA/cm²      = not reached",
+            f"  E @ 10 mA/cm²       = {self.e_at_j10:.4f} V"
+            if not np.isnan(self.e_at_j10) else "  E @ 10 mA/cm²       = not reached",
+            f"  E @ 50 mA/cm²       = {self.e_at_j50:.4f} V"
+            if not np.isnan(self.e_at_j50) else "  E @ 50 mA/cm²       = not reached",
+            f"  E @ 100 mA/cm²      = {self.e_at_j100:.4f} V"
+            if not np.isnan(self.e_at_j100) else "  E @ 100 mA/cm²      = not reached",
+        ]
+        if self.eta_is_valid:
+            lines += [
+                f"  η @ 10 mA/cm²       = {self.overpotential_10*1000:.1f} mV  (vs E_eq)"
+                if not np.isnan(self.overpotential_10) else "  η @ 10 mA/cm²       = not reached",
+                f"  η @ 50 mA/cm²       = {self.overpotential_50*1000:.1f} mV  (vs E_eq)"
+                if not np.isnan(self.overpotential_50) else "  η @ 50 mA/cm²       = not reached",
+                f"  η @ 100 mA/cm²      = {self.overpotential_100*1000:.1f} mV  (vs E_eq)"
+                if not np.isnan(self.overpotential_100) else "  η @ 100 mA/cm²      = not reached",
+            ]
+        else:
+            lines.append(
+                "  η                   = n/a  (supply an equilibrium potential to report true overpotentials)"
+            )
+        lines += [
             "-" * 68,
             f"  Limiting current    = {self.j_limiting:.3f} mA/cm²",
             f"  Half-wave potential = {self.e_half_wave:.4f} V"
@@ -160,9 +187,9 @@ class LSVAnalysisResult:
         ]
 
         if self.catalyst_loading > 0:
-            lines.append(f"  Mass activity       = {self.mass_activity:.3f} mA/mg_cat")
+            lines.append(f"  Mass activity       = {self.mass_activity:.3f} mA/mg_cat  ({self.activity_reference})")
         if self.ecsa > 0:
-            lines.append(f"  Specific activity   = {self.specific_activity:.4f} mA/{ecsa_label}")
+            lines.append(f"  Specific activity   = {self.specific_activity:.4f} mA/{ecsa_label}  ({self.activity_reference})")
 
         lines += [
             "-" * 68,
@@ -239,6 +266,10 @@ class LSVAnalyzer:
         auto_tafel_region        : bool  = True,
         min_tafel_decades        : float = 0.8,
         tafel_r2_target          : float = 0.99,
+        cdl_uF_per_cm2           : Optional[float] = None,
+        blank_subtracted         : bool  = False,
+        onset_search_min_E       : Optional[float] = None,
+        activity_potential       : Optional[float] = None,
     ) -> None:
         self.scan_rate        = scan_rate
         self.electrode_area   = max(electrode_area, 1e-10)
@@ -261,6 +292,20 @@ class LSVAnalyzer:
         # (E_lo, E_hi) in the analysis (RHE) frame. When set, the Tafel
         # line is fitted directly on this window (overrides auto-detection).
         self.tafel_potential_range = None
+
+        # Capacitive-contamination check (critical for high-C_dl carbons):
+        # j_cap = C_dl × ν. If the foot of the Tafel window sits within a few
+        # multiples of j_cap, the fitted slope is capacitance-inflated.
+        self.cdl_uF_per_cm2   = cdl_uF_per_cm2
+        self.blank_subtracted = bool(blank_subtracted)
+
+        # Lower bound (analysis frame, V) for the dual-onset search. None →
+        # legacy 0.4 V when the frame looks RHE-like, else data-driven.
+        self.onset_search_min_E = onset_search_min_E
+
+        # Potential (analysis frame, V) at which mass/specific activity is
+        # evaluated. None → peak current within the AOR wave.
+        self.activity_potential = activity_potential
 
         # Electrolyte
         if isinstance(electrolyte, ElectrolyteInfo):
@@ -372,29 +417,80 @@ class LSVAnalyzer:
         else:
             e_aor_limit = self._find_aor_upper_limit(potential, j)
 
+        # ── Reference-frame sanity check (Fix: silent Ag/AgCl-frame failures) ──
+        frame_warnings: list = []
+        if self.e_ref_vs_rhe == 0.0 and float(np.median(potential)) < 0.0:
+            frame_warnings.append(
+                "Median potential is negative with e_ref_vs_rhe=0 — if data were "
+                "recorded vs Ag/AgCl or SCE, supply e_ref_vs_rhe."
+            )
+
+        # dual-onset search lower bound: legacy 0.4 V only when the frame is
+        # RHE-like; otherwise a data-driven bound (with warning).
+        if self.onset_search_min_E is not None:
+            _onset_lo = float(self.onset_search_min_E)
+        elif float(np.min(potential)) >= -0.05:
+            _onset_lo = 0.4
+        else:
+            _onset_lo = float(np.min(potential) + 0.25 * (np.max(potential) - np.min(potential)))
+            frame_warnings.append(
+                f"Dual-onset search bound auto-set to {_onset_lo:.3f} V "
+                "(non-RHE-like frame detected)."
+            )
+
         e_onset, onset_method = self._detect_onset(
             potential[potential <= e_aor_limit],
             j[potential <= e_aor_limit],
         )
-        e_onset_thr, e_onset_zc = self._dual_onset(potential, j)
+        e_onset_thr, e_onset_zc = self._dual_onset(potential, j, search_above=_onset_lo)
         tafel = self._tafel_analysis(
             potential[potential <= e_aor_limit],
             j[potential <= e_aor_limit],
             e_onset,
         )
-        eta_10  = self._overpotential_at_j(potential, j, 10.0,  e_onset)
-        eta_50  = self._overpotential_at_j(potential, j, 50.0,  e_onset)
-        eta_100 = self._overpotential_at_j(potential, j, 100.0, e_onset)
+        tafel["warnings"].extend(frame_warnings)
+        self._capacitance_check(tafel)
+
+        # Potentials at fixed current densities — rising branch only
+        # (np.interp on the full non-monotonic curve is ill-defined).
+        e_j10  = self._e_at_j_rising(potential, j, 10.0)
+        e_j50  = self._e_at_j_rising(potential, j, 50.0)
+        e_j100 = self._e_at_j_rising(potential, j, 100.0)
+
+        # True overpotentials only vs a supplied equilibrium potential
+        eta_valid = self.equilibrium_potential is not None
+        if eta_valid:
+            e_eq    = float(self.equilibrium_potential)
+            eta_10  = e_j10  - e_eq
+            eta_50  = e_j50  - e_eq
+            eta_100 = e_j100 - e_eq
+        else:
+            eta_10 = eta_50 = eta_100 = float("nan")
+
         j_lim   = float(np.max(j))
         e_half  = self._half_wave_potential(potential, j, j_lim)
         j_at_onset = float(np.interp(e_onset, potential, j))
 
+        # ── Activities evaluated at a meaningful current (Fix: onset current
+        #    is ~0 by definition → onset-based activities were noise) ─────────
+        if self.activity_potential is not None:
+            e_act = float(self.activity_potential)
+            j_ref = float(np.interp(e_act, potential, j))
+            activity_ref = f"at user E = {e_act:.3f} V"
+        else:
+            in_wave = potential <= e_aor_limit
+            j_wave  = j[in_wave] if np.any(in_wave) else j
+            e_wave  = potential[in_wave] if np.any(in_wave) else potential
+            k_peak  = int(np.argmax(j_wave))
+            j_ref   = float(j_wave[k_peak])
+            activity_ref = f"at AOR peak, E = {float(e_wave[k_peak]):.3f} V"
+
         mass_act = (
-            j_at_onset / self.catalyst_loading
+            j_ref / self.catalyst_loading
             if self.catalyst_loading > 0 else 0.0
         )
         spec_act = (
-            j_at_onset * self.electrode_area / self.ecsa
+            j_ref * self.electrode_area / self.ecsa
             if self.ecsa > 0 else 0.0
         )
 
@@ -423,14 +519,19 @@ class LSVAnalyzer:
             tafel_method             = tafel["method"],
             equilibrium_potential    = self.equilibrium_potential,
             tafel_warnings           = tafel["warnings"] + [_aor_note],
+            e_at_j10                 = e_j10,
+            e_at_j50                 = e_j50,
+            e_at_j100                = e_j100,
             overpotential_10         = eta_10,
             overpotential_50         = eta_50,
             overpotential_100        = eta_100,
+            eta_is_valid             = eta_valid,
             j_at_onset               = j_at_onset,
             j_limiting               = j_lim,
             e_half_wave              = e_half,
             mass_activity            = mass_act,
             specific_activity        = spec_act,
+            activity_reference       = activity_ref,
             ir_compensated           = ir_compensated,
             r_s_used                 = r_s_ohms,
             scan_rate                = self.scan_rate,
@@ -438,7 +539,10 @@ class LSVAnalyzer:
             ecsa                     = self.ecsa,
             catalyst_loading         = self.catalyst_loading,
             mechanism_interpretation = self._interpret_tafel(tafel["slope"]),
-            performance_rating       = self._rate_performance(e_onset, tafel["slope"], eta_10),
+            performance_rating       = self._rate_performance(
+                e_onset, tafel["slope"],
+                (e_j10 - e_onset) if not np.isnan(e_j10) else float("nan"),
+            ),
         )
 
     # ── Wave segmentation ────────────────────────────────────────────────────
@@ -595,6 +699,10 @@ class LSVAnalyzer:
         """Return (e_onset_threshold, e_onset_zerocross) in the same frame as
         `potential`. j is current density (mA/cm2).
 
+        search_above is supplied by analyze(): 0.4 V in an RHE-like frame,
+        otherwise a data-driven bound (hardcoding 0.4 V silently broke
+        Ag/AgCl- or SCE-frame data).
+
         threshold : first potential (above search_above) where j reaches
                     j_threshold, linearly interpolated.
         zerocross : first potential (above search_above) where j becomes
@@ -678,6 +786,7 @@ class LSVAnalyzer:
                     "region": (float(E_m.min()), float(E_m.max())),
                     "eta_region": eta_region,
                     "n_points": int(np.sum(mwin)), "decades": dec,
+                    "j_window_low": float(10 ** logj_m.min()),
                     "method": "user potential window", "warnings": warnings,
                 }
             warnings.append("Manual potential window has <4 valid points -> auto.")
@@ -800,6 +909,7 @@ class LSVAnalyzer:
             "region": (float(E_fit.min()), float(E_fit.max())),
             "eta_region": eta_region,
             "n_points": n_pts, "decades": decades,
+            "j_window_low": float(10 ** logj_fit.min()),
             "method": method, "warnings": warnings,
         }
 
@@ -884,20 +994,76 @@ class LSVAnalyzer:
             return np.arange(fallback[1], fallback[2] + 1)
         return None
 
-    # ── Overpotential ─────────────────────────────────────────────────────────
+    # ── Potential at fixed current density (rising branch) ───────────────────
 
     @staticmethod
-    def _overpotential_at_j(potential, j, j_target, e_onset) -> float:
-        if j_target > np.max(j):
+    def _e_at_j_rising(potential, j, j_target) -> float:
+        """First potential at which j reaches j_target on the RISING branch.
+
+        AOR LSVs are non-monotonic (peak + decline), so np.interp over the
+        full curve is ill-defined and silently returns wrong values. This
+        restricts the search to [scan start, global current peak] and uses the
+        monotonic envelope (cumulative max) so interpolation is well-posed.
+        Returns NaN if j_target is never reached on the rising branch.
+        """
+        E  = np.asarray(potential, dtype=float)
+        jj = np.asarray(j, dtype=float)
+        k  = int(np.argmax(jj))
+        E_r, j_r = E[: k + 1], jj[: k + 1]
+        if len(E_r) < 2 or j_target > float(j_r[-1]):
             return float("nan")
-        return float(np.interp(j_target, j, potential)) - e_onset
+        j_env = np.maximum.accumulate(j_r)
+        idx = int(np.searchsorted(j_env, j_target))
+        if idx <= 0:
+            return float(E_r[0])
+        if idx >= len(E_r):
+            return float("nan")
+        lo, hi = float(j_env[idx - 1]), float(j_env[idx])
+        if hi <= lo:
+            return float(E_r[idx])
+        return float(np.interp(j_target, [lo, hi], [E_r[idx - 1], E_r[idx]]))
 
     @staticmethod
     def _half_wave_potential(potential, j, j_lim) -> float:
-        j_half = j_lim / 2.0
-        if j_half > np.max(j) or j_half < np.min(j):
-            return float("nan")
-        return float(np.interp(j_half, j, potential))
+        """E where j first reaches j_lim/2 — rising branch only (see above)."""
+        return LSVAnalyzer._e_at_j_rising(potential, j, j_lim / 2.0)
+
+    # ── Capacitive-contamination check for the Tafel window ─────────────────
+
+    def _capacitance_check(self, tafel: dict) -> None:
+        """Warn when the foot of the fitted Tafel window is comparable to the
+        capacitive background j_cap = C_dl × ν.
+
+        For metal-free / graphene-like carbons C_dl can reach the mF/cm²
+        regime, putting j_cap INSIDE the metal-free Tafel window at typical
+        LSV scan rates — the fitted slope is then systematically inflated
+        unless a blank scan has been subtracted.
+        """
+        if tafel.get("method") == "failed":
+            return
+        nu_V_s = self.scan_rate * 1e-3                     # mV/s → V/s
+        if self.cdl_uF_per_cm2 is not None:
+            j_cap = self.cdl_uF_per_cm2 * 1e-6 * nu_V_s * 1e3   # mA/cm²
+            e_lo, _ = tafel.get("region", (float("nan"), float("nan")))
+            # current at the lower edge of the fitted window is bounded below
+            # by the window's smallest fitted current: use decades + region.
+            # We conservatively reconstruct it from the fit span if available.
+            j_low = tafel.get("j_window_low", None)
+            if j_low is not None and np.isfinite(j_low) and j_cap > 0:
+                if (not self.blank_subtracted) and (j_low < 5.0 * j_cap):
+                    tafel["warnings"].append(
+                        f"Tafel window foot (j = {j_low:.3g} mA/cm²) is < 5× the "
+                        f"capacitive background j_cap = C_dl·ν = {j_cap:.3g} mA/cm² — "
+                        "slope is likely capacitance-inflated. Subtract a blank "
+                        "(electrolyte-only) scan or lower the scan rate."
+                    )
+        elif (self.catalyst_type == CATALYST_METAL_FREE
+              and not self.blank_subtracted):
+            tafel["warnings"].append(
+                "Metal-free catalyst without blank subtraction: high-C_dl carbons "
+                "can place j_cap = C_dl·ν inside the Tafel window. Provide "
+                "cdl_uF_per_cm2 to quantify, or subtract a blank scan."
+            )
 
     # ── Interpretation ────────────────────────────────────────────────────────
 
@@ -910,44 +1076,56 @@ class LSVAnalyzer:
         el        = self.electrolyte_info
         conc_note = f" [{el.concentration} M {el.compound}]"
 
-        # Metal-free: completely different thresholds
+        # Metal-free: completely different thresholds.
+        # NOTE: slope→mechanism bins derive from Langmuir/α=0.5 assumptions;
+        # on defect-rich carbons with Temkin/Frumkin adsorption slopes vary
+        # continuously. All assignments below are hypotheses to be confirmed
+        # via reaction-order (concentration/pH) and temperature dependence.
         if ctype == CATALYST_METAL_FREE:
             if abs_s < 120:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Good kinetics for metal-free catalyst. "
-                    f"Rate-limiting: surface defect activation or C-H bond breaking."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"relatively fast apparent kinetics for a metal-free catalyst; "
+                    f"consistent with (not proof of) rate limitation at surface "
+                    f"defect/heteroatom sites. Confirm via reaction-order analysis."
                 )
             elif abs_s < 250:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Normal range for metal-free / ceramic catalyst (carbon_material, CNT, N-doped C). "
-                    f"Multi-step mechanism without d-band facilitation."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"within the range commonly reported for metal-free carbons "
+                    f"(graphene-like, CNT, N-doped C); consistent with multi-step "
+                    f"kinetics without d-band facilitation. Verify the fit lies on "
+                    f"the activation branch and check pH/concentration dependence."
                 )
             else:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Very high slope: strong mass-transport or surface passivation. "
-                    f"Check electrode preparation and electrolyte diffusion."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"very high apparent slope: likely mass-transport mixing, "
+                    f"uncompensated resistance, or capacitive contamination rather "
+                    f"than pure kinetics. Check iR compensation, blank subtraction, "
+                    f"and the fitting window before mechanistic interpretation."
                 )
 
         # Metal oxide
         if ctype == CATALYST_METAL_OXIDE:
             if abs_s < 60:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Excellent for metal oxide. M(OH)x/MOOx redox mediation active."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"low slope for a metal oxide; consistent with "
+                    f"M(OH)x/MOOx redox mediation. Confirm via CV redox couple analysis."
                 )
             elif abs_s < 120:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"Typical for oxide catalyst. First electron transfer limiting."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"typical range for oxide catalysts; consistent with a "
+                    f"first-electron-transfer-limited pathway."
                 )
             else:
                 return (
-                    f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                    f"High slope for oxide: check OH- supply "
-                    f"({'low' if el.concentration < 0.5 else 'normal'} concentration)."
+                    f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                    f"high slope for an oxide: check OH- supply "
+                    f"({'low' if el.concentration < 0.5 else 'normal'} concentration), "
+                    f"iR compensation, and fitting window."
                 )
 
         # Noble metal and alloy
@@ -959,30 +1137,38 @@ class LSVAnalyzer:
 
         if abs_s < 40:
             return (
-                f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                f"Chemical step rate-limiting{conc_warning}"
+                f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                f"consistent with a chemical (non-electron-transfer) rate-limiting "
+                f"step; confirm via temperature dependence{conc_warning}"
             )
         elif abs_s < 75:
             return (
-                f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                f"Langmuir adsorption limiting — PtRu / PdAu bifunctional mechanism{conc_warning}"
+                f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                f"consistent with adsorption-limited kinetics (e.g. bifunctional "
+                f"PtRu/PdAu pathways); verify with reaction-order analysis{conc_warning}"
             )
         elif abs_s < 120:
             return (
-                f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                f"First electron transfer limiting (Volmer / Butler-Volmer){conc_warning}"
+                f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                f"consistent with first-electron-transfer limitation "
+                f"(Butler-Volmer, α≈0.5){conc_warning}"
             )
         else:
             return (
-                f"Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
-                f"High value: CO poisoning or diffusion limiting. "
-                f"Consider alloy catalyst or higher {el.compound} concentration.{conc_warning}"
+                f"Apparent Tafel = {slope_mv:.1f} mV/dec{conc_note} — "
+                f"high apparent slope: possible CO poisoning, diffusion mixing, "
+                f"or uncompensated resistance — rule these out before mechanistic "
+                f"assignment.{conc_warning}"
             )
 
-    def _rate_performance(self, e_onset, tafel_slope, eta_10) -> str:
+    def _rate_performance(self, e_onset, tafel_slope, rise_to_10) -> str:
         """
-        Performance rating adapted per catalyst type and electrolyte.
-        Metal-free catalysts are judged on a different scale.
+        Relative activity tier vs compiled literature ranges, per catalyst
+        type and electrolyte. `rise_to_10` = E@10 mA/cm2 - E_onset (V), the
+        wave-steepness proxy these thresholds were tuned on.
+
+        Coarse literature-range comparison — NOT a publishability or
+        quality judgement.
         """
         el    = self.electrolyte_info
         ctype = self.catalyst_type
@@ -1015,16 +1201,16 @@ class LSVAnalyzer:
                 elif abs(tafel_slope) < 90:  score += 2
                 elif abs(tafel_slope) < 120: score += 1
 
-        # Overpotential at 10 mA/cm²
-        if not np.isnan(eta_10):
+        # Rise to 10 mA/cm2 (E@10 - E_onset): wave steepness
+        if not np.isnan(rise_to_10):
             if ctype == CATALYST_METAL_FREE:
-                if eta_10 < 0.3:   score += 3
-                elif eta_10 < 0.5: score += 2
-                elif eta_10 < 0.7: score += 1
+                if rise_to_10 < 0.3:   score += 3
+                elif rise_to_10 < 0.5: score += 2
+                elif rise_to_10 < 0.7: score += 1
             else:
-                if eta_10 < 0.1:   score += 3
-                elif eta_10 < 0.2: score += 2
-                elif eta_10 < 0.3: score += 1
+                if rise_to_10 < 0.1:   score += 3
+                elif rise_to_10 < 0.2: score += 2
+                elif rise_to_10 < 0.3: score += 1
 
         # Electrolyte-specific bonus/penalty
         if el.compound == BASE_Na2CO3:
@@ -1042,13 +1228,17 @@ class LSVAnalyzer:
         el_label = f"{el.concentration} M {el.compound}"
 
         if score >= 8:
-            return f"Excellent {catalyst_label} in {el_label} — publishable in high-IF journals"
+            return (f"Upper activity tier for a {catalyst_label} in {el_label} "
+                    f"relative to compiled literature ranges")
         elif score >= 5:
-            return f"Good {catalyst_label} in {el_label} — suitable catalyst"
+            return (f"Mid activity tier for a {catalyst_label} in {el_label} "
+                    f"relative to compiled literature ranges")
         elif score >= 3:
-            return f"Moderate {catalyst_label} in {el_label} — optimization needed"
+            return (f"Below typical literature ranges for a {catalyst_label} "
+                    f"in {el_label} — optimization suggested")
         else:
-            return f"Poor performance in {el_label} — consider different composition or electrolyte"
+            return (f"Low activity relative to literature ranges for a "
+                    f"{catalyst_label} in {el_label}")
 
     # ── Smoothing ─────────────────────────────────────────────────────────────
 

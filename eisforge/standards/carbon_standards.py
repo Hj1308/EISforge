@@ -64,10 +64,12 @@ CDL_RANGES: dict[str, CdlRange] = {
     # Ref: untreated 4.84 mF/cm² → C-H2O2 11.44 mF/cm² (Section 5.1)
     "oxidised_carbon": CdlRange(
         "Oxidised / Functionalised Carbon",
-        cdl_min_uF=4.0,   # convert: 4.84 mF/cm² × 1000 ≈ 4840 μF/cm²?
-        cdl_max_uF=12.0,  # NOTE: these were reported as mF/cm² in paper →
-        note=(             # 4.84–11.44 mF/cm² = 4840–11440 μF/cm² is CPE not C_dl
-              "Raw data from paper: 4.84–11.44 mF/cm² (high-surface-area / CPE). "
+        cdl_min_uF=4840.0,   # 4.84 mF/cm²  (literature values were mF/cm², stored here in μF/cm²)
+        cdl_max_uF=11440.0,  # 11.44 mF/cm²
+        note=(
+              "Literature: 4.84–11.44 mF/cm² (high-surface-area, CPE-like response). "
+              "Values exceed the generic noise threshold because of porosity — "
+              "the validator relaxes the threshold for this subtype. "
               "For normalised GC-type C_dl use 'carbon_material' range instead."),
     ),
     # Activated / high-surface-area porous carbon
@@ -293,14 +295,18 @@ class CarbonValidator:
             lo, hi = ref.cdl_min_uF, ref.cdl_max_uF
             range_label = f"literature {lo:.0f}–{hi:.0f} μF/cm² ({ref.material})"
 
-        # Hard error: noise / measurement artifact
-        if cdl_uF > CDL_NOISE_THRESHOLD_uF:
+        # Hard error: noise / measurement artifact.
+        # The generic threshold is relaxed for subtypes whose literature range
+        # legitimately exceeds it (e.g. oxidised/porous carbons in the mF/cm²
+        # regime) — otherwise valid literature values would be rejected.
+        noise_cut = max(CDL_NOISE_THRESHOLD_uF, 2.0 * hi)
+        if cdl_uF > noise_cut:
             return ValidationResult(
                 passed=False,
                 severity="error",
                 message=(
                     f"⛔ C_dl = {cdl_uF:.1f} μF/cm² exceeds noise threshold "
-                    f"({CDL_NOISE_THRESHOLD_uF:.0f} μF/cm²). "
+                    f"({noise_cut:.0f} μF/cm² for this subtype). "
                     "Likely: severe noise, wrong scan rate, or incorrect baseline."
                 ),
                 suggested_action=(

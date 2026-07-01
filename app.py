@@ -914,7 +914,8 @@ with tab2:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
         c1, c2, c3 = st.columns(3)
         c1.metric("E_onset", f"{r.e_onset:.4f} V")
-        c2.metric("Tafel slope", f"{r.tafel_slope:.1f} mV/dec")
+        c2.metric("Apparent Tafel slope", f"{r.tafel_slope:.1f} mV/dec",
+                  help="LSV-derived apparent slope — intermediate coverage varies with E; confirm with steady-state data.")
         c3.metric("j₀", f"{r.exchange_current_density:.3e} mA/cm²")
         # dual E_onset (threshold + zero-cross) -- most useful on net current
         _ot = getattr(r, "e_onset_threshold", float("nan"))
@@ -933,17 +934,34 @@ with tab2:
                 help=(f"= {_oz + _rhe_add:.3f} V vs RHE" if not math.isnan(_oz)
                       else "first E where current turns sustained-positive"))
         c4, c5, c6 = st.columns(3)
-        c4.metric("η @ 10 mA/cm²",
-                  f"{r.overpotential_10 * 1000:.1f} mV" if not math.isnan(r.overpotential_10) else "N/A")
-        c5.metric("η @ 50 mA/cm²",
-                  f"{r.overpotential_50 * 1000:.1f} mV" if not math.isnan(r.overpotential_50) else "N/A")
-        c6.metric("η @ 100 mA/cm²",
-                  f"{r.overpotential_100 * 1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
+        _ej10  = getattr(r, "e_at_j10",  float("nan"))
+        _ej50  = getattr(r, "e_at_j50",  float("nan"))
+        _ej100 = getattr(r, "e_at_j100", float("nan"))
+        c4.metric("E @ 10 mA/cm²",
+                  f"{_ej10:.3f} V" if not math.isnan(_ej10) else "N/A",
+                  help="Potential at 10 mA/cm² on the rising branch (analysis frame).")
+        c5.metric("E @ 50 mA/cm²",
+                  f"{_ej50:.3f} V" if not math.isnan(_ej50) else "N/A")
+        c6.metric("E @ 100 mA/cm²",
+                  f"{_ej100:.3f} V" if not math.isnan(_ej100) else "N/A")
+        if getattr(r, "eta_is_valid", False):
+            c7, c8, c9 = st.columns(3)
+            c7.metric("η @ 10 mA/cm²",
+                      f"{r.overpotential_10 * 1000:.1f} mV" if not math.isnan(r.overpotential_10) else "N/A",
+                      help="True overpotential vs the supplied equilibrium potential.")
+            c8.metric("η @ 50 mA/cm²",
+                      f"{r.overpotential_50 * 1000:.1f} mV" if not math.isnan(r.overpotential_50) else "N/A")
+            c9.metric("η @ 100 mA/cm²",
+                      f"{r.overpotential_100 * 1000:.1f} mV" if not math.isnan(r.overpotential_100) else "N/A")
+        else:
+            st.caption("η not shown: supply an equilibrium potential to report true overpotentials (η = E@j − E_eq).")
         if loading > 0:
-            st.metric("Mass activity", f"{r.mass_activity:.3f} mA/mg_cat")
+            st.metric("Mass activity", f"{r.mass_activity:.3f} mA/mg_cat",
+                      help=getattr(r, "activity_reference", "") or None)
         _sa_unit = "cm²_BET" if catalyst_type == "carbon_material" else "cm²_Pt"
         if ecsa > 0:
-            st.metric("Specific activity", f"{r.specific_activity:.4f} mA/{_sa_unit}")
+            st.metric("Specific activity", f"{r.specific_activity:.4f} mA/{_sa_unit}",
+                      help=getattr(r, "activity_reference", "") or None)
         if catalyst_type == "carbon_material" and _STANDARDS_AVAILABLE:
             st.markdown("#### 🔬 Tafel Validation")
             tafel_val = CarbonValidator.validate_tafel(r.tafel_slope, electrolyte=ekey)
