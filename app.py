@@ -222,7 +222,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
     if not E_list:
         raise ValueError("No primary_data block found in .idf file")
     E_arr = np.array(E_list, dtype=float)
-    I_mA = np.array(I_list, dtype=float) * 1000.0   # Ivium current is in Amperes -> mA
+    I_mA = np.array(I_list, dtype=float) * unit_mult   # apply the parsed unit multiplier
 
     sign_ch = np.diff(np.sign(np.diff(E_arr)))
     vertices = np.where(sign_ch != 0)[0] + 1
@@ -789,8 +789,32 @@ with tab2:
     with col1:
         lsv_file = st.file_uploader("Upload LSV file", type=CV_FORMATS, key="lsv_up")
         sr_lsv = st.number_input("Scan rate (mV/s)", value=5, min_value=1, key="sr_lsv")
-        tj_min = st.number_input("Tafel j_min (mA/cm²)", value=0.0030, step=0.0005, format="%.4f")
-        tj_max = st.number_input("Tafel j_max (mA/cm²)", value=0.0080, step=0.0005, format="%.4f")
+        tafel_mode_lsv = st.radio(
+            "Tafel region selection",
+            ["Auto-detect", "Current window (mA/cm²)", "Potential window (V)"],
+            index=0, horizontal=True, key="tafel_mode_lsv",
+            help="Auto: best linear region. Current window: specify a j range. "
+                 "Potential window: specify an E range -- robust for curves with no "
+                 "current peak.",
+        )
+        if tafel_mode_lsv == "Current window (mA/cm²)":
+            tj_min = st.number_input("Tafel j_min (mA/cm²)", value=0.0030, step=0.0005, format="%.4f")
+            tj_max = st.number_input("Tafel j_max (mA/cm²)", value=0.0080, step=0.0005, format="%.4f")
+            te_low = te_high = None
+            te_frame_rhe = False
+        elif tafel_mode_lsv == "Potential window (V)":
+            tj_min = tj_max = None
+            _te_frame = st.radio(
+                "E_low / E_high reference frame",
+                [f"vs {e_ref_type}", "vs RHE"], horizontal=True, key="tafel_e_frame_lsv",
+            )
+            te_frame_rhe = (_te_frame == "vs RHE")
+            te_low = st.number_input(f"E_low ({_te_frame})", value=0.60, format="%.3f", step=0.01)
+            te_high = st.number_input(f"E_high ({_te_frame})", value=0.90, format="%.3f", step=0.01)
+        else:
+            tj_min = tj_max = None
+            te_low = te_high = None
+            te_frame_rhe = False
         st.caption(f"🤖 Auto-selected: **{default_onset_method}** (based on catalyst type)")
         om_lsv = st.radio(
             "E_onset method (override if needed)",
@@ -810,7 +834,26 @@ with tab2:
                 la = LSVAnalyzer(scan_rate=sr_lsv, electrode_area=area, ecsa=ecsa,
                                  catalyst_loading=loading, electrolyte=_el,
                                  catalyst_type=catalyst_type, e_ref_vs_rhe=e_ref_val,
-                                 tafel_current_range=(tj_min, tj_max))
+                                 tafel_current_range=(tj_min, tj_max) if tj_min is not None else None)
+                # Tafel mode wiring -- mirrors the backend contract in lsv_analyzer.py:
+                #   auto_tafel_region=False + tafel_current_range  -> current-window fit
+                #   tafel_potential_range set                     -> potential-window fit
+                #                                                    (checked first, regardless
+                #                                                    of auto_tafel_region)
+                #   otherwise                                     -> auto-detection
+                la.auto_tafel_region = (tafel_mode_lsv != "Current window (mA/cm²)")
+                if tafel_mode_lsv == "Potential window (V)":
+                    # Convert the user-typed window into the analyzer's internal frame,
+                    # which is (raw_potential + e_ref_val) -- see module docstring above.
+                    _nernst_w = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
+                    if te_frame_rhe:
+                        la.tafel_potential_range = (
+                            te_low - _nernst_w * ph_value, te_high - _nernst_w * ph_value,
+                        )
+                    else:
+                        la.tafel_potential_range = (te_low + e_ref_val, te_high + e_ref_val)
+                else:
+                    la.tafel_potential_range = None
                 lr = la.analyze(pot_lsv, cur_lsv, r_s_ohms=actual_rs)
                 st.session_state.update({"lsv_r": lr, "lsv_pot": pot_lsv, "lsv_cur": cur_lsv})
             except Exception as e:
@@ -873,7 +916,16 @@ with tab2:
         fig.add_vline(x=r.e_onset + _off, line_dash="dash", line_color="#d97706",
                       annotation_text=f"E_onset={r.e_onset + _off:.3f}V",
                       annotation_font=dict(color="#d97706"), row=1, col=1)
-        mask = (j_lsv > 0) & (j_lsv >= tj_min) & (j_lsv <= tj_max)
+        if tafel_mode_lsv == "Current window (mA/cm²)":
+            mask = (j_lsv > 0) & (j_lsv >= tj_min) & (j_lsv <= tj_max)
+        else:
+            # r.tafel_region is in the analyzer's internal frame
+            # (raw_potential + e_ref_val). Convert to the CURRENT display frame
+            # (p_lsv), which is raw_potential + _off, so the markers line up:
+            #   display = internal - e_ref_val + _off
+            _treg_lo = r.tafel_region[0] - e_ref_val + _off
+            _treg_hi = r.tafel_region[1] - e_ref_val + _off
+            mask = (j_lsv > 0) & (p_lsv >= _treg_lo) & (p_lsv <= _treg_hi)
         if np.sum(mask) > 3:
             fig.add_trace(go.Scatter(x=np.log10(j_lsv[mask]), y=p_lsv[mask],
                                      mode="markers", name="Tafel region",
