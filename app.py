@@ -1161,7 +1161,8 @@ with tab3:
             try:
                 fr, zr, zi, meta_eis = load_eis(eis_file)
                 st.success(f"✅ {len(fr)} points | {eis_file.name}")
-                st.session_state.update({"eis_fr": fr, "eis_zr": zr, "eis_zi": zi})
+                st.session_state.update({"eis_fr": fr, "eis_zr": zr, "eis_zi": zi,
+                                         "eis_filename": eis_file.name})
             except Exception as e:
                 st.error(f"Error loading EIS: {e}")
 
@@ -1277,26 +1278,73 @@ with tab3:
             })
             st.dataframe(param_df, use_container_width=True, hide_index=True)
 
+            # ── Physical interpretation (rule-based, deterministic) ─────────
+            st.markdown("#### Physical Interpretation")
+            try:
+                from eisforge.analysis.eis_interpreter import interpret_fit
+                interp = interpret_fit(
+                    fit_r.parameters, fit_r.circuit_string, fit_r.chi_squared
+                )
+                st.markdown(interp.as_markdown())
+            except Exception as e:
+                st.warning(f"Interpretation unavailable: {e}")
+
+            # ── Excel export ────────────────────────────────────────────────
+            try:
+                import io as _io
+                _buf = _io.BytesIO()
+                with pd.ExcelWriter(_buf, engine="openpyxl") as _xw:
+                    pd.DataFrame({
+                        "Item": ["Circuit", "Reduced chi2 (modulus-weighted)",
+                                 "Converged", "Points used", "Outliers removed",
+                                 "Source file"],
+                        "Value": [fit_r.circuit_string, fit_r.chi_squared,
+                                  fit_r.converged, fit_r.n_points_used,
+                                  fit_r.n_outliers_removed,
+                                  st.session_state.get("eis_filename", "")],
+                    }).to_excel(_xw, sheet_name="Summary", index=False)
+                    param_df.to_excel(_xw, sheet_name="Fit_Parameters", index=False)
+                    pd.DataFrame({
+                        "Frequency_Hz": fr,
+                        "Z_real_Ohm": zr,
+                        "minus_Z_imag_Ohm": zi,
+                    }).to_excel(_xw, sheet_name="Data", index=False)
+                    if getattr(fit_r, "z_fit_smooth", None) is not None:
+                        pd.DataFrame({
+                            "Frequency_Hz": fit_r.freq_smooth,
+                            "Z_real_Ohm": fit_r.z_fit_smooth.real,
+                            "minus_Z_imag_Ohm": -fit_r.z_fit_smooth.imag,
+                        }).to_excel(_xw, sheet_name="Fit_Curve", index=False)
+                st.download_button(
+                    "📥 Download EIS results (Excel)",
+                    data=_buf.getvalue(),
+                    file_name="eisforge_eis_results.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            except Exception as e:
+                st.warning(f"Excel export unavailable: {e}")
+
 
 # ══════════════════ EIS-GPT ══════════════════════════════════════════════════
 with tab4:
     st.markdown('<h3>🤖 EIS-GPT Interpreter</h3>', unsafe_allow_html=True)
-    st.info("AI-powered EIS spectrum interpretation using physics-informed language model.")
-    if st.button("🤖 Interpret EIS Spectrum"):
+    st.info(
+        "Rule-based physical interpretation of the CNLS fit (deterministic, "
+        "reviewable). The physics-informed transformer (EIS-GPT) is implemented "
+        "but not yet trained — ML-based interpretation is planned for v0.4."
+    )
+    if st.button("🔍 Interpret EIS Spectrum"):
         if "eis_fit" in st.session_state:
             try:
-                from eisforge.models.eis_gpt import EISInterpreter
-                interp = EISInterpreter()
-                result = interp.interpret(
-                    circuit=circ,
-                    params=dict(zip(st.session_state["eis_fit"].param_names,
-                                    st.session_state["eis_fit"].params)),
-                    system_type=system_type, catalyst=catalyst,
-                    electrolyte=ekey, potential=eis_pot,
+                from eisforge.analysis.eis_interpreter import interpret_fit
+                _fit = st.session_state["eis_fit"]
+                _interp = interpret_fit(
+                    _fit.parameters, _fit.circuit_string, _fit.chi_squared
                 )
-                st.markdown(result)
+                st.markdown(f"**Circuit:** `{_fit.circuit_string}`")
+                st.markdown(_interp.as_markdown())
             except Exception as e:
-                st.error(f"EIS-GPT error: {e}")
+                st.error(f"Interpretation error: {e}")
         else:
             st.warning("Run CNLS fit first (EIS Analysis tab).")
 
