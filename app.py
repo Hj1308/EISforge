@@ -1145,29 +1145,16 @@ with tab3:
     col1, col2 = st.columns([1, 1])
     with col1:
         eis_file = st.file_uploader("Upload EIS file", type=EIS_FORMATS, key="eis_up")
-        if _STANDARDS_AVAILABLE:
-            eec_suggestion = suggest_eec(
-                catalyst_type=catalyst_type, electrolyte=ekey, user_circuit=None,
-            )
-            _suggested_circuit = eec_suggestion["circuit"]
-            _suggested_p0 = (
-                ", ".join(f"{v:.3e}" for v in eec_suggestion["p0"])
-                if eec_suggestion["p0"] else ""
-            )
-            st.info(f"🤖 Suggested EEC: `{_suggested_circuit}` — " + eec_suggestion["note"])
-        else:
-            _suggested_circuit = "R0-p(R1,CPE1)"
-            _suggested_p0 = "30, 31000, 2e-7, 0.78"
-        if "lit" in st.session_state and st.session_state["lit"].system_found:
-            g = st.session_state["lit"]
-            _suggested_circuit = g.recommended_circuit
-            _suggested_p0 = ", ".join(f"{v:.3e}" for v in g.initial_guess.values())
-        circ = st.text_input("Equivalent circuit (edit or accept suggestion)", value=_suggested_circuit)
-        p0s = st.text_input(
-            "Initial guess (comma-separated)",
-            value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78",
+        st.markdown("##### Nyquist shape hints (optional)")
+        st.caption(
+            "Set these if the low-frequency arc curls below the axis "
+            "(4th quadrant) or crosses into negative Re(Z) — the definitive "
+            "AOR kinetic fingerprint of adsorbed-intermediate relaxation."
         )
-        use_bounds = st.checkbox("Use smart bounds", value=False)
+        hint_c1, hint_c2 = st.columns(2)
+        inductive_hint = hint_c1.checkbox("Low-f inductive loop (4th quadrant)", value=False)
+        ndr_hint = hint_c2.checkbox("Low-f arc crosses Re(Z) < 0 (NDR)", value=False)
+        use_bounds = st.checkbox("Use smart bounds (custom circuit only)", value=False)
         st.caption("💡 Tip: After fit, use R0 value as R_s for iR compensation in CV/LSV tabs.")
     with col2:
         if eis_file:
@@ -1190,32 +1177,95 @@ with tab3:
                               xaxis_title="Z' (Ω)", yaxis_title="-Z'' (Ω)")
         st.plotly_chart(fig_eis, use_container_width=True)
 
+        if st.button("🔍 Suggest equivalent circuits", type="primary"):
+            try:
+                from eisforge.catalogs.suggestion_engine import suggest_circuits
+                with st.spinner("Fitting candidate circuits and ranking by AICc..."):
+                    suggestions = suggest_circuits(
+                        fr, zr, zi,
+                        catalyst_type=catalyst_type,
+                        inductive_loop=inductive_hint,
+                        negative_resistance=ndr_hint,
+                    )
+                st.session_state["eis_suggestions"] = suggestions
+            except Exception as e:
+                st.error(f"Suggestion error: {e}")
+
+        if "eis_suggestions" in st.session_state:
+            suggestions = st.session_state["eis_suggestions"]
+            st.markdown("#### Suggested equivalent circuits (ranked by AICc)")
+            st.caption(
+                "ΔAICc < 2: essentially equivalent support · 2–7: less support · "
+                ">10: no support (Burnham & Anderson convention). "
+                "Pick the SIMPLEST model with strong support, not just the top row."
+            )
+            sugg_df = pd.DataFrame({
+                "Circuit": [s.model.name for s in suggestions],
+                "Notation": [s.model.notation for s in suggestions],
+                "k (params)": [s.n_params for s in suggestions],
+                "AICc": [f"{s.aicc:.2f}" if np.isfinite(s.aicc) else "—" for s in suggestions],
+                "ΔAICc": [f"{s.delta_aicc:.2f}" if s.converged else "—" for s in suggestions],
+                "Support": [s.support_label() for s in suggestions],
+            })
+            st.dataframe(sugg_df, use_container_width=True, hide_index=True)
+
+            converged_labels = [str(s) for s in suggestions if s.converged]
+            if converged_labels:
+                choice_label = st.selectbox("Accept a suggestion", converged_labels)
+                choice = next(s for s in suggestions if s.converged and str(s) == choice_label)
+                with st.expander("Why this circuit? (rationale)"):
+                    st.write(choice.model.rationale)
+                _suggested_circuit = choice.model.notation
+                _suggested_p0 = ", ".join(
+                    f"{v:.4e}" for v in choice.fit_result.parameters.values()
+                )
+            else:
+                st.warning("No candidate converged — falling back to manual entry.")
+                _suggested_circuit = "R0-p(R1,CPE1)"
+                _suggested_p0 = "30, 31000, 2e-7, 0.78"
+        else:
+            _suggested_circuit = "R0-p(R1,CPE1)"
+            _suggested_p0 = "30, 31000, 2e-7, 0.78"
+
+        if "lit" in st.session_state and st.session_state["lit"].system_found:
+            g = st.session_state["lit"]
+            _suggested_circuit = g.recommended_circuit
+            _suggested_p0 = ", ".join(f"{v:.3e}" for v in g.initial_guess.values())
+
+        circ = st.text_input("Equivalent circuit (edit or accept suggestion)", value=_suggested_circuit)
+        p0s = st.text_input(
+            "Initial guess (comma-separated)",
+            value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78",
+        )
+
         if st.button("▶ Run CNLS Fit", type="primary"):
             try:
-                from eisforge.fitting.cnls_fitter import CNLSFitter
+                from eisforge.core.fitter import CNLSFitter
+                from eisforge.parsers.base_parser import EISDataset
                 p0_list = [float(x.strip()) for x in p0s.split(",")]
-                bounds = smart_bounds(circ, p0_list) if use_bounds else (-np.inf, np.inf)
-                fitter = CNLSFitter(circuit=circ, p0=p0_list, bounds=bounds)
-                fit_r = fitter.fit(fr, zr, zi)
+                bounds = smart_bounds(circ, p0_list) if use_bounds else None
+                fitter = CNLSFitter(circuit_string=circ, initial_guess=p0_list,
+                                    bounds=bounds, allow_negative_r=ndr_hint)
+                ds = EISDataset(frequency=fr, z_real=zr, z_imag=zi, metadata={})
+                fit_r = fitter.fit(ds)
                 st.session_state["eis_fit"] = fit_r
-                st.success(f"✅ Fit converged | χ² = {fit_r.chi_squared:.4e}")
+                if fit_r.converged:
+                    st.success(f"✅ Fit converged | reduced χ² = {fit_r.chi_squared:.4e}")
+                else:
+                    st.warning(f"⚠ Fit did not converge | reduced χ² = {fit_r.chi_squared:.4e}")
             except Exception as e:
                 st.error(f"Fit error: {e}")
 
         if "eis_fit" in st.session_state:
             fit_r = st.session_state["eis_fit"]
             st.markdown("#### Fit Parameters")
-            param_df = pd.DataFrame({"Parameter": fit_r.param_names,
-                                     "Value": fit_r.params,
-                                     "Std Error": fit_r.errors})
+            param_df = pd.DataFrame({
+                "Parameter": list(fit_r.parameters.keys()),
+                "Value": list(fit_r.parameters.values()),
+                "Std Error": [fit_r.parameter_errors.get(k, float("nan"))
+                             for k in fit_r.parameters.keys()],
+            })
             st.dataframe(param_df, use_container_width=True, hide_index=True)
-            if _STANDARDS_AVAILABLE:
-                st.markdown("#### 🔬 EEC Validation")
-                val = CarbonValidator.validate_eis_params(
-                    fit_r.param_names, fit_r.params, catalyst_type, ekey
-                )
-                for v in val:
-                    _show_validation(v)
 
 
 # ══════════════════ EIS-GPT ══════════════════════════════════════════════════
