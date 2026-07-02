@@ -168,6 +168,63 @@ AOR_CIRCUIT_LIBRARY = [
             "CPE1_n":  (0.80,  0.98),
         },
     },
+    {
+        # ── مدار ۵: حلقه شبه‌القایی — امضای اصلی AOR ────────────────────────
+        # مهم‌ترین اثرانگشت سینتیکی AOR در نیکویست:
+        # حلقه القایی فرکانس‌پایین در ربع چهارم (−Z'' منفی)
+        # ناشی از آسایش کند پوشش واسطه جذب‌شده (CO_ads, استالدهید_ads,
+        # ایزوپروپوکساید→استون) در رقابت با تفکیک آب.
+        # توپولوژی: شاخه فارادیک R1-(R2||L2) داخل CPE دولایه.
+        "string": "R0-p(CPE1,R1-p(R2,L2))",
+        "label": 5,
+        "name": "AOR - Pseudo-inductive Loop",
+        "description": "حلقه القایی فرکانس‌پایین: آسایش پوشش واسطه جذب‌شده",
+        "electrochemistry": (
+            "R1: انتقال بار لحظه‌ای اکسیداسیون الکل\n"
+            "R2||L2: دینامیک آسایش پوشش θ واسطه (CO_ads و مشابه)\n"
+            "قوس فرکانس‌پایین به ربع چهارم می‌پیچد — fingerprint قطعی AOR"
+        ),
+        "param_names": ["R0", "CPE1_Q", "CPE1_n", "R1", "R2", "L2"],
+        "param_ranges": {
+            "R0":      (0.5,   20.0),
+            "CPE1_Q":  (1e-5,  1e-2),
+            "CPE1_n":  (0.75,  0.98),
+            "R1":      (10.0,  1000.0),   # R_ct
+            "R2":      (10.0,  2000.0),   # مقاومت آسایش پوشش
+            # L: شبه‌القا — در AOR مقادیر بزرگ (تا هزاران هانری) گزارش شده
+            "L2":      (0.5,   5000.0),   # H
+        },
+        "allow_negative_real": False,
+    },
+    {
+        # ── مدار ۶: NDR/HNDR — مقاومت تفاضلی منفی ──────────────────────────
+        # پس از پیک جریان، R آسایش پوشش منفی می‌شود
+        # (Hidden Negative Differential Resistance — پیش‌درآمد رژیم نوسانی
+        # هاپف که برای ۲-پروپانول و متانول مستند است).
+        # قوس فرکانس‌پایین وارد ربع دوم می‌شود: Re(Z) < 0 مجاز و فیزیکی!
+        "string": "R0-p(CPE1,R1-p(R2,L2))",
+        "label": 6,
+        "name": "AOR - Negative Differential Resistance (NDR)",
+        "description": "NDR/HNDR پس از پیک: Re(Z) فرکانس‌پایین منفی — سیستم passive نیست",
+        "electrochemistry": (
+            "R2 < 0: بازخورد مثبت پوشش-پتانسیل (مسمومیت/آزادسازی سایت)\n"
+            "قوس فرکانس‌پایین در ربع دوم — نزدیک ناپایداری هاپف\n"
+            "فیت فقط با allow_negative_r=True؛ اعتبارسنجی passivity باید غیرفعال شود"
+        ),
+        "param_names": ["R0", "CPE1_Q", "CPE1_n", "R1", "R2", "L2"],
+        "param_ranges": {
+            "R0":      (0.5,   20.0),
+            "CPE1_Q":  (1e-5,  1e-2),
+            "CPE1_n":  (0.75,  0.98),
+            "R1":      (10.0,  1000.0),
+            # R2 منفی: بازه به‌صورت (lo, hi) با هر دو منفی — نمونه‌گیری
+            # log-uniform روی قدر مطلق انجام و سپس علامت منفی اعمال می‌شود.
+            "R2":      (-2000.0, -15.0),
+            "L2":      (0.5,   5000.0),
+        },
+        "negative_params": ["R2"],
+        "allow_negative_real": True,
+    },
 ]
 
 
@@ -261,11 +318,18 @@ class AORDatasetGenerator:
         """تولید یک نمونه مصنوعی با پارامترهای تصادفی."""
 
         # نمونه‌گیری log-uniform از پارامترها
+        # پارامترهای فهرست‌شده در negative_params با قدر مطلق log-uniform
+        # نمونه‌گیری و سپس منفی می‌شوند (NDR).
+        negative_params = set(circuit_def.get("negative_params", []))
         initial_guess = []
         param_values = {}
 
         for name, (lo, hi) in circuit_def["param_ranges"].items():
-            val = float(np.exp(self.rng.uniform(np.log(lo), np.log(hi))))
+            if name in negative_params:
+                mag_lo, mag_hi = sorted([abs(lo), abs(hi)])
+                val = -float(np.exp(self.rng.uniform(np.log(mag_lo), np.log(mag_hi))))
+            else:
+                val = float(np.exp(self.rng.uniform(np.log(lo), np.log(hi))))
             param_values[name] = val
             initial_guess.append(val)
 
@@ -279,9 +343,19 @@ class AORDatasetGenerator:
         except Exception:
             return None
 
-        # فیلتر: Re(Z) باید همیشه مثبت باشد (قانون Passivity)
-        if np.any(Z_theory.real < 0):
+        if not np.all(np.isfinite(Z_theory)):
             return None
+
+        # فیلتر passivity — فقط برای مدارهای passive:
+        # در رژیم NDR (allow_negative_real=True) Re(Z) فرکانس‌پایین منفی
+        # کاملاً فیزیکی است؛ ولی Re(Z) در بالاترین فرکانس باید ≥ 0 بماند
+        # (مقاومت محلول). AOR_FREQUENCIES صعودی است → آخرین نقطه = HF.
+        if circuit_def.get("allow_negative_real", False):
+            if Z_theory.real[-1] < 0:
+                return None
+        else:
+            if np.any(Z_theory.real < 0):
+                return None
 
         # اضافه کردن نویز واقع‌بینانه
         noise_level = float(self.rng.uniform(*self.noise_range))

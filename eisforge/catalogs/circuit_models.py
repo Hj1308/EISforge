@@ -173,6 +173,41 @@ class CircuitCatalog:
         ),
     )
 
+    # ── AOR-specific inductive models ─────────────────────────────────────
+    # The low-frequency pseudo-inductive loop (Nyquist arc curling into the
+    # 4th quadrant) is the definitive kinetic fingerprint of adsorbed-
+    # intermediate coverage relaxation in alcohol oxidation (CO_ads,
+    # acetaldehyde_ads, isopropoxide→acetone turnover). See the project
+    # knowledge base §4.2 and AOR EIS literature (e.g. Ehsani 2019 Chem Rec).
+    AOR_PSEUDOINDUCTIVE = CircuitModel(
+        notation="R0-p(CPE1,R1-p(R2,L2))",
+        name="AOR Pseudo-inductive (intermediate relaxation)",
+        rationale=(
+            "Faradaic branch R1-(R2||L2) nested inside the double-layer CPE1. "
+            "R1: instantaneous charge transfer; the R2||L2 sub-branch models "
+            "the slow relaxation of adsorbed-intermediate coverage (e.g. "
+            "CO_ads oxidation competing with water dissociation), producing "
+            "the low-frequency 4th-quadrant inductive loop characteristic of "
+            "MOR/EOR/IPA oxidation. Fit with allow_negative_r=False when the "
+            "loop stays in the 4th quadrant."
+        ),
+    )
+
+    AOR_NDR = CircuitModel(
+        notation="R0-p(CPE1,R1-p(R2,L2))",
+        name="AOR Negative Differential Resistance (NDR/HNDR)",
+        rationale=(
+            "Same topology as AOR Pseudo-inductive, but past the current "
+            "peak the coverage-relaxation resistance R2 turns NEGATIVE "
+            "(hidden negative differential resistance), pushing the "
+            "low-frequency arc into the 2nd quadrant — precursor of the "
+            "oscillatory (Hopf) regime documented for 2-propanol and "
+            "methanol oxidation. REQUIRES CNLSFitter(allow_negative_r=True); "
+            "the system is NOT passive in this regime and passivity-based "
+            "validation must be relaxed."
+        ),
+    )
+
     DEFAULT = RANDLES_SIMPLE
 
 
@@ -231,6 +266,8 @@ def lookup_circuit(
     catalyst_type: str,
     region: str,
     electrolyte: str = "acidic",
+    inductive_loop: bool = False,
+    negative_resistance: bool = False,
 ) -> CircuitModel:
     """
     Return the recommended ``CircuitModel`` for the given experimental conditions.
@@ -239,11 +276,21 @@ def lookup_circuit(
         catalyst_type: one of the ``CATALYST_*`` constants.
         region: ``"pre-onset"``, ``"onset"``, or ``"post-onset"``.
         electrolyte: ``"acidic"`` (default) or ``"alkaline"``.
+        inductive_loop: set True when the measured Nyquist plot shows a
+            low-frequency 4th-quadrant loop (adsorbed-intermediate
+            relaxation) — routes to the AOR pseudo-inductive model.
+        negative_resistance: set True when the low-frequency arc enters the
+            2nd quadrant (NDR/HNDR past the current peak) — routes to the
+            AOR NDR model, which must be fitted with allow_negative_r=True.
 
     Returns:
         The matched ``CircuitModel``, or ``CircuitCatalog.DEFAULT`` with a
         warning when no specific entry exists for the combination.
     """
+    if negative_resistance:
+        return CircuitCatalog.AOR_NDR
+    if inductive_loop:
+        return CircuitCatalog.AOR_PSEUDOINDUCTIVE
     key = (catalyst_type, region, electrolyte)
     model = _CIRCUIT_MAP.get(key)
     if model is None:

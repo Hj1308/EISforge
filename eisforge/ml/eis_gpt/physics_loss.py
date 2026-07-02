@@ -21,11 +21,17 @@ Constraint 1: Kramers-Kronig (K-K) relations
     and vice versa. Violation of K-K implies the system was drifting
     during measurement or exhibits nonlinear behaviour.
 
-Constraint 2: Passivity
-    Re(Z(ω)) ≥ 0  for all ω.
-    An electrochemical interface cannot generate energy — it can only
-    dissipate or store it. Violation is physically impossible unless
-    the system is actively driven (e.g. a battery under charge).
+Constraint 2: Passivity  (mode-dependent!)
+    Re(Z(ω)) ≥ 0  for all ω — valid for batteries, corrosion, and
+    blocking interfaces. IMPORTANT: it is NOT valid for electrocatalytic
+    oxidation past the current peak. AOR systems exhibit negative
+    differential resistance (NDR/HNDR) from adsorbed-intermediate
+    coverage relaxation — the low-frequency arc legitimately enters the
+    2nd quadrant, and oscillatory (Hopf) regimes are documented for
+    methanol and 2-propanol oxidation. In mode="electrocatalysis" the
+    passivity penalty is therefore applied ONLY at high frequency
+    (where Re(Z) → R_solution must stay ≥ 0) and the low-frequency
+    branch is left unconstrained.
 
 Constraint 3: High-Frequency Limit
     As ω → ∞:  Im(Z) → 0  and  Re(Z) → R_solution.
@@ -83,12 +89,25 @@ class PhysicsInformedLoss(nn.Module):
         lambda_passivity: float = 0.5,
         lambda_hf: float = 0.05,
         reduction: str = "mean",
+        mode: str = "general",
+        hf_fraction: float = 0.25,
     ) -> None:
+        """mode: "general" (default, classic behaviour) or
+        "electrocatalysis" — relaxes passivity to the high-frequency
+        band only and drops the Re-monotonicity proxy (both are violated
+        by physically valid inductive / NDR spectra in AOR).
+        hf_fraction: fraction of the highest frequencies (ascending order
+        assumed) on which passivity is still enforced in
+        electrocatalysis mode (protects R_solution >= 0)."""
         super().__init__()
+        if mode not in ("general", "electrocatalysis"):
+            raise ValueError(f"mode must be 'general' or 'electrocatalysis', got {mode!r}")
         self.lambda_kk = lambda_kk
         self.lambda_passivity = lambda_passivity
         self.lambda_hf = lambda_hf
         self.reduction = reduction
+        self.mode = mode
+        self.hf_fraction = float(hf_fraction)
 
     def forward(
         self,
@@ -133,9 +152,18 @@ class PhysicsInformedLoss(nn.Module):
         recon_imag = ((z_pred_imag - z_true_imag) / z_mod) ** 2
         L_recon = self._reduce(recon_real + recon_imag)
 
-        # ── Passivity penalty ─────────────────────────────────────────────────
-        # Re(Z) must be ≥ 0. Penalise negative predictions via ReLU(-Z_real).
-        L_passivity = self._reduce(F.relu(-z_pred_real) ** 2)
+        # ── Passivity penalty (mode-dependent) ───────────────────────────────
+        # general:          Re(Z) >= 0 at ALL frequencies.
+        # electrocatalysis: Re(Z) >= 0 only on the top hf_fraction of the
+        #   (ascending) frequency axis — the series solution resistance must
+        #   stay physical, but low-frequency NDR (negative faradaic Re) is a
+        #   valid AOR signature and must NOT be penalised.
+        if self.mode == "electrocatalysis":
+            n_pts = z_pred_real.size(1)
+            n_hf = max(1, int(round(self.hf_fraction * n_pts)))
+            L_passivity = self._reduce(F.relu(-z_pred_real[:, -n_hf:]) ** 2)
+        else:
+            L_passivity = self._reduce(F.relu(-z_pred_real) ** 2)
 
         # ── Kramers-Kronig penalty (approximate, finite-band) ─────────────────
         # Full K-K verification requires integration to ±∞; here we enforce a
@@ -147,11 +175,19 @@ class PhysicsInformedLoss(nn.Module):
         if z_pred_real.size(1) > 1:
             dZr_df = torch.diff(z_pred_real, dim=1)
             dZi_df = torch.diff(z_pred_imag, dim=1)
-            # Re(Z) should decrease as frequency increases: dZr/df ≤ 0
-            L_kk_real = self._reduce(F.relu(dZr_df) ** 2)
-            # Im(Z) should be smooth (small second differences)
-            L_kk_imag = self._reduce(dZi_df ** 2) * 0.01
-            L_kk = L_kk_real + L_kk_imag
+            if self.mode == "electrocatalysis":
+                # With a pseudo-inductive loop, Re(Z) is NOT monotonic in
+                # frequency (the low-frequency arc curls back) — enforcing
+                # dRe/df <= 0 would penalise valid AOR spectra. Keep only
+                # smoothness (small first differences on both parts).
+                L_kk = (self._reduce(dZr_df ** 2)
+                        + self._reduce(dZi_df ** 2)) * 0.01
+            else:
+                # Re(Z) should decrease as frequency increases: dZr/df ≤ 0
+                L_kk_real = self._reduce(F.relu(dZr_df) ** 2)
+                # Im(Z) should be smooth (small second differences)
+                L_kk_imag = self._reduce(dZi_df ** 2) * 0.01
+                L_kk = L_kk_real + L_kk_imag
         else:
             L_kk = torch.tensor(0.0, device=z_pred_real.device)
 

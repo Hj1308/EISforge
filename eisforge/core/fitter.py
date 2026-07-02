@@ -60,6 +60,7 @@ class CNLSFitter:
         remove_outliers: bool = True,
         outlier_threshold: float = 3.0,
         neighbor_ratio: float = 5.0,
+        allow_negative_r: bool = False,
     ) -> None:
         self.circuit_string    = circuit_string
         self.initial_guess     = list(initial_guess)
@@ -68,8 +69,42 @@ class CNLSFitter:
         self.remove_outliers   = remove_outliers
         self.outlier_threshold = outlier_threshold
         self.neighbor_ratio    = neighbor_ratio
+        # Electrocatalysis mode: permit negative charge-transfer resistances.
+        # AOR/small-organic-molecule oxidation exhibits negative differential
+        # resistance (NDR/HNDR) past the current peak — the faradaic branch
+        # R can legitimately be < 0 and the low-frequency Nyquist arc curls
+        # into the 2nd/4th quadrant. Default False preserves the classic
+        # non-negative bounds for batteries/corrosion.
+        self.allow_negative_r  = bool(allow_negative_r)
 
     # ── Outlier Detection ─────────────────────────────────────────────────────
+
+    def _build_electrocatalysis_bounds(self, param_names: list) -> tuple:
+        """Per-parameter bounds permitting negative faradaic resistances.
+
+        impedance.py names parameters like 'R0', 'R1', 'CPE1_0', 'CPE1_1',
+        'L2', 'Wo1_0', 'Wo1_1'. The FIRST R encountered is treated as the
+        series solution resistance (R_s ≥ 0); all subsequent R's belong to
+        faradaic branches and may go negative (NDR/HNDR region of AOR).
+        """
+        lb, ub = [], []
+        first_r_seen = False
+        n = max(len(param_names), len(self.initial_guess))
+        for i in range(n):
+            name = param_names[i] if i < len(param_names) else f"p{i}"
+            if name.startswith("R") and "_" not in name:
+                if not first_r_seen:
+                    lb.append(0.0); ub.append(np.inf)      # series R_s
+                    first_r_seen = True
+                else:
+                    lb.append(-np.inf); ub.append(np.inf)  # faradaic R (NDR ok)
+            elif name.startswith("L"):
+                lb.append(1e-12); ub.append(np.inf)        # pseudo-inductance > 0
+            elif name.startswith("CPE") and name.endswith("_1"):
+                lb.append(0.0); ub.append(1.0)             # CPE exponent
+            else:
+                lb.append(0.0); ub.append(np.inf)
+        return np.array(lb, dtype=float), np.array(ub, dtype=float)
 
     def _detect_outliers(self, freq: np.ndarray, Z: np.ndarray) -> np.ndarray:
         n = len(freq)
@@ -174,6 +209,17 @@ class CNLSFitter:
             lb = np.array(self.bounds[0], dtype=float)
             ub = np.array(self.bounds[1], dtype=float)
             method = "trf"
+        elif self.allow_negative_r:
+            # Electrocatalysis mode: build per-parameter bounds from names.
+            #   R (nested/faradaic)  → (-inf, +inf)   NDR permitted
+            #   first R (series R_s) → [0, +inf)      solution resistance stays physical
+            #   L                    → (0, +inf)      pseudo-inductance is positive
+            #   CPE exponent (_1)    → (0, 1]
+            #   everything else      → (0, +inf)
+            lb, ub = self._build_electrocatalysis_bounds(param_names)
+            method = "trf"
+            # keep negative initial guesses; only rescue exact zeros
+            p0 = np.where(p0 != 0, p0, 1e-10)
         else:
             lb = 0.0
             ub = np.inf
@@ -185,7 +231,7 @@ class CNLSFitter:
             result = least_squares(
                 residuals,
                 x0=p0,
-                bounds=(lb if self.bounds else (0.0, np.inf), ub if self.bounds else np.inf),
+                bounds=(lb, ub),
                 method=method,
                 ftol=1e-12,
                 xtol=1e-12,
