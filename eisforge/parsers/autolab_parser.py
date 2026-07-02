@@ -224,6 +224,8 @@ class AutolabIDFParser(BaseEISParser):
         rows = []
         max_lines = n_points if n_points else len(lines) - data_start
         for line in lines[data_start: data_start + max_lines + 5]:
+            if n_points and len(rows) >= n_points:
+                break  # multi-object IDF: never read into the next data object
             stripped = line.strip()
             if not stripped:
                 continue

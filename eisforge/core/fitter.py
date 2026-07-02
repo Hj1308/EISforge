@@ -29,6 +29,8 @@ class FitResult:
     converged: bool
     n_outliers_removed: int = 0
     n_points_used: int = 0
+    freq_smooth: Optional[np.ndarray] = None
+    z_fit_smooth: Optional[np.ndarray] = None
     _circuit_obj: Optional[object] = field(default=None, repr=False)
 
     def parameter_table(self) -> str:
@@ -61,6 +63,7 @@ class CNLSFitter:
         outlier_threshold: float = 3.0,
         neighbor_ratio: float = 5.0,
         allow_negative_r: bool = False,
+        robust: bool = False,
     ) -> None:
         self.circuit_string    = circuit_string
         self.initial_guess     = list(initial_guess)
@@ -76,6 +79,10 @@ class CNLSFitter:
         # into the 2nd/4th quadrant. Default False preserves the classic
         # non-negative bounds for batteries/corrosion.
         self.allow_negative_r  = bool(allow_negative_r)
+        # Robust IRLS (Huber): after the first fit, points with residuals
+        # beyond 1.345·MAD are down-weighted and the fit is repeated. This
+        # gives ZView-like insensitivity to stray points without deleting data.
+        self.robust            = bool(robust)
 
     # ── Outlier Detection ─────────────────────────────────────────────────────
 
@@ -190,13 +197,15 @@ class CNLSFitter:
         weights = 1.0 / Z_mod_safe if self.weight_by_modulus else np.ones(len(freq))
 
         # ── Define residual function for scipy ───────────────────────────────
+        irls_w = np.ones(len(freq))  # Huber weights (all 1.0 = plain CNLS)
+
         def residuals(params):
             """Returns weighted residuals [Re(ΔZ)·w, Im(ΔZ)·w]."""
             try:
                 circuit.parameters_ = np.array(params)
                 Z_pred = circuit.predict(freq)
-                r_real = (Z_meas.real - Z_pred.real) * weights
-                r_imag = (Z_meas.imag - Z_pred.imag) * weights
+                r_real = (Z_meas.real - Z_pred.real) * weights * irls_w
+                r_imag = (Z_meas.imag - Z_pred.imag) * weights * irls_w
                 return np.concatenate([r_real, r_imag])
             except Exception:
                 return np.ones(2 * len(freq)) * 1e10
@@ -268,6 +277,32 @@ class CNLSFitter:
                 converged = False
                 result    = None
 
+        # ── Robust IRLS re-fit (Huber weights): points with large residuals
+        # are down-weighted and the fit repeated (ZView-like outlier tolerance)
+        if self.robust and result is not None and np.all(np.isfinite(fitted)):
+            try:
+                for _ in range(3):
+                    circuit.parameters_ = fitted
+                    Z_pred = circuit.predict(freq)
+                    r_c    = np.abs(Z_meas - Z_pred) * weights
+                    mad    = np.median(np.abs(r_c - np.median(r_c)))
+                    scale  = 1.4826 * max(mad, 1e-15)
+                    k      = 1.345 * scale
+                    new_w  = np.where(r_c <= k, 1.0, np.sqrt(k / r_c))
+                    if np.allclose(new_w, irls_w, atol=1e-3):
+                        break
+                    irls_w[:] = new_w
+                    result_r = least_squares(
+                        residuals, x0=fitted, bounds=(lb, ub),
+                        method="trf", ftol=1e-12, xtol=1e-12, gtol=1e-12,
+                        max_nfev=10000,
+                    )
+                    if np.all(np.isfinite(result_r.x)):
+                        result, fitted = result_r, result_r.x
+                        converged = converged or result_r.success
+            except Exception:
+                pass  # robust pass is best-effort; plain fit already valid
+
         # ── Build parameters dict ────────────────────────────────────────────
         n = min(len(param_names), len(fitted))
         parameters = {param_names[i]: float(fitted[i]) for i in range(n)}
@@ -289,9 +324,17 @@ class CNLSFitter:
         # ── Compute z_fit and chi² ───────────────────────────────────────────
         z_fit = None
         chi2  = float("inf")
+        freq_smooth  = None
+        z_fit_smooth = None
         try:
             circuit.parameters_ = fitted
             z_fit = circuit.predict(freq)
+            # Smooth ZView-style fitted line on dense log-spaced frequencies
+            if len(freq) >= 2 and np.all(freq > 0):
+                freq_smooth  = np.logspace(
+                    np.log10(freq.min()), np.log10(freq.max()), 400
+                )
+                z_fit_smooth = circuit.predict(freq_smooth)
             dof   = max(2 * len(freq) - len(fitted), 1)
             res_r = (Z_meas.real - z_fit.real) * weights
             res_i = (Z_meas.imag - z_fit.imag) * weights
@@ -312,6 +355,8 @@ class CNLSFitter:
             converged=converged,
             n_outliers_removed=n_removed,
             n_points_used=len(freq),
+            freq_smooth=freq_smooth,
+            z_fit_smooth=z_fit_smooth,
             _circuit_obj=circuit,
         )
 
