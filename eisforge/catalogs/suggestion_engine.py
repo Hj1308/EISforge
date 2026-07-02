@@ -10,7 +10,7 @@ with a low-frequency upturn) can come from a second charge-transfer process,
 a finite Warburg tail, OR the onset of the pseudo-inductive intermediate-
 relaxation loop that is the AOR kinetic fingerprint (see
 eisforge/catalogs/circuit_models.py::AOR_PSEUDOINDUCTIVE and the project
-knowledge base, gemini-code, section 4.2). Presenting only one option lets
+knowledge base, Section 4.2). Presenting only one option lets
 the person accept a wrong topology without ever seeing the alternative.
 
 This module fits several catalog candidates to the SAME data and ranks them

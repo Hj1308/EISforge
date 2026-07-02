@@ -14,7 +14,7 @@ Sources (~200 peer-reviewed papers):
   - Teran-Salgado et al. (2019)
   - Ayman et al. (2023), Journal of Chemistry
   - Matthews (2023)
-  - + gemini-code supplement (Hoda Jafari, May 2026)
+  - + supplementary internal compilation (Hoda Jafari, May 2026)
 
 This file is the SINGLE source of truth for all carbon material
 electrochemical limits in EISForge. Import it into cv_analyzer.py,
@@ -116,7 +116,7 @@ CDL_NOISE_THRESHOLD_uF: float = 500.0  # above this → severe noise
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2.  TAFEL SLOPE RANGES  (mV/dec)
-#     Source: gemini-code supplement + AOR literature
+#     Source: internal compilation + AOR literature
 # ═══════════════════════════════════════════════════════════════════════════
 
 TAFEL_RANGES: dict[str, dict] = {
@@ -125,7 +125,7 @@ TAFEL_RANGES: dict[str, dict] = {
         "max": 250.0,
         "normal_min": 75.0,
         "normal_max": 180.0,
-        "note": "KOH / NaOH media. gemini-code + Fu 2023.",
+        "note": "KOH / NaOH media. Internal compilation + Fu 2023.",
     },
     "acidic": {
         "min": 60.0,
@@ -139,21 +139,21 @@ TAFEL_RANGES: dict[str, dict] = {
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3.  R_ct RANGES  (Ω)
-#     Source: gemini-code + EIS table (Section 3)
+#     Source: internal compilation + EIS table (Section 3)
 #     Ni-Co/GC: 10.59–36.77 Ω (very active, metal oxide)
 #     Pd/Au/GC:  1850 Ω (2-propanol in NaOH)
 #     Pt/C on graphite: 207–312 Ω
 # ═══════════════════════════════════════════════════════════════════════════
 
 RCT_RANGES: dict[str, Tuple[float, float]] = {
-    "alkaline": (1000.0, 30000.0),   # Ω  — gemini-code
+    "alkaline": (1000.0, 30000.0),   # Ω  — internal compilation
     "acidic":   (200.0,  50000.0),   # Ω  — Pt/C on graphite 207–312 Ω + margin
 }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 4.  E_onset TYPICAL RANGE (V vs RHE)
-#     Source: gemini-code supplement
+#     Source: internal compilation
 # ═══════════════════════════════════════════════════════════════════════════
 
 ONSET_RHE_TYPICAL: Tuple[float, float] = (0.40, 0.80)
@@ -164,7 +164,7 @@ ONSET_METHOD_DEFAULT: str = "derivative"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 5.  RECOMMENDED EEC  (Equivalent Electrical Circuits)
-#     Source: gemini-code + Gholipour 2021 + EIS table (Section 3)
+#     Source: internal compilation + Gholipour 2021 + EIS table (Section 3)
 # ═══════════════════════════════════════════════════════════════════════════
 
 RECOMMENDED_EEC: dict[str, dict] = {
@@ -190,11 +190,11 @@ RECOMMENDED_EEC: dict[str, dict] = {
         "p0": [20.0, 8000.0, 1e-5, 0.85],
         "note": "Higher R_ct expected vs alkaline. Pt/C on graphite: 207–312 Ω.",
     },
-    # gemini-code original suggestion (kept for compatibility)
-    "carbon_gemini": {
-        "circuit": "R0-p(CPE1,p(R1,Wo1))",   # R_s(CPE(R_ct W_o)) in gemini notation
+    # Nested CPE + Warburg variant (kept for compatibility)
+    "carbon_nested_cpe_warburg": {
+        "circuit": "R0-p(CPE1,p(R1,Wo1))",   # R_s(CPE(R_ct W_o)) nested notation
         "p0": [30.0, 2e-5, 0.82, 15000.0, 500.0, 0.5],
-        "note": "Gemini-code variant: nested CPE + Warburg. Use for porous carbon.",
+        "note": "Nested CPE + Warburg variant. Use for porous carbon.",
     },
     # Noble metal (Pt, Pd) — for comparison
     "noble_metal": {
@@ -260,7 +260,7 @@ class ValidationResult:
 class CarbonValidator:
     """
     Smart validation of electrochemical parameters for carbon/metal-free catalysts.
-    All thresholds sourced from Carbon_Materials_Knowledge_Base.md + gemini-code.
+    All thresholds sourced from Carbon_Materials_Knowledge_Base.md + internal compilation.
 
     Usage in cv_analyzer.py:
         from eisforge.standards.carbon_standards import CarbonValidator

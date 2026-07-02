@@ -142,9 +142,8 @@ is planned for v0.4.
 
 ## Acknowledgements
 
-The authors acknowledge the use of AI-assisted development tools,
-including Claude (Anthropic) and Perplexity AI, during the software
-development process. All code was reviewed, validated, and tested
-by the authors.
+The authors acknowledge the use of AI-based coding and language
+tools during the software development process. All code was
+reviewed, validated, and tested by the authors.
 
 ## References
