@@ -152,7 +152,7 @@ def load_eis(f):
             return (
                 df["freq/Hz"].to_numpy(),
                 df["Re(Z)/Ohm"].to_numpy(),
-                -df["-Im(Z)/Ohm"].to_numpy(),
+                df["-Im(Z)/Ohm"].to_numpy(),
                 {"source": "BioLogic"},
             )
         else:
@@ -1171,8 +1171,17 @@ with tab3:
         zi = st.session_state["eis_zi"]
         import plotly.graph_objects as go
         fig_eis = go.Figure()
-        fig_eis.add_trace(go.Scatter(x=zr, y=-zi, mode="markers+lines",
-                                     name="Nyquist", marker=dict(color="#2563eb", size=6)))
+        # Convention: z_imag stores -Im(Z) (positive, capacitive) -> plot y=zi
+        fig_eis.add_trace(go.Scatter(x=zr, y=zi, mode="markers",
+                                     name="Data", marker=dict(color="#2563eb", size=6)))
+        _fit_prev = st.session_state.get("eis_fit")
+        if _fit_prev is not None and getattr(_fit_prev, "z_fit_smooth", None) is not None:
+            _zs = _fit_prev.z_fit_smooth  # complex Z on 400 log-spaced freqs
+            fig_eis.add_trace(go.Scatter(
+                x=_zs.real, y=-_zs.imag, mode="lines",
+                name="CNLS fit",
+                line=dict(color="#dc2626", width=2.5),
+            ))
         fig_eis.update_layout(**PLOTLY_LAYOUT, title="Nyquist Plot",
                               xaxis_title="Z' (Ω)", yaxis_title="-Z'' (Ω)")
         st.plotly_chart(fig_eis, use_container_width=True)
@@ -1245,7 +1254,8 @@ with tab3:
                 p0_list = [float(x.strip()) for x in p0s.split(",")]
                 bounds = smart_bounds(circ, p0_list) if use_bounds else None
                 fitter = CNLSFitter(circuit_string=circ, initial_guess=p0_list,
-                                    bounds=bounds, allow_negative_r=ndr_hint)
+                                    bounds=bounds, allow_negative_r=ndr_hint,
+                                    robust=True)
                 ds = EISDataset(frequency=fr, z_real=zr, z_imag=zi, metadata={})
                 fit_r = fitter.fit(ds)
                 st.session_state["eis_fit"] = fit_r
