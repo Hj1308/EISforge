@@ -5,8 +5,7 @@
 ![Streamlit](https://img.shields.io/badge/built%20with-Streamlit-FF4B4B?style=flat-square&logo=streamlit)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20649692-blue?style=flat-square)
-![CI](https://github.com/Hj1308/EISforge-/actions/workflows/ci.yml/badge.svg?style=flat-square)
-![Tests](https://github.com/Hj1308/EISforge-/actions/workflows/tests.yml/badge.svg?style=flat-square)
+![CI](https://github.com/Hj1308/EISforge/actions/workflows/ci.yml/badge.svg?style=flat-square)
 
 **EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.2.0**  
 Author: [Hoda Jaafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
@@ -36,8 +35,8 @@ EISForge adapts its diagnostics to the **catalyst family** and **electrolyte che
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/Hj1308/EISforge-.git
-cd EISforge-
+git clone https://github.com/Hj1308/EISforge.git
+cd EISforge
 pip install -e .
 streamlit run app.py
 ```
@@ -258,14 +257,14 @@ pytest --cov=eisforge --cov-report=term-missing
 | `tests/test_batch_analyzer.py` | Batch statistics & reproducibility |
 | `tests/test_parsers.py` | Multi-instrument file parsers |
 
-CI runs automatically on every push via [GitHub Actions](https://github.com/Hj1308/EISforge-/actions).
+CI runs automatically on every push via [GitHub Actions](https://github.com/Hj1308/EISforge/actions).
 
 ---
 
 ## 🗂 Repository Structure
 
 ```
-EISforge-/
+EISforge/
 ├── app.py                        # Streamlit web application
 ├── train_eis_gpt.py              # EIS-GPT training script
 ├── eisforge/
@@ -325,7 +324,7 @@ EISforge-/
   year         = {2026},
   doi          = {10.5281/zenodo.20649692},
   publisher    = {Zenodo},
-  url          = {https://github.com/Hj1308/EISforge-},
+  url          = {https://github.com/Hj1308/EISforge},
   version      = {0.2.0},
   affiliation  = {CCERCI},
   note         = {Automated CV / LSV / EIS analysis for the alcohol oxidation reaction}

@@ -1,7 +1,7 @@
 # EISForge - Project Status & Roadmap
 
 **Author:** Hoda Jaafari
-**GitHub:** https://github.com/Hj1308/EISforge-
+**GitHub:** https://github.com/Hj1308/EISforge
 **Last Updated:** June 2026
 **License:** MIT
 
@@ -201,7 +201,7 @@ For semiconductor/BCN-based photocatalysts:
 ---
 
 ## Current Project Structure
-EISforge-/
+EISforge/
 ├── app.py (Full Streamlit UI - 7 tabs)
 ├── app_simple.py (Lightweight fallback)
 ├── PROJECT_STATUS.md (This file)

@@ -60,8 +60,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Hj1308/EISforge-"
-Issues   = "https://github.com/Hj1308/EISforge-/issues"
+Homepage = "https://github.com/Hj1308/EISforge"
+Issues   = "https://github.com/Hj1308/EISforge/issues"
 DOI      = "https://doi.org/10.5281/zenodo.20649692"
 
 [tool.setuptools.packages.find]

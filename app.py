@@ -44,7 +44,7 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"]{color:var(--text)!impo
 st.markdown('<h1 class="title">⚡ EISForge</h1>', unsafe_allow_html=True)
 st.markdown(
     '<p class="subtitle">Physics-Informed ML for EIS Analysis · by Hoda Jafari · 2026 · '
-    '<a href="https://github.com/Hj1308/EISforge-">GitHub</a></p>',
+    '<a href="https://github.com/Hj1308/EISforge">GitHub</a></p>',
     unsafe_allow_html=True,
 )
 st.markdown(
