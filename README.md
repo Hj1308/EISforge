@@ -131,9 +131,26 @@ print(result.tafel_slope, "mV/dec",
 ## 🔬 Electrochemical Impedance Spectroscopy (EIS)
 
 - Equivalent-circuit (CNLS) fitting via `impedance` library
+- **Robust fitting** — optional Huber IRLS re-weighting (`robust=True`):
+  stray points are automatically down-weighted, ZView-like tolerance
+  without deleting data
+- **Smooth fit overlay** — fitted model rendered on 400 log-spaced
+  frequencies (continuous curve, not segments between data points)
+- **Multi-model circuit suggestion** — candidate circuits fitted and
+  ranked by AICc (Burnham & Anderson convention)
+- **Rule-based physical interpretation** — deterministic report of Rₛ,
+  per-arc effective capacitance (Brug), time constants, NDR /
+  pseudo-inductive / Warburg fingerprints, and fit-quality assessment
+- **C_dl from EIS** — per-area effective capacitance (μF/cm²) for direct
+  comparison with multi-scan-rate CV values
+- **Excel export** — multi-sheet .xlsx (Summary, Fit_Parameters, Data,
+  Fit_Curve) ready for Origin/Excel manuscript figures
 - **Kramers–Kronig validation** (causality, linearity, stationarity)
-- Charge-transfer resistance (R_ct), solution resistance (Rₛ)
-- CPE and double-layer capacitance extraction
+- Charge-transfer resistance (R_ct), solution resistance (Rₛ) — R₀ is
+  auto-linked to the iR-compensation field in the CV/LSV tabs
+- Low-frequency **pseudo-inductive / NDR** circuit topologies for alcohol
+  electrooxidation (adsorbed-intermediate relaxation), incl. negative
+  faradaic resistance fitting
 - Interactive Nyquist and Bode plots (Plotly)
 - EIS–CV cross-technique correlation
 
@@ -154,6 +171,28 @@ print(result.tafel_slope, "mV/dec",
 - **ECSA** — estimated from double-layer capacitance (Cdl) via multi-scan-rate CV in the non-Faradaic window, or from H/CO underpotential deposition for noble metals.
 
 - **Kramers–Kronig** — all EIS fits are validated against K–K constraints before reporting circuit parameters.
+
+---
+
+## ⚖ Comparison with Other Open-Source EIS Tools
+
+| Capability | **EISForge** | impedance.py | pyimpspec | DearEIS |
+|---|---|---|---|---|
+| CNLS equivalent-circuit fitting | ✅ | ✅ | ✅ | ✅ |
+| Kramers–Kronig validation | ✅ | ✅ | ✅ | ✅ |
+| Robust (outlier-tolerant) fitting | ✅ Huber IRLS | ❌ | ❌ | ❌ |
+| Multi-model ranking (AICc) | ✅ | ❌ | ⚠ (χ² only) | ⚠ |
+| Rule-based physical interpretation | ✅ | ❌ | ❌ | ❌ |
+| CV / LSV / Tafel in the same tool | ✅ | ❌ | ❌ | ❌ |
+| Koutecky–Levich analysis | ✅ | ❌ | ❌ | ❌ |
+| AOR pseudo-inductive / NDR circuits | ✅ | ⚠ manual | ⚠ manual | ⚠ manual |
+| Web UI (no code required) | ✅ Streamlit | ❌ | ❌ | ✅ desktop |
+| Ivium IDF parser | ✅ | ❌ | ❌ | ❌ |
+| Excel export of fits | ✅ | ❌ | ⚠ CSV | ✅ |
+
+*impedance.py is used internally by EISForge for circuit evaluation — the
+comparison refers to what each tool offers out of the box. pyimpspec and
+DearEIS additionally offer DRT analysis, which is on the EISForge roadmap.*
 
 ---
 
@@ -309,7 +348,12 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 | Kramers–Kronig validation | ✅ Implemented |
 | Koutecký–Levich analysis | ✅ Implemented |
 | EIS-GPT Transformer model architecture | ✅ Implemented |
-| Pre-trained EIS-GPT model weights | 🔬 In development |
+| Robust (Huber IRLS) CNLS fitting | ✅ Implemented |
+| AICc multi-model circuit suggestion | ✅ Implemented |
+| Rule-based EIS interpretation | ✅ Implemented |
+| Excel export of EIS results | ✅ Implemented |
+| Pre-trained EIS-GPT model weights | 🔬 In development (v0.4) |
+| Chronoamperometry (i–t stability) tab | 📋 Planned |
 | DRT (distribution of relaxation times) | 📋 Planned |
 | PyPI package release | 📋 Planned |
 
