@@ -1,13 +1,16 @@
 # EISForge ⚡
 
-![Version](https://img.shields.io/badge/version-v0.2.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/version-v0.3.0-blue?style=flat-square)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue?style=flat-square&logo=python)
 ![Streamlit](https://img.shields.io/badge/built%20with-Streamlit-FF4B4B?style=flat-square&logo=streamlit)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20649692-blue?style=flat-square)
 ![CI](https://github.com/Hj1308/EISforge/actions/workflows/ci.yml/badge.svg?style=flat-square)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?style=flat-square&logo=streamlit)](https://eisforge-app.streamlit.app/)
 
-**EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.2.0**  
+**🌐 Try it now (no install):** [eisforge-app.streamlit.app](https://eisforge-app.streamlit.app/)
+
+**EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.3.0**  
 Author: [Hoda Jaafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
 
 > **Looking for surface area & pore analysis (BET/BJH)?**  
@@ -64,6 +67,8 @@ pip install -e ".[dev]"
 | **Koutecký–Levich** | Rotating disk LSV | Electron-transfer number, diffusion-limited current |
 | **Batch Analyzer** | CV / LSV / EIS | Mean ± SD over n ≥ 3 replicates, reproducibility scoring |
 | **EIS–CV Correlator** | Cross-technique | R_ct ↔ peak current correlation, activity–impedance maps |
+| **Scan-Rate Kinetics** | Multi-rate CV | b-value (log I – log ν), Randles–Ševčík linearity, mechanism (diffusion/adsorption/mixed) |
+| **Chronoamperometry** | i–t hold | Current retention (%), steady-state current, initial drop — descriptive stability |
 
 ---
 
@@ -253,6 +258,11 @@ pytest --cov=eisforge --cov-report=term-missing
 | Test File | Covers |
 |---|---|
 | `tests/test_eis_fitting.py` | EIS CNLS fitting & Kramers–Kronig |
+| `tests/test_eis_interpreter.py` | Rule-based EIS interpretation |
+| `tests/test_suggestion_engine.py` | AICc multi-model circuit ranking |
+| `tests/test_inductive_aor.py` | Pseudo-inductive / NDR circuits |
+| `tests/test_scan_rate_analyzer.py` | Scan-rate kinetics (b-value, Randles–Ševčík) |
+| `tests/test_ca_analyzer.py` | Chronoamperometry stability metrics |
 | `tests/test_ecsa.py` | ECSA / double-layer capacitance |
 | `tests/test_batch_analyzer.py` | Batch statistics & reproducibility |
 | `tests/test_parsers.py` | Multi-instrument file parsers |
@@ -325,13 +335,14 @@ EISforge/
   doi          = {10.5281/zenodo.20649692},
   publisher    = {Zenodo},
   url          = {https://github.com/Hj1308/EISforge},
-  version      = {0.2.0},
+  version      = {0.3.0},
   affiliation  = {CCERCI},
   note         = {Automated CV / LSV / EIS analysis for the alcohol oxidation reaction}
 }
 ```
 
-**DOI:** [10.5281/zenodo.20649692](https://doi.org/10.5281/zenodo.20649692)
+**DOI (all versions — cite this):** [10.5281/zenodo.20649692](https://doi.org/10.5281/zenodo.20649692)  
+**DOI (this release, v0.3.0):** [10.5281/zenodo.21209400](https://doi.org/10.5281/zenodo.21209400)
 
 A `CITATION.cff` file is included for automatic citation parsing by GitHub and Zenodo.
 
@@ -351,8 +362,10 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 | AICc multi-model circuit suggestion | ✅ Implemented |
 | Rule-based EIS interpretation | ✅ Implemented |
 | Excel export of EIS results | ✅ Implemented |
+| Scan-rate kinetics (b-value, Randles–Ševčík) | ✅ Implemented |
+| Chronoamperometry (i–t stability) tab | ✅ Implemented |
+| Live web demo (Streamlit Cloud) | ✅ Implemented |
 | Pre-trained EIS-GPT model weights | 🔬 In development (v0.4) |
-| Chronoamperometry (i–t stability) tab | 📋 Planned |
 | DRT (distribution of relaxation times) | 📋 Planned |
 | PyPI package release | 📋 Planned |
 
