@@ -312,9 +312,13 @@ class CNLSFitter:
         if result is not None and hasattr(result, "jac"):
             try:
                 J   = result.jac
-                cov = np.linalg.pinv(J.T @ J)
+                cov = np.linalg.pinv(J.T @ J)          # (J^T W J)^-1: J already weighted
                 diag = np.diag(cov)
-                std_devs = np.sqrt(np.abs(diag)) * np.sqrt(result.cost / max(len(result.fun) - len(fitted), 1))
+                dof = max(len(result.fun) - len(fitted), 1)
+                # reduced chi-square scale: result.cost = 0.5*sum(res^2)
+                #   -> s^2 = 2*cost/dof = sum(res^2)/dof  (matches scipy.curve_fit)
+                s_sq = 2.0 * result.cost / dof
+                std_devs = np.sqrt(np.abs(diag) * s_sq)
                 for i in range(min(n, len(std_devs))):
                     if np.isfinite(std_devs[i]):
                         errors[param_names[i]] = float(std_devs[i])
