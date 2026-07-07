@@ -1,394 +1,338 @@
 """
-patch20 — Band Edge & Mott-Schottky Calculator
-===============================================
-Computes conduction/valence band edges from Mulliken electronegativity
-and band gap, plus flat-band potential and carrier density from
-Mott-Schottky analysis.
+Band Edge & Mott-Schottky Calculator — patch20
+=================================================
+Computes semiconductor band edge positions (Ecb, Evb) from:
+  1. Empirical formula:  Ecb = χ - Ec - 0.5·Eg
+  2. Mott-Schottky analysis:  1/C² vs V → Vfb, Nd, semiconductor type
 
-Theory
-------
-  E_cb = X - E_c - 0.5 * Eg      (vs vacuum, eV)
-  E_vb = E_cb + Eg
-  E_cb (vs NHE) = E_cb - 4.44
-  E_cb (vs RHE) = E_cb (vs NHE) - 0.0592 * pH
+All energies are in eV.  Potentials are in V.
+Vacuum reference: Ec = 4.5 eV (conventional absolute scale).
 
-  Mott-Schottky: 1/C² = (2 / ε ε₀ e Nd A²)(E - Vfb - kT/e)
+Supported materials in built-in DB
+------------------------------------
+g-C3N4, TiO2 (anatase/rutile), ZnO, BCN, WO3, Fe2O3, BiVO4
+Plus: custom χ and Eg input.
 
-References
-----------
-  Butler & Ginley (1978) J. Electrochem. Soc.
-  Gelderman et al. (2007) J. Chem. Educ.
-
-Author: Hoda Jafari | July 2026
+Reference
+---------
+Butler & Ginley (1978) J. Electrochem. Soc. 125, 228.
+Mott-Schottky: Gärtner (1959), Bard & Faulkner (2001) Electrochemical Methods.
 """
 
 from __future__ import annotations
 
-import warnings
-from dataclasses import dataclass
+import dataclasses
+import math
 from typing import Dict, Optional, Tuple
 
 import numpy as np
-
-# Physical constants
-_E_C = 4.44          # eV, energy of NHE vs absolute vacuum scale
-_k_B = 8.617e-5      # eV / K
-_e   = 1.602e-19     # C
-_eps0 = 8.854e-12    # F/m
+from scipy import stats as _stats
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Materials database
-# ─────────────────────────────────────────────────────────────────────────────
+# ── built-in materials database ───────────────────────────────────────────────
 
-MATERIALS_DB: Dict[str, Dict] = {
-    "g-C3N4":  {"X": 4.73,  "Eg_eV": 2.70,  "label": "g-C₃N₄",      "type": "n"},
-    "TiO2":    {"X": 5.81,  "Eg_eV": 3.20,  "label": "TiO₂",        "type": "n"},
-    "ZnO":     {"X": 5.79,  "Eg_eV": 3.37,  "label": "ZnO",         "type": "n"},
-    "BCN":     {"X": 4.85,  "Eg_eV": None,  "label": "BCN",          "type": "n"},
-    "WO3":     {"X": 6.59,  "Eg_eV": 2.60,  "label": "WO₃",         "type": "n"},
-    "BiVO4":   {"X": 6.04,  "Eg_eV": 2.40,  "label": "BiVO₄",       "type": "n"},
-    "SnO2":    {"X": 6.25,  "Eg_eV": 3.60,  "label": "SnO₂",        "type": "n"},
-    "Fe2O3":   {"X": 5.88,  "Eg_eV": 2.20,  "label": "α-Fe₂O₃",     "type": "n"},
-    "Cu2O":    {"X": 5.42,  "Eg_eV": 2.17,  "label": "Cu₂O",        "type": "p"},
-    "NiO":     {"X": 5.75,  "Eg_eV": 3.50,  "label": "NiO",         "type": "p"},
-    "CdS":     {"X": 5.18,  "Eg_eV": 2.42,  "label": "CdS",         "type": "n"},
-    "In2S3":   {"X": 5.10,  "Eg_eV": 2.00,  "label": "In₂S₃",      "type": "n"},
-    "custom":  {"X": None,  "Eg_eV": None,  "label": "Custom",       "type": "n"},
+MATERIALS_DB: Dict[str, dict] = {
+    "g-C3N4": {
+        "chi": 4.73,
+        "Eg": 2.70,
+        "type": "n",
+        "epsilon_r": 8.0,
+        "notes": "Graphitic carbon nitride (typical bulk)",
+    },
+    "TiO2 (anatase)": {
+        "chi": 5.81,
+        "Eg": 3.20,
+        "type": "n",
+        "epsilon_r": 55.0,
+        "notes": "TiO2 anatase phase",
+    },
+    "TiO2 (rutile)": {
+        "chi": 5.81,
+        "Eg": 3.00,
+        "type": "n",
+        "epsilon_r": 80.0,
+        "notes": "TiO2 rutile phase",
+    },
+    "ZnO": {
+        "chi": 5.79,
+        "Eg": 3.37,
+        "type": "n",
+        "epsilon_r": 8.5,
+        "notes": "Zinc oxide",
+    },
+    "BCN": {
+        "chi": 4.85,
+        "Eg": None,     # must be measured from Tauc plot
+        "type": "n",
+        "epsilon_r": 7.0,
+        "notes": "Boron-carbon-nitride; Eg from Tauc plot required",
+    },
+    "WO3": {
+        "chi": 6.59,
+        "Eg": 2.70,
+        "type": "n",
+        "epsilon_r": 20.0,
+        "notes": "Tungsten trioxide",
+    },
+    "Fe2O3": {
+        "chi": 5.88,
+        "Eg": 2.10,
+        "type": "n",
+        "epsilon_r": 12.0,
+        "notes": "Hematite",
+    },
+    "BiVO4": {
+        "chi": 6.04,
+        "Eg": 2.40,
+        "type": "n",
+        "epsilon_r": 68.0,
+        "notes": "Bismuth vanadate",
+    },
+    "Custom": {
+        "chi": None,
+        "Eg": None,
+        "type": "n",
+        "epsilon_r": 10.0,
+        "notes": "User-defined material",
+    },
 }
 
+# Physical constants
+_E_CHARGE = 1.602176634e-19   # C
+_EPS0     = 8.8541878128e-12   # F/m
+_KB       = 1.380649e-23       # J/K
+_EC_VAC   = 4.50               # eV  (vacuum reference to absolute NHE)
+_NHE_VS_VAC = 4.44             # eV  (NHE vs absolute vacuum)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Result containers
-# ─────────────────────────────────────────────────────────────────────────────
 
-@dataclass
+# ── result data classes ───────────────────────────────────────────────────────
+
+@dataclasses.dataclass
 class BandEdgeResult:
+    """Band edge positions computed from χ and Eg."""
     material: str
-    X: float            # Mulliken electronegativity (eV)
-    Eg_eV: float        # optical band gap (eV)
-    Ecb_vacuum: float   # conduction band edge vs vacuum (eV)
-    Evb_vacuum: float   # valence band edge vs vacuum (eV)
-    Ecb_NHE: float
-    Evb_NHE: float
-    Ecb_RHE: float
-    Evb_RHE: float
+    chi: float           # electronegativity (eV)
+    Eg: float            # band gap (eV)
+    Ecb_vac: float       # conduction band vs vacuum (eV)
+    Evb_vac: float       # valence band vs vacuum (eV)
+    Ecb_NHE: float       # vs NHE (V)
+    Evb_NHE: float       # vs NHE (V)
+    Ecb_RHE: float       # vs RHE (V)  -- pH-corrected
+    Evb_RHE: float       # vs RHE (V)
     pH: float
 
     def summary(self) -> str:
         return (
-            f"{self.material}  Eg={self.Eg_eV:.2f} eV\n"
-            f"  E_cb = {self.Ecb_NHE:+.3f} V vs NHE  ({self.Ecb_RHE:+.3f} V vs RHE)\n"
-            f"  E_vb = {self.Evb_NHE:+.3f} V vs NHE  ({self.Evb_RHE:+.3f} V vs RHE)\n"
+            f"{self.material} | Eg={self.Eg:.2f} eV\n"
+            f"  Ecb = {self.Ecb_NHE:+.3f} V vs NHE  ({self.Ecb_RHE:+.3f} V vs RHE, pH={self.pH:.1f})\n"
+            f"  Evb = {self.Evb_NHE:+.3f} V vs NHE  ({self.Evb_RHE:+.3f} V vs RHE, pH={self.pH:.1f})"
         )
 
 
-@dataclass
+@dataclasses.dataclass
 class MottSchottkyResult:
-    Vfb_V: float            # flat-band potential (V vs reference)
-    Nd_cm3: float           # carrier density (cm⁻³)
-    semiconductor_type: str # 'n-type' or 'p-type'
-    slope: float            # slope of 1/C² vs V line
-    intercept: float
-    R2: float               # linearity of the fit
-    Vfb_vs_RHE: Optional[float] = None
-    warning: str = ""
+    """Result of Mott-Schottky analysis."""
+    V_fb: float                  # flat-band potential (V vs ref)
+    Nd: float                    # carrier density (cm⁻³)
+    semiconductor_type: str      # 'n-type' or 'p-type'
+    slope: float                 # slope of 1/C² vs V
+    intercept: float             # intercept
+    R2: float                    # R² of linear fit
+    V_fit: np.ndarray            # V points used in the fit
+    invC2_fit: np.ndarray        # 1/C² points used in the fit
+    epsilon_r: float             # relative permittivity used
+    electrode_area_cm2: float    # geometric area used
+
+    def summary(self) -> str:
+        return (
+            f"{self.semiconductor_type} | "
+            f"V_fb = {self.V_fb:+.4f} V | "
+            f"N_D = {self.Nd:.3e} cm⁻³ | "
+            f"R² = {self.R2:.4f}"
+        )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Band edge calculator
-# ─────────────────────────────────────────────────────────────────────────────
+# ── main calculator class ─────────────────────────────────────────────────────
 
 class BandEdgeCalculator:
     """
-    Compute semiconductor band edge positions from Mulliken electronegativity.
+    Compute band edge positions and perform Mott-Schottky analysis.
 
     Parameters
     ----------
-    E_c : float
-        Energy of the reference electrode vs absolute vacuum scale (eV).
-        Default 4.44 eV (NHE / SHE).
     pH : float
-        pH of the electrolyte (for RHE conversion).
-    temperature_K : float
-        Temperature (K).  Default 298.15 K.
+        Solution pH (used for RHE conversion).
+    T_celsius : float
+        Temperature in °C (default 25).
     """
 
-    def __init__(
-        self,
-        pH: float = 7.0,
-        E_c: float = _E_C,
-        temperature_K: float = 298.15,
-    ):
+    def __init__(self, pH: float = 7.0, T_celsius: float = 25.0):
         self.pH = pH
-        self.E_c = E_c
-        self.T = temperature_K
+        self.T_K = T_celsius + 273.15
 
-    # ── core calculation ──────────────────────────────────────────────────
+    # ── 1. Band edge from χ and Eg ────────────────────────────────────────────
 
-    def calculate(self, X: float, Eg_eV: float, material: str = "custom") -> BandEdgeResult:
+    def band_edges(
+        self,
+        chi: float,
+        Eg: float,
+        material: str = "Custom",
+        Ec_ref: float = _EC_VAC,
+    ) -> BandEdgeResult:
         """
-        Calculate band edge positions.
+        Butler-Ginley formula:
+            Ecb (vs vacuum) = χ - Ec - 0.5·Eg
+            Evb (vs vacuum) = Ecb + Eg
 
-        Parameters
-        ----------
-        X : float
-            Mulliken geometric mean electronegativity of the compound (eV).
-        Eg_eV : float
-            Optical band gap (eV), e.g. from Tauc plot.
-        material : str
-            Name / label for the result.
-
-        Returns
-        -------
-        BandEdgeResult
+        χ : absolute electronegativity of the semiconductor (eV)
+        Eg: optical band gap (eV)
+        Ec_ref: vacuum reference level (default 4.50 eV)
         """
-        Ecb_vac = X - self.E_c - 0.5 * Eg_eV
-        Evb_vac = Ecb_vac + Eg_eV
+        Ecb_vac = chi - Ec_ref - 0.5 * Eg
+        Evb_vac = Ecb_vac + Eg
 
-        # vs NHE: subtract absolute scale of NHE (4.44 eV)
-        Ecb_nhe = Ecb_vac - 4.44
-        Evb_nhe = Evb_vac - 4.44
+        # vs NHE: subtract _NHE_VS_VAC
+        Ecb_NHE = Ecb_vac - _NHE_VS_VAC
+        Evb_NHE = Evb_vac - _NHE_VS_VAC
 
-        # vs RHE
-        rhe_shift = 0.0592 * self.pH
-        Ecb_rhe = Ecb_nhe - rhe_shift
-        Evb_rhe = Evb_nhe - rhe_shift
+        # vs RHE: E_RHE = E_NHE + 0.0592·pH  →  E_NHE = E_RHE - 0.0592·pH
+        # so  Ecb_RHE = Ecb_NHE - 0.0592·pH
+        Ecb_RHE = Ecb_NHE - 0.0592 * self.pH
+        Evb_RHE = Evb_NHE - 0.0592 * self.pH
 
         return BandEdgeResult(
             material=material,
-            X=X,
-            Eg_eV=Eg_eV,
-            Ecb_vacuum=Ecb_vac,
-            Evb_vacuum=Evb_vac,
-            Ecb_NHE=Ecb_nhe,
-            Evb_NHE=Evb_nhe,
-            Ecb_RHE=Ecb_rhe,
-            Evb_RHE=Evb_rhe,
+            chi=chi,
+            Eg=Eg,
+            Ecb_vac=Ecb_vac,
+            Evb_vac=Evb_vac,
+            Ecb_NHE=Ecb_NHE,
+            Evb_NHE=Evb_NHE,
+            Ecb_RHE=Ecb_RHE,
+            Evb_RHE=Evb_RHE,
             pH=self.pH,
         )
 
-    def from_material_db(
+    def band_edges_from_db(
         self, material_key: str, Eg_override: Optional[float] = None
     ) -> BandEdgeResult:
-        """
-        Look up material from the built-in database and compute band edges.
-
-        Parameters
-        ----------
-        material_key : str
-            Key in MATERIALS_DB (e.g. "g-C3N4", "TiO2").
-        Eg_override : float, optional
-            Override the database Eg (e.g. from your own Tauc plot).
-        """
+        """Compute band edges from the built-in MATERIALS_DB."""
         if material_key not in MATERIALS_DB:
-            raise ValueError(f"Unknown material '{material_key}'.  "
-                             f"Available: {list(MATERIALS_DB.keys())}")
-        entry = MATERIALS_DB[material_key]
-        X = entry["X"]
-        Eg = Eg_override if Eg_override is not None else entry["Eg_eV"]
-        if X is None or Eg is None:
-            raise ValueError(
-                f"Material '{material_key}' requires X and Eg_eV. "
-                "Set Eg_override (and X via custom entry if needed)."
+            raise KeyError(
+                f"Material '{material_key}' not in DB. "
+                f"Available: {list(MATERIALS_DB.keys())}"
             )
-        return self.calculate(X, Eg, material=entry["label"])
+        db = MATERIALS_DB[material_key]
+        chi = db["chi"]
+        Eg = Eg_override if Eg_override is not None else db["Eg"]
+        if Eg is None:
+            raise ValueError(
+                f"Eg for '{material_key}' is not in DB. "
+                "Please provide Eg_override (from Tauc plot)."
+            )
+        return self.band_edges(chi, Eg, material=material_key)
 
-    # ── multi-material comparison ─────────────────────────────────────────
+    # ── 2. Mott-Schottky analysis ─────────────────────────────────────────────
 
-    def compare(
+    def mott_schottky(
         self,
-        material_keys: list,
-        Eg_overrides: Optional[Dict[str, float]] = None,
-    ):
-        """Return a list of BandEdgeResult for several materials (for band diagram)."""
-        results = []
-        for k in material_keys:
-            eg = (Eg_overrides or {}).get(k)
-            try:
-                results.append(self.from_material_db(k, Eg_override=eg))
-            except ValueError as exc:
-                warnings.warn(str(exc))
-        return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Mott-Schottky analyser
-# ─────────────────────────────────────────────────────────────────────────────
-
-class MottSchottkyAnalyzer:
-    """
-    Flat-band potential and carrier density from Mott-Schottky analysis.
-
-    The Mott-Schottky equation (for a planar electrode):
-
-        1/C² = (2 / ε ε₀ e Nd A²) * (E - Vfb - kT/e)
-
-    A linear region in the 1/C² vs E plot gives:
-        slope  -> Nd
-        x-intercept -> Vfb
-
-    Parameters
-    ----------
-    epsilon_r : float
-        Relative permittivity (dielectric constant) of the semiconductor.
-    area_cm2 : float
-        Electrode geometric area (cm²).
-    e_ref_vs_nhe : float
-        Potential offset of the reference electrode vs NHE (V).
-        Used to convert Vfb to the NHE / RHE scale.
-    pH : float
-        Electrolyte pH.  Used for RHE conversion of Vfb.
-    temperature_K : float
-        Temperature in Kelvin.
-    """
-
-    def __init__(
-        self,
-        epsilon_r: float = 30.0,
-        area_cm2: float = 1.0,
-        e_ref_vs_nhe: float = 0.0,
-        pH: float = 7.0,
-        temperature_K: float = 298.15,
-    ):
-        self.epsilon_r = epsilon_r
-        self.area_cm2 = area_cm2
-        self.e_ref_vs_nhe = e_ref_vs_nhe
-        self.pH = pH
-        self.T = temperature_K
-
-    # ── internal helper: select linear region ────────────────────────────
-
-    @staticmethod
-    def _best_linear_region(
-        E: np.ndarray, y: np.ndarray, min_points: int = 5
-    ) -> Tuple[int, int, float, float, float]:
-        """
-        Find the longest contiguous window with R² ≥ 0.998.
-        Returns (start_idx, end_idx, slope, intercept, R2).
-        """
-        best = (0, len(E), 0.0, 0.0, 0.0)
-        best_len = 0
-
-        for start in range(len(E) - min_points + 1):
-            for end in range(start + min_points, len(E) + 1):
-                Esub = E[start:end]
-                ysub = y[start:end]
-                coeffs = np.polyfit(Esub, ysub, 1)
-                y_pred = np.polyval(coeffs, Esub)
-                ss_res = np.sum((ysub - y_pred) ** 2)
-                ss_tot = np.sum((ysub - ysub.mean()) ** 2)
-                r2 = 1 - ss_res / (ss_tot + 1e-30)
-                n = end - start
-                if r2 >= 0.998 and n > best_len:
-                    best_len = n
-                    best = (start, end, coeffs[0], coeffs[1], r2)
-
-        if best_len == 0:
-            # fallback: global linear fit
-            coeffs = np.polyfit(E, y, 1)
-            y_pred = np.polyval(coeffs, E)
-            ss_res = np.sum((y - y_pred) ** 2)
-            ss_tot = np.sum((y - y.mean()) ** 2)
-            r2 = 1 - ss_res / (ss_tot + 1e-30)
-            best = (0, len(E), coeffs[0], coeffs[1], r2)
-
-        return best
-
-    # ── public API ────────────────────────────────────────────────────────
-
-    def analyze(
-        self,
-        E_V: np.ndarray,
+        V: np.ndarray,
         C_F: np.ndarray,
-        auto_region: bool = True,
-        region_slice: Optional[slice] = None,
+        epsilon_r: float,
+        electrode_area_cm2: float,
+        v_range: Optional[Tuple[float, float]] = None,
     ) -> MottSchottkyResult:
         """
-        Perform Mott-Schottky analysis.
+        Mott-Schottky analysis: linear fit of 1/C² vs V.
 
         Parameters
         ----------
-        E_V : ndarray
-            Applied potential array (V, vs the reference electrode used in the
-            experiment).
-        C_F : ndarray
-            Capacitance array (F).  If you have C in μF, divide by 1e6 first.
-        auto_region : bool
-            If True, automatically select the most linear region.
-        region_slice : slice, optional
-            Manually specify the linear region, e.g. ``slice(10, 30)``.
-            Only used when ``auto_region=False``.
+        V       : potential array (V vs reference)
+        C_F     : capacitance array (F, real part of 1/(jωZ))
+        epsilon_r : relative permittivity of semiconductor
+        electrode_area_cm2 : geometric area in cm²
+        v_range : (V_low, V_high) — restrict fit to this window
 
         Returns
         -------
         MottSchottkyResult
         """
-        E = np.asarray(E_V, dtype=float)
-        C = np.asarray(C_F, dtype=float)
+        V = np.asarray(V, dtype=float)
+        C_F = np.asarray(C_F, dtype=float)
 
-        # 1/C²
-        C_inv2 = 1.0 / (C ** 2)
+        # convert area to m²
+        A_m2 = electrode_area_cm2 * 1e-4
 
-        warning = ""
+        # 1/C² (F⁻²)
+        C_safe = np.where(np.abs(C_F) > 1e-20, C_F, np.nan)
+        inv_C2 = 1.0 / (C_safe ** 2)
 
-        if auto_region:
-            start, end, slope, intercept, R2 = self._best_linear_region(E, C_inv2)
-            if R2 < 0.98:
-                warning = f"Low R² = {R2:.4f} in the best linear region. Check the data range."
+        # optional potential window
+        if v_range is not None:
+            mask = (V >= v_range[0]) & (V <= v_range[1])
+            V_fit, inv_C2_fit = V[mask], inv_C2[mask]
         else:
-            sl = region_slice if region_slice is not None else slice(None)
-            Esub, ysub = E[sl], C_inv2[sl]
-            coeffs = np.polyfit(Esub, ysub, 1)
-            y_pred = np.polyval(coeffs, Esub)
-            ss_res = np.sum((ysub - y_pred) ** 2)
-            ss_tot = np.sum((ysub - ysub.mean()) ** 2)
-            R2 = float(1 - ss_res / (ss_tot + 1e-30))
-            slope, intercept = float(coeffs[0]), float(coeffs[1])
+            valid = np.isfinite(inv_C2)
+            V_fit, inv_C2_fit = V[valid], inv_C2[valid]
 
-        # Flat-band potential: Vfb = -intercept/slope + kT/e
-        kT_e = _k_B * self.T  # in eV = V at unit charge
-        Vfb = -intercept / slope + kT_e
+        if len(V_fit) < 3:
+            raise ValueError(
+                "Not enough valid points for Mott-Schottky fit "
+                f"(need ≥ 3, got {len(V_fit)}). "
+                "Check the potential window or data quality."
+            )
 
-        # Carrier density: Nd = 2 / (e * eps0 * eps_r * A² * slope)
-        A_m2 = self.area_cm2 * 1e-4  # cm² -> m²
-        Nd_m3 = abs(
-            2.0 / (_e * _eps0 * self.epsilon_r * (A_m2 ** 2) * abs(slope))
+        slope, intercept, r_val, _, _ = _stats.linregress(V_fit, inv_C2_fit)
+        R2 = r_val ** 2
+
+        # flat-band potential: intercept on V-axis  →  Vfb = -intercept / slope
+        V_fb = -intercept / slope if abs(slope) > 1e-40 else np.nan
+
+        # carrier density:
+        # slope = ± 2 / (e · ε0 · εr · A² · Nd)
+        # => Nd = 2 / (|slope| · e · ε0 · εr · A²)
+        Nd_m3 = 2.0 / (
+            abs(slope) * _E_CHARGE * _EPS0 * epsilon_r * (A_m2 ** 2)
         )
-        Nd_cm3 = Nd_m3 * 1e-6  # m⁻³ -> cm⁻³
+        Nd_cm3 = Nd_m3 * 1e-6   # convert m⁻³ → cm⁻³
 
-        # Semiconductor type
         sc_type = "n-type" if slope > 0 else "p-type"
 
-        # Convert Vfb to NHE and RHE
-        Vfb_nhe = Vfb + self.e_ref_vs_nhe
-        Vfb_rhe = Vfb_nhe - 0.0592 * self.pH
-
         return MottSchottkyResult(
-            Vfb_V=float(Vfb),
-            Nd_cm3=float(Nd_cm3),
+            V_fb=V_fb,
+            Nd=Nd_cm3,
             semiconductor_type=sc_type,
-            slope=float(slope),
-            intercept=float(intercept),
-            R2=float(R2),
-            Vfb_vs_RHE=float(Vfb_rhe),
-            warning=warning,
+            slope=slope,
+            intercept=intercept,
+            R2=R2,
+            V_fit=V_fit,
+            invC2_fit=inv_C2_fit,
+            epsilon_r=epsilon_r,
+            electrode_area_cm2=electrode_area_cm2,
         )
 
-    # ── convenience: compute C from EIS Cdl ──────────────────────────────
+    # ── 3. Capacitance from EIS data ──────────────────────────────────────────
 
     @staticmethod
-    def cdl_to_capacitance(
-        Cdl_F: float, cpe_phi: Optional[float] = None, Rs: Optional[float] = None
-    ) -> float:
+    def capacitance_from_eis(
+        freq: np.ndarray,
+        z_real: np.ndarray,
+        z_imag: np.ndarray,
+        target_freq: Optional[float] = None,
+    ) -> np.ndarray:
         """
-        Convert a CPE-Q value to an effective capacitance C_eff.
+        Compute capacitance from EIS data: C = -1 / (2π·f·Z'')
 
-        If CPE parameters are provided:
-            C_eff = Q^(1/phi) * Rs^((1-phi)/phi)    [Brug formula]
-        Otherwise:
-            C_eff = Cdl_F   (treated as a pure capacitor)
+        If target_freq is given, returns a single float at the nearest freq.
+        Otherwise returns a full array.
         """
-        if cpe_phi is not None and Rs is not None and cpe_phi > 0:
-            return (Cdl_F ** (1.0 / cpe_phi)) * (Rs ** ((1.0 - cpe_phi) / cpe_phi))
-        return float(Cdl_F)
+        omega = 2 * np.pi * np.asarray(freq, dtype=float)
+        z_imag_arr = np.asarray(z_imag, dtype=float)
+        # Use negative sign: Z'' is negative for capacitive element
+        # C = 1 / (ω · |Z''|)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            C = 1.0 / (omega * np.abs(z_imag_arr))
+        if target_freq is not None:
+            idx = np.argmin(np.abs(np.asarray(freq) - target_freq))
+            return float(C[idx])
+        return C
