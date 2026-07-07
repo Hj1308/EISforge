@@ -6,8 +6,8 @@ message: >
   cite the repository and the associated Zenodo record below.
 
 title: "EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit"
-version: "0.2.0"
-date-released: "2026-06-18"
+version: "0.3.0"
+date-released: "2026-07-07"
 license: MIT
 repository-code: "https://github.com/Hj1308/EISforge"
 doi: 10.5281/zenodo.20649692
@@ -23,11 +23,14 @@ authors:
 abstract: >
   EISForge is an open-source Python framework for automated electrochemical
   analysis of the Alcohol Oxidation Reaction (AOR). It combines classical
-  CNLS fitting with Kramers-Kronig validation, CV/LSV/EIS analysis, ECSA
-  calculation, Koutecky-Levich analysis, a literature-guided knowledge base
+  CNLS fitting (with robust Huber IRLS re-weighting) and Kramers-Kronig
+  validation, CV/LSV/EIS analysis, ECSA calculation, Koutecky-Levich
+  analysis, scan-rate kinetics (b-value, Randles-Sevcik linearity),
+  chronoamperometry stability metrics, AICc multi-model circuit ranking,
+  rule-based EIS interpretation, a literature-guided knowledge base
   (195 peer-reviewed papers), and a Physics-Informed Transformer architecture
   (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Autolab (.idf),
-  and generic CSV file formats.
+  and generic CSV file formats. Includes a live Streamlit web demo.
 
 keywords:
   - electrochemical impedance spectroscopy
@@ -43,6 +46,29 @@ keywords:
   - ECSA
   - Tafel slope
   - open source
+  - scan-rate kinetics
+  - chronoamperometry
+  - Randles-Sevcik analysis
+  - b-value
+  - robust fitting
+  - Huber IRLS
+  - AICc model selection
+  - Tafel analysis
+  - batch reproducibility
+
+preferred-citation:
+  type: software
+  title: "EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit"
+  authors:
+    - family-names: Jafari
+      given-names: Hoda
+      affiliation: "CCERCI (Chemistry and Chemical Engineering Research Center of Iran)"
+  version: "0.3.0"
+  date-released: "2026-07-07"
+  doi: 10.5281/zenodo.20649692
+  url: "https://github.com/Hj1308/EISforge"
+  repository-code: "https://github.com/Hj1308/EISforge"
+  license: MIT
 
 references:
   - type: article
