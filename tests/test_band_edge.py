@@ -49,29 +49,30 @@ class TestMottSchottky:
 
     def _synthetic_ms(self, Vfb_true=0.40, Nd_true=1e17, n_type=True):
         """
-        Build a perfect linear 1/C^2 vs V dataset.
-        Mott-Schottky:  1/C^2 = (2 / (e*eps0*eps*A^2*Nd)) * (V - Vfb)
-        intercept_true = -slope * Vfb_true  =>  Vfb = -intercept/slope  ✓
+        Perfect linear 1/C^2 vs V dataset for n-type semiconductor.
+        V range starts strictly above Vfb_true so that
+        1/C^2 = slope*(V - Vfb) is always positive -> no sqrt issues.
+
+        Mott-Schottky (n-type): slope > 0
+            1/C^2 = (2 / (e*eps0*eps*A^2*Nd)) * (V - Vfb)
         """
         epsilon_r = 10.0
-        area_m2   = 1e-4          # 1 cm^2 in m^2
-        V         = np.linspace(0.0, 1.0, 50)
-        sign      = 1 if n_type else -1
+        area_m2   = 1e-4          # 1 cm^2
 
-        # slope of 1/C^2 vs V  (m^4 F^-2 V^-1)
+        # V window: Vfb+0.1  ..  Vfb+1.1  (always positive for n-type)
+        V = np.linspace(Vfb_true + 0.1, Vfb_true + 1.1, 50)
+
+        sign  = 1 if n_type else -1
         slope = sign * 2.0 / (
             1.602e-19 * 8.854e-12 * epsilon_r * (area_m2 ** 2) * Nd_true * 1e6
         )
-        # intercept: at V=0, 1/C^2 = -slope*Vfb_true
-        intercept = -slope * Vfb_true
 
-        C_inv2 = slope * V + intercept          # perfect linear: no extra offset
-        # Guard: all values must be positive before sqrt
-        C_inv2 = np.abs(C_inv2) + 1e-3 * np.max(np.abs(C_inv2))
+        C_inv2 = slope * (V - Vfb_true)   # exact Mott-Schottky, always > 0
         C      = 1.0 / np.sqrt(C_inv2)
         return V, C
 
     def test_vfb_recovery(self):
+        """polyfit on perfect linear data must recover Vfb within 1 mV."""
         calc = BandEdgeCalculator("TiO2", electrode_area=1.0)
         V, C = self._synthetic_ms(Vfb_true=0.40)
         ms   = calc.mott_schottky(V, C)
