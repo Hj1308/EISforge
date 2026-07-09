@@ -30,8 +30,27 @@
 
 ---
 
+## patch21 — CV sign-detection in onset & peak-finding
+**Date:** 2026-07-09
+**Files changed:**
+- `eisforge/analysis/cv_analyzer.py` — `analyze()` method, lines 395-412
+
+**What it does:**
+- Ports the |j| magnitude-based sign-detection from lsv_analyzer.py:_detect_onset (patch_lsv_detect_onset_v2) into cv_analyzer.py:analyze().
+- After scan splitting and before peak-finding, compares |i_fwd| mean at the low-E end vs the high-E end. If |i|_lo > |i|_hi, the anodic current is stored negative (Ivium quirk) -> flips both i_fwd and i_bwd.
+- Fixes backward peak-finding: np.argmax(i_bwd) -> np.argmin(i_bwd) (cathodic backward scan peak is a minimum).
+- All three _onset_* methods (tangent, threshold, derivative) and forward peak-finding (np.argmax(i_fwd)) now receive positive-up current, matching their internal assumptions.
+
+**Tested on:**
+- BCN\\-0.7-1V 50mv.s 100microLSV.idf (real Ivium data) -> sign quirk detected: |I|_lo=7.6e-4 > |I|_hi=2.4e-4 -> FLIP triggered
+- Synthetic inverted CV (known E_onset=0.650 V): old logic -> E_onset=0.060 V (error 590 mV, at baseline edge); new logic -> E_onset=0.542 V (error 108 mV, within tangent-method tolerance)
+- Forward peak: old 2.01 mA @ 0.105 V (baseline max) -> new 1.01 mA @ 0.986 V (faradaic peak)
+- Backward peak sign: old +0.508 mA -> new -0.508 mA (cathodic correct)
+
+---
+
 ## Upcoming
 | Patch | Feature | Status |
 |---|---|---|
-| patch21 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
-| patch22 | Global optimization: DE + LHS | 🔜 planned |
+| patch22 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
+| patch23 | Global optimization: DE + LHS | 🔜 planned |

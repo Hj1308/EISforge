@@ -394,11 +394,23 @@ class CVAnalyzer:
             e_bwd, i_bwd = potential[mid:], current_ma[mid:]
             logger.warning("Scan split: midpoint fallback.")
 
+        # --- Sign detection (ported from LSV _detect_onset) ---------------
+        # Anodic current may be stored negative by the potentiostat
+        # (Ivium quirk). Compare |i| magnitude at low-E vs high-E ends
+        # of the forward scan: for an anodic wave, |i| should GROW with
+        # potential. If it shrinks, the current is inverted -> flip sign
+        # before peak/onset detection. Apply same correction to backward.
+        _seg_fwd = max(int(0.15 * len(e_fwd)), 3)
+        if float(np.mean(np.abs(i_fwd[:_seg_fwd]))) > float(np.mean(np.abs(i_fwd[-_seg_fwd:]))):
+            i_fwd = -i_fwd
+            i_bwd = -i_bwd
+
         # Peaks
         i_f = float(i_fwd[np.argmax(i_fwd)])
         e_f = float(e_fwd[np.argmax(i_fwd)])
-        i_b = float(i_bwd[np.argmax(i_bwd)])
-        e_b = float(e_bwd[np.argmax(i_bwd)])
+        # Backward scan is cathodic -> peak is a minimum
+        i_b = float(i_bwd[np.argmin(i_bwd)])
+        e_b = float(e_bwd[np.argmin(i_bwd)])
 
         # E_onset (higher derivative sensitivity for metal-free)
         onset_method = (
