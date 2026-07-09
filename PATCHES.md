@@ -121,6 +121,16 @@
 
 ---
 
+## Known limitation — backward-scan onset baseline (found 2026-07-09)
+
+`_onset_tangent`'s baseline fit uses the FIRST `bl` points of whatever array it's given. For `i_fwd` this is correct (baseline = quiescent low-E region before the wave). For `i_bwd`, the "first" points are at the switching potential (still anodic current, not quiescent) — producing physically nonsensical backward onsets (tested on 7 real files: 6/7 gave onset shifts with wrong sign vs. expected hysteresis direction).
+
+patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and validated on all 7 files. Only backward ONSET (tangent/threshold methods applied to `i_bwd`) is affected.
+
+Not fixed in this session — would require `baseline-at-end-of-array` logic specific to backward scans, out of scope for patch21/patch22. Flagged for a future patch23.
+
+---
+
 ## Upcoming
 | Patch | Feature | Status |
 |---|---|---|
