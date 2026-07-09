@@ -561,13 +561,20 @@ class CVAnalyzer:
             m_bl, b_bl = np.polyfit(potential[:bl_end], current[:bl_end], 1)
         except Exception:
             return self._onset_threshold(potential, current, i_peak)
+        # LSV-style steepest-gradient window (ported from lsv_analyzer._tangent)
+        dj = np.gradient(current, potential)
         peak_idx = int(np.argmax(current))
-        s = int(peak_idx * 0.55)
-        e = int(peak_idx * 0.85)
-        if e <= s + 2:
-            s, e = max(0, peak_idx - max(int(n * 0.1), 3)), peak_idx
+        k = int(np.argmax(dj[bl_end:])) + bl_end
+        # Sanity: steepest gradient must precede the current peak
+        if k >= peak_idx:
+            return self._onset_threshold(potential, current, i_peak)
+        w = max(int(0.05 * len(potential)), 3)
+        r0 = max(k - w, bl_end)
+        r1 = min(k + w + 1, n)
+        if r1 - r0 < 3:
+            return self._onset_threshold(potential, current, i_peak)
         try:
-            m_rise, b_rise = np.polyfit(potential[s:e], current[s:e], 1)
+            m_rise, b_rise = np.polyfit(potential[r0:r1], current[r0:r1], 1)
             denom = m_rise - m_bl
             if abs(denom) < 1e-12:
                 return self._onset_threshold(potential, current, i_peak)
