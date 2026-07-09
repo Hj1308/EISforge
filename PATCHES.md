@@ -47,6 +47,8 @@
 - Forward peak: old 2.01 mA @ 0.105 V (baseline max) -> new 1.01 mA @ 0.986 V (faradaic peak)
 - Backward peak sign: old +0.508 mA -> new -0.508 mA (cathodic correct)
 
+> **Addendum (2026-07-09):** the file used for validation (`...100microLSV.idf`) is a single-sweep LSV file per its filename — the backward-sweep sign/peak fix (`i_bwd`, `argmin`) was validated only on synthetic data, not on real CV backward-sweep data. A genuine dual-sweep CV file was later found (B3C `CV -0.05 -0.15 V 10 mV.S`) but its forward scan is capacitive-dominated with no faradaic wave, so it doesn't validate the backward-sweep peak logic either. This remains an open validation gap.
+
 ---
 
 ## patch22 — LSV-style tangent window + k < peak_idx sanity check in CV _onset_tangent
