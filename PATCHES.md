@@ -121,18 +121,38 @@
 
 ---
 
-## Known limitation — backward-scan onset baseline (found 2026-07-09)
+## Known limitation — backward-scan onset baseline (found 2026-07-09, resolved patch23)
 
 `_onset_tangent`'s baseline fit uses the FIRST `bl` points of whatever array it's given. For `i_fwd` this is correct (baseline = quiescent low-E region before the wave). For `i_bwd`, the "first" points are at the switching potential (still anodic current, not quiescent) — producing physically nonsensical backward onsets (tested on 7 real files: 6/7 gave onset shifts with wrong sign vs. expected hysteresis direction).
 
-patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and validated on all 7 files. Only backward ONSET (tangent/threshold methods applied to `i_bwd`) is affected.
+**Resolved by patch23:** a new `_backward_onset()` method reverses arrays before passing to the onset methods, placing the quiescent low-E tail at the start where all three methods expect it. No internals of `_onset_tangent`, `_onset_threshold`, or `_onset_derivative` were changed.
 
-Not fixed in this session — would require `baseline-at-end-of-array` logic specific to backward scans, out of scope for patch21/patch22. Flagged for a future patch23.
+**Remaining gap — cathodic sign convention:** the three onset methods internally assume an anodic wave shape (argmax, dj>0, current>threshold). For a true cathodic backward wave, argmin / current<threshold / d2[peak:] would be needed. This is documented in a TODO comment inside `_backward_onset()`. Backward-onset is **not yet computed or exposed** in `analyze()` or the UI.
+
+patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and validated on all 7 files.
+
+---
+
+## patch23 — backward-scan onset baseline plumbing (array-reversal wrapper)
+**Date:** 2026-07-09
+**Files changed:**
+- `eisforge/analysis/cv_analyzer.py` — added `_backward_onset()` method
+
+**What it does:**
+- Adds `CVAnalyzer._backward_onset(potential, current, i_peak)` that reverses the (potential, current) arrays before delegating to the existing `_detect_onset_method` / onset trio.
+- For forward scans `i_fwd`, the quiescent baseline is at the START of the array (all three onset methods already use `[:bl_end]`). For backward scans `i_bwd`, the quiescent region is at the END (low-E tail, after the E maximum / switching potential). Reversing before onset places the quiescent region at the start — zero changes to `_onset_tangent`, `_onset_threshold`, or `_onset_derivative`.
+- Includes a TODO comment documenting the cathodic-sign-convention gap: tangent uses argmax(dj)/argmax(current) (anodic), threshold uses `current > baseline + threshold` (anodic), derivative uses `d2[:peak]` (anodic peak shape). For a cathodic backward wave, argmin / `current < -threshold` / `d2[peak:]` would be needed. This is currently moot because `analyze()` never calls onset on `i_bwd`.
+- Scoped to baseline plumbing only — does NOT add backward-onset computation to `analyze()` and does NOT expose backward onset in the UI.
+
+**Tested on:**
+- B4C IPA 50mV/s (idf):   baseline 0.032 → −0.038 mA, forward onset −0.4983 V (unchanged)
+- B2C ETOH 5mV/s (idf):   baseline 0.035 → −0.069 mA, forward onset 1.0000 V (unchanged)
+- BCN −0.5-1V 100µA (idf): baseline 0.00023 → −0.00048 mA, forward onset −0.2183 V (unchanged)
 
 ---
 
 ## Upcoming
 | Patch | Feature | Status |
 |---|---|---|
-| patch23 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
-| patch24 | Global optimization: DE + LHS | 🔜 planned |
+| patch24 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
+| patch25 | Global optimization: DE + LHS | 🔜 planned |

@@ -553,6 +553,29 @@ class CVAnalyzer:
     def _detect_onset(self, potential, current, i_peak):
         return self._detect_onset_method(self.onset_method, potential, current, i_peak)
 
+    def _backward_onset(self, potential, current, i_peak):
+        """Compute E_onset for a backward (cathodic) scan.
+
+        Reverses the arrays so the quiescent low-E baseline region
+        (at the end of the backward sweep) maps to the start, where
+        all three onset methods expect it.  No internals of the
+        onset methods are changed.
+        """
+        # TODO: sign convention for cathodic i_bwd not handled.
+        # _onset_tangent uses argmax(current) / argmax(dj) (anodic).
+        # _onset_threshold assumes current > threshold (anodic).
+        # _onset_derivative uses argmax(current) / d2[:peak] (anodic).
+        # For a cathodic backward wave these would need argmin,
+        # current < threshold, and d2[peak:] respectively.
+        # Currently moot: analyze() never passes i_bwd to onset
+        # detection.  See PATCHES.md for context.
+        return self._detect_onset_method(
+            self.onset_method,
+            potential[::-1],
+            current[::-1],
+            i_peak,
+        )
+
     def _onset_tangent(self, potential, current, i_peak):
         n      = len(potential)
         bl_end = max(int(n * 0.2), 3)
