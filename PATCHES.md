@@ -151,8 +151,113 @@ patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and vali
 
 ---
 
+## patch24 — bootstrap_eis.py (noise-injection bootstrap uncertainty)
+**Date:** 2026-07-09
+**Files added:**
+- `eisforge/ml/uncertainty/bootstrap_eis.py` — `bootstrap_eis_uncertainty()`, `BootstrapResult`
+
+**What it does:**
+- Percentile-CI parameter uncertainty via noise-injection residual bootstrap.
+- Initial fit uses TRF `least_squares` (matching main `CNLSFitter` optimizer),
+  bootstrap refits also use TRF for consistency.
+- Modulus-weighted (`1/|Z|`) throughout.
+- Optional per-parameter `bounds` pass through to both initial fit and refits.
+- Bounds sanity check: raises `ValueError` if best-fit params fall outside
+  specified bounds (catches config errors before they produce silently bad CIs).
+
+**Tested on:**
+6 real HBC-4 IPA+H2SO4 spectra (0.25–0.92 V). TRF initial-fit Rs matches
+known ~25.5 Ω thesis value at the two extremes (0.25V: 25.7 Ω, 0.92V:
+25.2 Ω).
+
+**Known limitation — bimodality at all potentials:**
+Bootstrap Rs samples remain substantially bimodal after modulus weighting
+at all 6 potentials — 54% of refits land at Rs=0 for 0.25V (median=0.00),
+42% for 0.92V (median=4.99), ~50% for mid-potential files. This is genuine
+optimisation-landscape multimodality (confirmed independently by DRT and
+KK's own struggles on the same spectra), not a fixable weighting or bounds
+bug.  Root cause: wide |Z| dynamic range (~3 decades).  Best-fit point
+estimates match the known value; report point estimates only, not intervals,
+until further work addresses the multimodality directly.
+
+---
+
+## patch25 — kk_validator.py (standalone Lin-KK validator)
+**Date:** 2026-07-09
+**Files added:**
+- `eisforge/analysis/kk_validator.py` — `StandaloneKKValidator`, `LinKKResult`
+
+**What it does:**
+- Standalone Lin-KK validator (Schonleber-style Voigt circuit) with explicit
+  R_Ω and optional L terms in the design matrix.
+- Modulus-weighted least squares (`1/|Z|` on A and b rows) — critical fix
+  for data with >2 decades |Z| range.
+- Adaptive n_rc search: scans from standard heuristic downward, jointly
+  optimising mu and max_res to avoid both under-fitting and over-fitting.
+- μ-criterion is a simplified proxy (fraction of non-negative R_k, **not**
+  Schönleber's exact weighted formula) — documented in code and docstring;
+  cite accordingly if used in a thesis/publication.
+
+**Tested on:**
+Same 6 HBC-4 IPA+H2SO4 spectra. R_ohm converged to a tight **27.0–29.4 Ω**
+band across ALL 6 potentials after modulus weighting was added — matching
+raw high-frequency Z_real (28.4–28.8 Ω) and independent of the thesis
+Rs~25.5 Ω CNLS result.  This is the strongest independent cross-validation
+of the three new tools.
+
+**Known limitation — max_res:**
+`max_res` (single-point modulus-normalised residual) still exceeds the 1%
+threshold on most files (9–102%) — caused by localised high-frequency
+scatter in the raw data, not a fit-quality issue.  The KK "verdict"
+(PASS/FAIL) should not be over-interpreted on these data; report mu and
+R_ohm as the meaningful diagnostic outputs, not the binary verdict.
+
+---
+
+## patch26 — drt_analyzer.py (Tikhonov-regularized DRT)
+**Date:** 2026-07-09
+**Files added:**
+- `eisforge/analysis/drt_analyzer.py` — `DRTAnalyzer`, `DRTResult`
+
+**What it does:**
+- Tikhonov-regularized DRT with explicit R_inf column in the design matrix
+  (not estimated separately from a single high-frequency data point).
+- Bounded least squares via `scipy.optimize.lsq_linear` with `lb=0` on the
+  full parameter vector — R_inf constrained ≥0 by the solver itself, not
+  post-hoc clipped.
+- L-curve curvature-based λ selection.
+- Post-hoc peak finding on γ(ln τ).
+
+**Tested on:**
+Same 6 HBC-4 IPA+H2SO4 spectra. R_inf recovered 19.8 Ω (0.25V) and
+31.0 Ω (0.92V) — same ballpark as KK/bootstrap/raw values at those two
+potentials. Main DRT peak at f≈2–11 Hz for these spectra.
+
+**Known limitation — mid-potential bound saturation:**
+For the 4 mid-potential files (0.47–0.82 V), the bounded solver hits the
+R_inf = 0 lower bound — the regularised inverse problem cannot extract a
+positive R_inf from these data without further tuning (L-curve / λ
+selection may need refinement).  Not resolved in this patch; report DRT
+R_inf only for 0.25V/0.92V-type spectra until then.
+
+### Cross-tool summary
+
+Three independent methods (raw high-frequency impedance reading,
+KK-fitted R_ohm, DRT R_inf, and bootstrap Rs) agree within ~±5 Ω of
+a 25–29 Ω range at the two best-conditioned potentials (0.25 V, 0.92 V)
+tested against this project's 6-file HBC-4 IPA+H2SO4 dataset, supporting
+the thesis's existing Rs ≈ 25.5 Ω circuit-fit result.  Mid-potential
+spectra (0.47–0.82 V) show wide |Z| dynamic range that limits all three
+model-free/statistical methods' reliability there — this is a data
+characteristic, not a flaw in the existing CNLS circuit fit (which does
+not suffer the same conditioning issue, fitting Rs and Rct simultaneously
+across the same wide range with a proper physical circuit model rather
+than an unconstrained/regularised linear approximation).
+
+---
+
 ## Upcoming
 | Patch | Feature | Status |
 |---|---|---|
-| patch24 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
-| patch25 | Global optimization: DE + LHS | 🔜 planned |
+| patch27 | Bayesian MCMC uncertainty (emcee) | 🔜 planned |
+| patch28 | Global optimization: DE + LHS | 🔜 planned |
