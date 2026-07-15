@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 import numpy as np
 import pandas as pd
 from eisforge.core.fitter import CNLSFitter, FitResult

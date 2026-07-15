@@ -44,7 +44,7 @@ class BootstrapResult:
     def summary(self) -> str:
         lines = [
             f"Bootstrap EIS — {self.n_converged}/{self.n_bootstrap} converged",
-            f"  param       best       50% CI              90% CI",
+            "  param       best       50% CI              90% CI",
             f"  {'-' * 60}",
         ]
         for name in self.best_parameters:
@@ -118,7 +118,7 @@ def bootstrap_eis_uncertainty(
 
     # ── Initial fit ───────────────────────────────────────────────────────
     try:
-        from impedance.models.circuits import CustomCircuit
+        from impedance.models.circuits import CustomCircuit  # noqa: F401
     except ImportError:
         raise ImportError(
             "bootstrap_eis_uncertainty requires the 'impedance' package "

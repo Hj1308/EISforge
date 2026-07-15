@@ -1,6 +1,5 @@
 """tests/test_band_edge.py — 8 unit tests for BandEdgeCalculator"""
 
-import pytest
 import numpy as np
 import sys
 from pathlib import Path

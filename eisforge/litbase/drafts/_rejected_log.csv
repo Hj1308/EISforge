@@ -1,0 +1,2 @@
+timestamp,ref_key,catalyst_name,alcohol,judge_verdict,rejection_reason,source_draft
+2026-07-15,Waidhas2020,Pt/C 20wt%,ethanol,cannot verify: mass activity extracted from CV peak current in graphical data (Fig 5a); paper does not report mass activity in A/g numerically,duplicate entry from Shi2024 review,sample_draft.csv

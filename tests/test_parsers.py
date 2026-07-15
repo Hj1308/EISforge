@@ -5,9 +5,6 @@ These tests use synthetic CSV data to verify parser logic
 without requiring real instrument files.
 """
 
-import io
-import tempfile
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

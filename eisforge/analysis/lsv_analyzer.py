@@ -34,8 +34,7 @@ from eisforge.analysis.cv_analyzer import (
     CATALYST_ALLOY,
     CATALYST_METAL_OXIDE,
     CATALYST_METAL_FREE,
-    ACID_H2SO4, ACID_HClO4, ACID_HCl, ACID_HNO3,
-    BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3,
+    ACID_HCl, BASE_KOH, BASE_NaOH, BASE_Na2CO3, BASE_NH3,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,7 +109,6 @@ class LSVAnalysisResult:
     def summary(self) -> str:
         el            = self.electrolyte
         is_carbon_material = self.catalyst_type == CATALYST_METAL_FREE
-        is_oxide      = self.catalyst_type == CATALYST_METAL_OXIDE
         ecsa_label    = "cm²_BET" if is_carbon_material else "cm²_metal"
 
         lines = [
@@ -124,14 +122,14 @@ class LSVAnalysisResult:
         if self.ir_compensated:
             lines.append(f"  iR Compensation     : APPLIED (R_s = {self.r_s_used:.3f} Ω)")
         else:
-            lines.append(f"  iR Compensation     : not applied")
+            lines.append("  iR Compensation     : not applied")
 
         lines += [
             f"  E_onset             = {self.e_onset:.4f} V  ({self.e_onset_method})",
             "-" * 68,
             f"  Apparent Tafel slope = {self.tafel_slope:.1f} ± {self.tafel_slope_std:.1f} mV/dec",
-            f"  (LSV-derived slope; treat as apparent — intermediate coverage",
-            f"   varies with E. Confirm with steady-state / staircase data.)",
+            "  (LSV-derived slope; treat as apparent — intermediate coverage",
+            "   varies with E. Confirm with steady-state / staircase data.)",
             f"  Tafel fit window    = {self.tafel_region[0]:.3f}–{self.tafel_region[1]:.3f} V"
             f"  |  {self.tafel_decades:.2f} dec  |  n = {self.tafel_n_points}  ({self.tafel_method})",
             f"  R² (Tafel fit)      = {self.tafel_r_squared:.4f}",

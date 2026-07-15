@@ -27,7 +27,6 @@ from eisforge.parsers.base_parser import EISDataset
 from eisforge.ml.eis_gpt.aor_dataset_generator import (
     AORDatasetGenerator,
     AOR_CIRCUIT_LIBRARY,
-    AOR_FREQUENCIES,
 )
 
 torch = pytest.importorskip("torch")

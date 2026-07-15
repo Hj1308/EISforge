@@ -15,7 +15,6 @@ docstring on _select_n_rc for details.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -100,7 +99,6 @@ class StandaloneKKValidator:
 
         # Extract fitted values
         r_omega     = float(x_final[0])
-        idx_l       = 1 if self.include_inductance else None
         inductance  = float(x_final[1]) if self.include_inductance else 0.0
         r_vals      = x_final[1 + int(self.include_inductance):]
 

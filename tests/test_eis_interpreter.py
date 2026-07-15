@@ -1,6 +1,5 @@
 """Tests for eisforge.analysis.eis_interpreter (rule-based interpretation)."""
 
-import numpy as np
 import pytest
 
 from eisforge.analysis.eis_interpreter import interpret_fit, _brug_c_eff

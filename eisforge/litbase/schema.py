@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import os
 import csv
-from dataclasses import dataclass, fields
 from typing import Optional
 
 import pandas as pd

@@ -30,8 +30,6 @@ Author: Hoda Jafari | July 2026
 # STEP 2 — Paste the Batch EIS tab block (patch19)
 # ─────────────────────────────────────────────────────────────────────────────
 
-import streamlit as st
-import numpy as np
 
 # ══ TAB 9 — BATCH EIS (patch19) ══════════════════════════════════════════════
 _BATCH_EIS_TAB_CODE = '''

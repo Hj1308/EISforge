@@ -2,11 +2,11 @@
 Band Edge & Mott-Schottky Calculator
 =====================================
 Computes semiconductor band edge positions (Ecb, Evb) from:
-  1. Butler-Ginley empirical formula:  Ecb_vacuum = χ - EC_REF_VAC - 0.5·Eg
+  1. Butler-Ginley empirical formula:  Ecb_vacuum = χ - E_NHE_OFFSET - 0.5·Eg
   2. Mott-Schottky analysis:  1/C² vs V → Vfb, Nd, semiconductor type
 
 All energies are in eV.  Potentials are in V.
-Vacuum reference: EC_REF_VAC = 4.50 eV (empirical formula); NHE conversion: E_NHE_OFFSET = 4.44 eV (Trasatti/IUPAC).
+Vacuum reference: E_NHE_OFFSET = 4.5 eV (conventional absolute scale).
 Nernst slope: NERNST_SLOPE = 0.05916 V/pH (at 25 °C)
 
 Reference
@@ -231,7 +231,7 @@ class BandEdgeCalculator:
             Evb_vacuum = Ecb_vacuum + Eg
             Ecb_NHE   = Ecb_vacuum - E_NHE_OFFSET   (NHE = vacuum − 4.5 eV)
 
-        Note: E_NHE_OFFSET (4.44 eV) is the absolute NHE scale (Trasatti/IUPAC);
+        Note: E_NHE_OFFSET (4.5 eV) is the conventional absolute NHE scale;
         this is a single subtraction — NOT a double-subtraction of 4.5 + 4.44.
 
         Parameters

@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -265,7 +264,6 @@ class CVAnalyzer:
         -------
         forward_mask, backward_mask : np.ndarray of bool
         """
-        dp = np.diff(potential)
         peak_idx = np.argmax(potential)
 
         forward_mask  = np.zeros(len(potential), dtype=bool)

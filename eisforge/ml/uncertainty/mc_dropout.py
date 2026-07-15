@@ -8,10 +8,9 @@ Two uncertainty types:
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional
 import numpy as np
 import torch
-from eisforge.ml.eis_gpt.transformer import CIRCUIT_NAMES, MAX_PARAMS, N_CIRCUITS
+from eisforge.ml.eis_gpt.transformer import CIRCUIT_NAMES, MAX_PARAMS
 
 
 @dataclass

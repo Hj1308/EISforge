@@ -22,11 +22,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.stats import linregress
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +162,7 @@ class CVAnalysisResult:
         if self.ir_compensated:
             lines.append(f"  iR Compensation   : APPLIED  (R_s = {self.r_s_used:.3f} Ω)")
         else:
-            lines.append(f"  iR Compensation   : not applied")
+            lines.append("  iR Compensation   : not applied")
 
         lines += [
             f"  E_onset           = {self.e_onset:.4f} V  ({self.e_onset_method})",

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from eisforge.analysis.ca_analyzer import analyze_ca, CAResult
+from eisforge.analysis.ca_analyzer import analyze_ca
 
 
 def _decay(n=1000, t_max=1000.0, i0=1e-5, i_inf=4e-6, sign=-1.0):

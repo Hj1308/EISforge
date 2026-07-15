@@ -84,7 +84,7 @@ _ONSET_METHOD_MAP = {
 # ── Try loading carbon_standards (graceful fallback if not yet installed) ─────
 try:
     from eisforge.standards.carbon_standards import (
-        CarbonValidator, suggest_eec, CDL_RANGES,
+        CarbonValidator, suggest_eec, CDL_RANGES,  # noqa: F401
         CARBON_SUBTYPE_MAP,
     )
     _STANDARDS_AVAILABLE = True

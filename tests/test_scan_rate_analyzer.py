@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from eisforge.analysis.scan_rate_analyzer import (
-    analyze_scan_rates, _anodic_peak, ScanRateResult,
+    analyze_scan_rates, _anodic_peak,
 )
 
 
@@ -102,7 +102,7 @@ class TestAnalyzeScanRates:
     def test_peak_window_changes_result(self):
         # peak at 0.5; a wrong window catching only the tail gives different Ipa
         data = self._diffusion_dataset()
-        res_full = analyze_scan_rates(data)
+        analyze_scan_rates(data)
         res_win = analyze_scan_rates(data, peak_window=(0.4, 0.6))
         assert np.all(res_win.ipa_potential >= 0.4 - 1e-9)
         assert np.all(res_win.ipa_potential <= 0.6 + 1e-9)

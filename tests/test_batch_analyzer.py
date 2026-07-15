@@ -8,7 +8,6 @@ Run with:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 # ── Import only the pure-stat helpers (no EISforge deps needed) ───────────────
 from eisforge.analysis.batch_analyzer import (
