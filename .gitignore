@@ -76,3 +76,7 @@ EISforge-/
 Book121.xlsx
 find_source.py
 find_source2.py
+*.bak
+*.bak2
+fix_ci_patch27.py
+fix_ci_patch27b.py
