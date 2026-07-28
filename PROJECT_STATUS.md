@@ -1,6 +1,6 @@
 # EISForge - Project Status & Roadmap
 
-**Author:** Hoda Jaafari
+**Author:** Hoda Jafari
 **GitHub:** https://github.com/Hj1308/EISforge
 **Last Updated:** June 2026
 **License:** MIT

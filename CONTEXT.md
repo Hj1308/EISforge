@@ -1,6 +1,6 @@
 # EISForge — Project Context
 
-**Author:** Hoda Jaafari  
+**Author:** Hoda Jafari  
 **Repo:** https://github.com/Hj1308/EISforge  
 **Stack:** Python 3.10+ | Streamlit | Plotly | impedance.py | scipy | PyTorch  
 **Status:** Active Development — June 2026

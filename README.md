@@ -11,7 +11,7 @@
 **🌐 Try it now (no install):** [eisforge-app.streamlit.app](https://eisforge-app.streamlit.app/)
 
 **EISForge — Catalyst-Aware Electrochemistry Analysis Toolkit, v0.3.0**  
-Author: [Hoda Jaafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
+Author: [Hoda Jafari](https://github.com/Hj1308) | Affiliation: CCERCI | MIT License | First published: May 2026
 
 > **Looking for surface area & pore analysis (BET/BJH)?**  
 > → See [BET_analyser](https://github.com/Hj1308/BET_analyser)  
@@ -329,7 +329,7 @@ EISforge/
 
 ```bibtex
 @software{jafari2026eisforge,
-  author       = {Jaafari, Hoda},
+  author       = {Jafari, Hoda},
   title        = {EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit},
   year         = {2026},
   doi          = {10.5281/zenodo.20649692},
