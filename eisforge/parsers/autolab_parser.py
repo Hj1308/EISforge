@@ -1,8 +1,8 @@
 """
-Autolab IDF Parser — Comprehensive support for CV, LSV, and EIS.
+Ivium IDF Parser — Comprehensive support for CV, LSV, and EIS.
 Author: Hoda Jafari | May 2026
 
-Recognized Autolab methods:
+Recognized Ivium methods:
     - CyclicVoltammetry → CV
     - LinearSweep / LSV → LSV (same parsing as CV)
     - EIS / FRA / Impedance → EIS
@@ -32,7 +32,7 @@ _EIS_METHODS = ("eis", "fra", "impedance", "frequency")
 
 
 class AutolabIDFParser(BaseEISParser):
-    """Parser for Autolab .idf files (CV, LSV, EIS)."""
+    """Parser for Ivium .idf files (CV, LSV, EIS)."""
 
     def parse(self, filepath: Path | str) -> EISDataset:
         filepath = self._resolve_path(filepath)
@@ -81,7 +81,7 @@ class AutolabIDFParser(BaseEISParser):
         z_real = raw_data[:, zre_col]
         z_imag = raw_data[:, zim_col]
 
-        # Convert Autolab Im(Z) (negative) → -Im(Z) (positive for capacitive)
+        # Convert Ivium Im(Z) (negative) → -Im(Z) (positive for capacitive)
         if np.median(z_imag) < 0:
             z_imag = -z_imag
 
@@ -108,7 +108,7 @@ class AutolabIDFParser(BaseEISParser):
         """
         Parse CV / LSV data.
 
-        Autolab columns:
+        Ivium columns:
             col 0: Applied potential (V)
             col 1: Current (A) — converted to mA
             col 2: Measured potential (V) [optional]
@@ -176,7 +176,7 @@ class AutolabIDFParser(BaseEISParser):
     @staticmethod
     def _parse_header(lines, filepath) -> dict:
         metadata = {
-            "source_format": "Autolab IDF",
+            "source_format": "Ivium IDF",
             "filename": filepath.name,
         }
         for line in lines[:200]:

@@ -206,7 +206,7 @@ DearEIS additionally offer DRT analysis, which is on the EISForge roadmap.*
 |---|---|---|
 | Gamry Instruments | `.DTA` | `gamry_parser.py` |
 | BioLogic Science Instruments | `.mpt`, `.mpr` | `biologic_parser.py` |
-| Metrohm Autolab | `.idf` | `autolab_parser.py` |
+| Ivium Technologies | `.idf` | `autolab_parser.py` |
 | Generic / custom | `.csv`, `.tsv` | `generic_csv_parser.py` |
 
 All parsers share automatic unit handling (A / mA / µA / nA) and multi-instrument detection.
@@ -354,7 +354,7 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 |---|---|
 | CV / LSV / EIS analysis engine | ✅ Implemented |
 | Batch processing (n ≥ 3) | ✅ Implemented |
-| Multi-instrument parsers (Gamry, BioLogic, Autolab) | ✅ Implemented |
+| Multi-instrument parsers (Gamry, BioLogic, Ivium) | ✅ Implemented |
 | Kramers–Kronig validation | ✅ Implemented |
 | Koutecký–Levich analysis | ✅ Implemented |
 | EIS-GPT Transformer model architecture | ✅ Implemented |

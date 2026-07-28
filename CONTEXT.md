@@ -26,7 +26,7 @@ EISforge/
 │   │
 │   ├── parsers/
 │   │   ├── base_parser.py          ← Abstract base + EISDataset dataclass
-│   │   ├── autolab_parser.py       ← Metrohm Autolab .idf (CV + EIS)
+│   │   ├── autolab_parser.py       ← Ivium .idf (CV + EIS)
 │   │   ├── gamry_parser.py         ← Gamry .DTA files
 │   │   ├── biologic_parser.py      ← BioLogic .mpt/.mpr (via galvani)
 │   │   └── generic_csv_parser.py   ← CSV/TXT auto-detection
@@ -136,7 +136,7 @@ EISforge/
 
 | Format | Parser | Instrument |
 |--------|--------|------------|
-| `.idf` | `autolab_parser.py` | Metrohm Autolab (CV + EIS, multi-scan) |
+| `.idf` | `autolab_parser.py` | Ivium (CV + EIS, multi-scan) |
 | `.DTA` | `gamry_parser.py` | Gamry Instruments |
 | `.mpt` / `.mpr` | `biologic_parser.py` | BioLogic (via galvani) |
 | `.csv` / `.txt` | `generic_csv_parser.py` | Any instrument, auto-detects delimiter |

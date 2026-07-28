@@ -40,7 +40,7 @@ EISForge is an open-source Python framework that combines:
 - [x] base_parser.py - Abstract base class + EISDataset container
 - [x] gamry_parser.py - Gamry Instruments .DTA files
 - [x] generic_csv_parser.py - Generic CSV/TXT with auto-detection
-- [x] autolab_parser.py - Metrohm Autolab .idf files (CV + EIS)
+- [x] autolab_parser.py - Ivium .idf files (CV + EIS)
   - Auto-detects CV vs EIS from method header
   - Handles latin-1 / cp1252 / utf-8 encodings
   - Converts current from Amperes to mA automatically
@@ -169,7 +169,7 @@ For semiconductor/BCN-based photocatalysts:
 - Multi-file batch processing, mean +/- std tables
 
 #### 5. Real Data Validation
-- [ ] Test ECSA calculator with real Autolab .idf CV files
+- [ ] Test ECSA calculator with real Ivium .idf CV files
 - [ ] Test parsers with real Gamry .DTA files
 - [ ] Test BioLogic .mpt integration
 

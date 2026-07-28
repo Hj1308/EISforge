@@ -49,7 +49,7 @@ st.markdown(
 )
 st.markdown(
     '<p style="text-align:center">'
-    '<span class="fmt">.idf Autolab</span> <span class="fmt">.dta Gamry</span> '
+    '<span class="fmt">.idf Ivium</span> <span class="fmt">.dta Gamry</span> '
     '<span class="fmt">.mpt BioLogic</span> <span class="fmt">.csv</span> '
     '<span class="fmt">.txt</span></p>',
     unsafe_allow_html=True,

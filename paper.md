@@ -47,7 +47,7 @@ statistical reproducibility for replicate measurements, and a
 literature-guided knowledge base extracted from 195 peer-reviewed papers.
 The framework additionally provides the architecture of a
 Physics-Informed Transformer model (EIS-GPT) for circuit classification
-and parameter regression. EISForge supports Autolab (.idf), Gamry (.dta),
+and parameter regression. EISForge supports Ivium (.idf), Gamry (.dta),
 and generic CSV file formats, and exposes a Streamlit web interface for
 interactive, no-code analysis.
 
@@ -70,7 +70,7 @@ electrocatalysts in alcohol oxidation reactions (AOR), hydrogen evolution
 (HER), oxygen reduction (ORR), and water splitting \u2014 who routinely
 acquire multi-technique data from different instruments and need
 reproducible, publication-quality analysis without commercial software.
-The software was developed and validated on real experimental Autolab
+The software was developed and validated on real experimental Ivium
 data, achieving a reduced \u03c7\u00b2 of 0.0008 for a R-p(R,CPE) circuit.
 
 ## Functionality
@@ -86,7 +86,7 @@ into arbitrary series and parallel combinations using a string notation
 Kramers-Kronig consistency check using the linear K-K method
 [@Schonleber2014], with a Voigt-circuit fallback for spectra with
 fewer than 10 frequency points. A reduced \u03c7\u00b2 of 0.0008 was achieved
-on real experimental Autolab data.
+on real experimental Ivium data.
 
 ### CV and LSV Analysis
 
