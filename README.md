@@ -325,7 +325,7 @@ EISforge/
 
 ## 📌 Citation and Attribution
 
-> ⚠️ **Citation is required.** If you use EISForge — including its analysis modules, curated `knowledge/` resources, or any derived outputs — in publications, theses, reports, presentations, or other software, you **must** cite the repository and the associated Zenodo record.
+> ⚠️ **Citation is requested.** If you use EISForge — including its analysis modules, curated `knowledge/` resources, or any derived outputs — in publications, theses, reports, presentations, or other software, please cite the repository and the associated Zenodo record.
 
 ```bibtex
 @software{jafari2026eisforge,
@@ -373,4 +373,4 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 
 ## License
 
-MIT — free to use, modify, and distribute. **Citation is required** for any academic or research use. See **Citation and Attribution** above.
+MIT — free to use, modify, and distribute. **Citation is requested** for any academic or research use (see Citation and Attribution above).

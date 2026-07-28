@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: >
   EISForge is freely available under the MIT License. If you use EISForge,
   its analysis modules, curated knowledge resources, or any derived outputs
-  in publications, theses, reports, presentations, or software, you MUST
+  in publications, theses, reports, presentations, or software, you are requested to
   cite the repository and the associated Zenodo record below.
 
 title: "EISForge: A Catalyst-Aware Electrochemistry Analysis Toolkit"
