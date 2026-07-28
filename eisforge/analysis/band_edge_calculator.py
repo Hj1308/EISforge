@@ -102,7 +102,7 @@ class BandEdgeResult:
     material: str
     chi: float
     Eg: float
-    Ecb_vacuum: float    # conduction band vs vacuum (eV)  [= \u03c7 - 4.5 - 0.5\u00b7Eg]
+    Ecb_vacuum: float    # conduction band vs vacuum (eV)  [= \u03c7 - EC_REF_VAC - 0.5\u00b7Eg]
     Evb_vacuum: float    # valence band vs vacuum (eV)
     Ecb_NHE: float       # vs NHE (V)  [= Ecb_vacuum - E_NHE_OFFSET]
     Evb_NHE: float       # vs NHE (V)
@@ -227,12 +227,13 @@ class BandEdgeCalculator:
 
         Butler-Ginley formula
         ---------------------
-            Ecb_vacuum = \u03c7 - E_NHE_OFFSET - 0.5\u00b7Eg
+            Ecb_vacuum = \u03c7 - EC_REF_VAC - 0.5\u00b7Eg
             Evb_vacuum = Ecb_vacuum + Eg
-            Ecb_NHE   = Ecb_vacuum - E_NHE_OFFSET   (NHE = vacuum − 4.5 eV)
+            Ecb_NHE   = Ecb_vacuum - E_NHE_OFFSET   (NHE = vacuum − 4.44 eV, E_NHE_OFFSET)
 
-        Note: E_NHE_OFFSET (4.44 eV) is the absolute NHE scale (Trasatti/IUPAC);
-        this is a single subtraction — NOT a double-subtraction of 4.5 + 4.44.
+        Note: EC_REF_VAC (4.50 eV) is the empirical Butler-Ginley constant;
+        E_NHE_OFFSET (4.44 eV) is the absolute NHE scale (Trasatti/IUPAC).
+        These are two separate subtractive steps — NOT a combined offset.
 
         Parameters
         ----------
@@ -262,7 +263,7 @@ class BandEdgeCalculator:
         Evb_vac = Ecb_vac + Eg
 
         # NHE: E_CB(NHE) = E_CB(vacuum) - E_NHE_OFFSET
-        # (E_NHE_OFFSET already applied above in vacuum step;
+        # (EC_REF_VAC already applied above in vacuum step;
         #  NHE reference: E_NHE = -E_NHE_OFFSET on the vacuum scale,
         #  so E_CB(NHE) = E_CB(vacuum) - E_NHE_OFFSET)
         Ecb_NHE = Ecb_vac - E_NHE_OFFSET
