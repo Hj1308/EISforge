@@ -33,12 +33,13 @@ plt.show()
 
 | Format | Extension | Parser |
 |--------|-----------|--------|
-| Generic CSV | `.csv` | `eisforge.parsers.csv_parser` |
+| Generic CSV | `.csv` | `eisforge.parsers.generic_csv_parser` |
 | Gamry EXPLAIN | `.DTA` | `eisforge.parsers.gamry_parser` |
-| Autolab NOVA | `.csv` (Autolab) | `eisforge.parsers.ivium_parser` |
+| Autolab NOVA | `.csv` (Autolab) | `eisforge.parsers.generic_csv_parser` |
+| Ivium | `.idf` | `eisforge.parsers.ivium_parser` |
 | BioLogic EC-Lab | `.mpr`, `.mpt` | `eisforge.parsers.biologic_parser` |
 
 ## Planned (Roadmap)
 
-- Zahner Thales `.ism` parser (v0.3)
+- Zahner Thales `.ism` parser
 - Batch processing of multiple files
