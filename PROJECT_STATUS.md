@@ -1,271 +1,166 @@
-# EISForge - Project Status & Roadmap
+# EISForge — Project Status & Roadmap
 
 **Author:** Hoda Jafari
 **GitHub:** https://github.com/Hj1308/EISforge
-**Last Updated:** June 2026
+**Live demo:** https://eisforge-app.streamlit.app/
+**Current version:** v0.3.0
 **License:** MIT
+**Last Updated:** July 2026
 
 ---
 
 ## Project Vision
 
-EISForge is an open-source Python framework that combines:
-- Classical EIS analysis (CNLS fitting, Kramers-Kronig validation)
-- CV and LSV analysis with automatic interpretation
-- Physics-Informed Machine Learning (EIS-GPT Transformer)
-- Automated ECSA calculation (H-UPD, CO Stripping, Cdl)
-- Band edge position calculator (Ecb / Evb) for semiconductor catalysts
-- Literature-driven initial parameter guessing
+EISForge is an open-source, catalyst-aware electrochemistry analysis toolkit for the
+Alcohol Oxidation Reaction (AOR). It combines:
+
+- Classical EIS analysis (CNLS fitting, Kramers–Kronig validation, robust Huber-IRLS fitting)
+- CV and LSV analysis with automatic, catalyst-aware interpretation
+- Multi-model equivalent-circuit ranking (AICc)
+- Automated ECSA calculation (H-UPD, CO stripping, Cdl)
+- Scan-rate kinetics and chronoamperometry stability analysis
+- A literature-guided knowledge layer
+- A physics-informed ML module (EIS-GPT) — architecture complete, weights in development
 - A modern Streamlit web interface
 
-**Target users:** Electrochemistry researchers working on AOR, batteries, fuel cells, semiconductor photocatalysts, and corrosion.
+**Target users:** electrochemistry researchers working on AOR, batteries, fuel cells,
+semiconductor photocatalysts, and corrosion.
 
 ---
 
-## COMPLETED WORK
+## Release Status
 
-### 1. Project Infrastructure
-- [x] GitHub repository created and configured
-- [x] MIT License with proper authorship
-- [x] README.md with citation info
-- [x] Python virtual environment (venv) setup on Windows
-- [x] requirements.txt with all dependencies
-- [x] setup.py for package installation
-- [x] Proper directory structure (eisforge/ package)
-- [x] .gitignore configured
+| Item | Status |
+| --- | --- |
+| Version | v0.3.0 (released Jul 2026) |
+| Live web demo (Streamlit Cloud) | ✅ eisforge-app.streamlit.app |
+| Zenodo concept DOI (all versions) | ✅ 10.5281/zenodo.20649692 |
+| Zenodo version DOI (v0.3.0) | ✅ 10.5281/zenodo.21209400 |
+| CI (GitHub Actions, Python 3.10 + 3.11) | ✅ passing |
+| Test suite | ✅ 164 tests passing |
+| JOSS manuscript (paper.md) | 🔬 drafted, not yet submitted |
 
 ---
 
-### 2. Data Parsers (eisforge/parsers/)
-- [x] base_parser.py - Abstract base class + EISDataset container
-- [x] gamry_parser.py - Gamry Instruments .DTA files
-- [x] generic_csv_parser.py - Generic CSV/TXT with auto-detection
-- [x] ivium_parser.py - Ivium .idf files (CV + EIS)
+## Completed Work
+
+### 1. Project infrastructure
+- [x] GitHub repository configured, MIT License, README with citation info
+- [x] `requirements.txt`, `pyproject.toml`, `setup.py`
+- [x] `eisforge/` package structure, `.gitignore`
+- [x] CI/CD pipeline (GitHub Actions — lint + Python 3.10 + 3.11)
+- [x] Zenodo DOI registration (concept + version)
+- [x] `CITATION.cff` for automatic citation parsing
+- [x] Repository cleanup — one-off dev patch scripts removed from tracking
+
+### 2. Data parsers (`eisforge/parsers/`)
+- [x] `base_parser.py` — abstract base + dataset container
+- [x] `gamry_parser.py` — Gamry `.DTA`
+- [x] `generic_csv_parser.py` — CSV/TSV/TXT with auto-detection
+- [x] `ivium_parser.py` — Ivium `.idf` (CV + EIS)  ⚠️ *renamed from `autolab_parser.py`; `.idf` is an Ivium format, not Autolab*
   - Auto-detects CV vs EIS from method header
   - Handles latin-1 / cp1252 / utf-8 encodings
-  - Converts current from Amperes to mA automatically
+  - Converts current A → mA automatically
   - Multi-scan support
-- [x] biologic_parser.py - BioLogic .mpt / .mpr files (via galvani)
+  - `AutolabIDFParser` kept as a deprecated back-compat alias
+- [x] `biologic_parser.py` — BioLogic `.mpt` / `.mpr` (via galvani)
 
----
+### 3. Core engine (`eisforge/core/`)
+- [x] `analyzer.py` — orchestration
+- [x] `fitter.py` — CNLS fitter (bounds, modulus weighting, robust Huber-IRLS re-weighting)
+- [x] `preprocessor.py`
+- [x] `validators.py` — Kramers–Kronig (impedance.py linKK + Voigt fallback)
 
-### 3. Core Engine (eisforge/core/)
-- [x] analyzer.py - Main EisAnalyzer orchestration class
-- [x] fitter.py - CNLSFitter with robust error handling
-  - Complex Non-Linear Least Squares
-  - Bounds support
-  - Modulus weighting (IUPAC standard)
-- [x] validators.py - Kramers-Kronig validator
-  - Primary: impedance.py linKK
-  - Fallback: Custom Voigt-circuit approximation
+### 4. Analysis modules (`eisforge/analysis/`)
+- [x] `cv_analyzer.py` — E_onset, peak position/height, ECSA-normalized current density, AOR interpretation
+- [x] `lsv_analyzer.py` — Tafel slope, j₀, overpotentials, mass/specific activity, E_half
+- [x] `eis_cv_correlator.py` — cross-technique correlation
+- [x] `ecsa_calculator.py` — H-UPD / CO stripping / Cdl methods
+- [x] `koutecky_levich.py` — electron-transfer number
+- [x] `batch_analyzer.py` — mean ± SD over n ≥ 3, reproducibility scoring
+- [x] Scan-rate kinetics (b-value, Randles–Ševčík linearity, mechanism assignment)
+- [x] Chronoamperometry (i–t retention %, steady-state current, initial drop)
+- [x] `band_edge_calculator.py` — E_cb / E_vb for semiconductor catalysts
+  - Vacuum reference (`EC_REF_VAC = 4.50 eV`) and NHE conversion (`E_NHE_OFFSET = 4.44 eV`, Trasatti/IUPAC) are kept as two distinct constants, matching the empirical band-edge formula and the vs-NHE conversion respectively.
 
----
+### 5. EIS interpretation & suggestion engine
+- [x] Rule-based physical interpretation (Rs, per-arc effective capacitance via Brug, time constants, NDR / pseudo-inductive / Warburg fingerprints)
+- [x] AICc multi-model circuit suggestion (Burnham & Anderson convention)
+- [x] Low-frequency pseudo-inductive / NDR topologies for AOR
+- [x] Excel export (multi-sheet .xlsx: Summary, Fit_Parameters, Data, Fit_Curve)
+- [x] Smooth fit overlay on 400 log-spaced frequencies
 
-### 4. Analysis Modules (eisforge/analysis/)
-- [x] cv_analyzer.py - Automatic Cyclic Voltammetry analysis
-  - E_onset detection (tangent, threshold, derivative methods)
-  - I_f, I_b extraction and I_f/I_b ratio
-  - Geometric and ECSA-normalized current density
-  - Automatic AOR interpretation
-- [x] lsv_analyzer.py - Linear Sweep Voltammetry analysis
-  - E_onset, Tafel slope, j0, overpotential at 10/50/100 mA/cm2
-  - Mass activity, specific activity, E_half, performance rating
-- [x] eis_cv_correlator.py - Cross-technique correlation
-- [x] ecsa_calculator.py - Automated ECSA Calculator (NEW - June 2026)
-  - Method A: H-UPD for Pt/Pd (210 / 212 uC/cm2)
-  - Method B: CO Stripping for PtRu/PtSn/Pd (420 / 424 uC/cm2)
-  - Method C: Double-Layer Capacitance (Cdl) for carbon/metal-free
-  - _split_scans() - correct cathodic/anodic separation via argmax
-  - _validate() - catches NaN, Inf, short arrays
-  - subclass-safe q_ref defaults
-  - fit_intercept returned for accurate UI trendline
-  - 12 unit tests passing (tests/test_ecsa.py)
+### 6. EIS-GPT — physics-informed ML (`eisforge/ml/eis_gpt/`)
+- [x] `tokenizer.py` — spectrum → token sequence (5D features + sinusoidal positional encoding)
+- [x] `physics_loss.py` — Kramers–Kronig + passivity + HF-limit constraints in loss
+- [x] `transformer.py` — 6-layer encoder, 8 heads, circuit classification + parameter regression
+- [x] `aor_dataset_generator.py` — synthetic AOR spectra with realistic noise
+- [ ] Pre-trained weights — **in development (v0.4)**; model currently returns untrained predictions
 
----
+### 7. Knowledge base (`eisforge/knowledge/`)
+- [x] Literature-guided interpretation layer (curated from peer-reviewed papers)
+- [x] `literature_engine.py` — literature-driven initial parameter guessing
 
-### 5. EIS-GPT - Physics-Informed Machine Learning (eisforge/ml/eis_gpt/)
-- [x] tokenizer.py - EIS spectrum to Transformer tokens
-  - 5D feature extraction: [log(f), Z', Z'', |Z|, theta]
-  - Sinusoidal Positional Encoding
-- [x] physics_loss.py - Physics-Informed Loss Function (NOVEL)
-  - Kramers-Kronig penalty, Passivity constraint, HF limit penalty
-- [x] transformer.py - Complete EIS-GPT model
-  - 6-layer Transformer encoder (8 attention heads)
-  - Circuit classification + parameter regression with uncertainty
-
----
-
-### 6. Synthetic Data + Knowledge Base
-- [x] aor_dataset_generator.py - 5 AOR circuit topologies, realistic noise
-- [x] literature_engine.py - Literature-driven parameter guessing
-- [x] electrochemistry_knowledge.json - AOR, Battery, Corrosion, PEMFC, Biosensor
-
----
-
-### 7. Web Interface (app.py)
-- [x] Modern Streamlit UI with dark theme
-- [x] 7 tabs: CV | LSV | EIS | EIS-GPT | Correlation | K-L Analysis | ECSA Calculator (NEW)
-- [x] Sidebar with experimental parameters
+### 8. Web interface (`app.py`)
+- [x] Streamlit UI with catalyst-family / electrolyte awareness
+- [x] Tabs: CV | LSV | EIS | EIS-GPT | Correlation | K-L | ECSA | Scan-Rate | Chronoamperometry
 - [x] Interactive Plotly visualizations
-- [x] Multi-format file upload (.idf, .dta, .mpt, .csv, .txt)
-- [x] Automatic unit conversions and RHE conversion
-- [x] ECSA Calculator tab with slider + export CSV
+- [x] Multi-format upload (.idf, .dta, .mpt, .csv, .txt)
+- [x] Automatic unit + RHE conversion
+
+### 9. Tests
+- [x] 164 tests passing (CI on every push)
+- [x] Covers: EIS fitting & K-K, interpreter, suggestion engine, inductive/NDR circuits, scan-rate, chronoamperometry, ECSA, batch, parsers
 
 ---
 
-### 8. Tests Passing
-- [x] tests/test_ecsa.py - 12 tests (NEW - June 2026)
-- [x] test_transformer.py
-- [x] test_tokenizer.py
-- [x] test_idf.py
-- [x] test_ir.py
-- [x] test_all.py
+## In Progress / Next Steps
 
----
+### Phase B — JOSS submission requirements (current focus)
+- [ ] `CONTRIBUTING.md` + issue/bug-report guidelines (JOSS community-guidelines requirement)
+- [ ] API documentation (docstring coverage + a small docs site)
+- [ ] Runnable examples in `examples/` with real sample data
+- [ ] Finalize and submit `paper.md` to JOSS
+- [ ] PyPI package release (`pip install eisforge`)
 
-### 9. Debugging Sessions Completed (June 2026)
-- [x] Fixed ivium_parser.py encoding issues
-- [x] Fixed multi-cycle .idf CV scan separation
-- [x] Resolved impedance.py version compatibility for linKK
-- [x] Fixed validators.py fallback Voigt-circuit crash
-- [x] Fixed Streamlit session state issues
-- [x] Resolved PyArrow / Pandas dtype conflicts
-- [x] Fixed ecsa_calculator.py scan direction bug (_split_scans)
-- [x] Fixed ecsa_calculator.py Cdl mid_idx bug (argmax vs len//2)
-- [x] Fixed test_ecsa.py mathematical error in Cdl synthetic data
-- [x] Fixed import placement inside try block in app.py
+### Phase C — Known technical debt
+- [ ] Validate Gamry `.DTA` and BioLogic `.mpt` parsers on **real** files (only `.idf` validated on real data so far)
+- [ ] Make K-K validation fail gracefully on sparse/drifted data (currently can crash)
+- [ ] Harden multi-cycle CV scan separation
 
----
-
-## IN PROGRESS / NEXT STEPS
-
-### Highest Priority (Critical for Publication)
-
-#### 1. Band Edge Calculator - Ecb / Evb (NEXT MODULE)
-For semiconductor/BCN-based photocatalysts:
-- Ecb = X - Ec - 0.5 * Eg
-- Evb = Ecb + Eg
-- Input: electronegativity (X), Eg from Tauc plot, Ec = 4.5 eV
-- Methods: Mott-Schottky analysis, flat-band potential
-- Materials: BCN, g-C3N4, TiO2, ZnO, and custom
-- File to create: eisforge/analysis/band_edge_calculator.py
-
-#### 2. Update README.md
-- Add ECSA Calculator documentation
-- Add Streamlit UI screenshots (7 tabs)
-- Add badges: Python version, license, DOI
-
----
-
-### High Priority
-
-#### 3. DRT Analysis (Distribution of Relaxation Times)
-- Z(w) = R_inf + integral(gamma(tau)/(1 + jw*tau) dtau)
-- Tikhonov regularization
-- Plot gamma(tau) vs tau
-
-#### 4. Statistical Reproducibility Analysis
-- E_onset = 0.452 +/- 0.008 V (n=3)
-- Multi-file batch processing, mean +/- std tables
-
-#### 5. Real Data Validation
-- [ ] Test ECSA calculator with real Ivium .idf CV files
-- [ ] Test parsers with real Gamry .DTA files
-- [ ] Test BioLogic .mpt integration
-
----
-
-### Medium Priority
-
-#### 6. Train EIS-GPT on Synthetic Data
-- Generate 10,000+ synthetic spectra
-- Train Transformer with physics-informed loss
-- Save pretrained weights (.pth)
-
-#### 7. Faradaic Efficiency Calculator
-- FE = (Q_product * n * F) / Q_total * 100%
-
-#### 8. Activation Energy (Arrhenius)
-- ln(j) = ln(A) - Ea/RT
-
----
-
-### Lower Priority
-- [ ] CI/CD Pipeline (GitHub Actions)
-- [ ] PDF Report Generator
-- [ ] Zenodo DOI Registration
-- [ ] Additional Parsers (Zahner, PalmSens, CHI)
-- [ ] Complete formal test suite
-- [ ] Desktop App (PyQt6)
-
----
-
-## Current Project Structure
-EISforge/
-├── app.py (Full Streamlit UI - 7 tabs)
-├── app_simple.py (Lightweight fallback)
-├── PROJECT_STATUS.md (This file)
-├── README.md (Needs update)
-├── requirements.txt
-├── setup.py
-│
-├── eisforge/
-│ ├── core/ analyzer, fitter, validators
-│ ├── parsers/ ivium, gamry, biologic, csv
-│ ├── analysis/
-│ │ ├── cv_analyzer.py
-│ │ ├── lsv_analyzer.py
-│ │ ├── eis_cv_correlator.py
-│ │ └── ecsa_calculator.py NEW
-│ ├── ml/
-│ │ ├── aor_dataset_generator.py
-│ │ └── eis_gpt/ tokenizer, physics_loss, transformer
-│ └── knowledge/ literature_engine + json database
-│
-└── tests/
-├── test_ecsa.py 12 tests NEW
-└── (more needed)
-
----
-
-## Technical Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Language | Python 3.10+ | Core implementation |
-| EIS Fitting | impedance.py | CNLS, K-K validation |
-| Numerics | NumPy, SciPy | Array operations, optimization |
-| Data | Pandas, PyArrow | Data manipulation |
-| ML | PyTorch | EIS-GPT Transformer |
-| Visualization | Plotly | Interactive plots |
-| Web UI | Streamlit | Web interface |
-| BioLogic | galvani | .mpr/.mpt parsing |
+### Phase D — Future features
+- [ ] `litbase` — lightweight literature database engine (pandas/stdlib only, to stay within Streamlit Cloud free tier); design initiated
+- [ ] DRT (distribution of relaxation times) with Tikhonov regularization
+- [ ] Train EIS-GPT on synthetic data and ship pretrained weights (v0.4)
+- [ ] Additional parsers (Zahner, PalmSens, CHI)
 
 ---
 
 ## Known Issues
 
-1. EIS-GPT not trained yet - Returns random predictions
-2. K-K validation occasional failure - On sparse or drifted data
-3. CV scan splitting - May fail on CVs with multiple cycles
-4. Real data validation pending - ECSA calculator not yet tested on real files
+1. **EIS-GPT not trained** — returns untrained predictions until v0.4 weights ship. Should be labelled "experimental — untrained" in the UI.
+2. **K-K validation** — occasional failure on sparse or drifted data.
+3. **Multi-cycle CV splitting** — may fail on CVs with many cycles.
+4. **Parser validation** — Gamry and BioLogic parsers not yet tested on real files.
 
 ---
 
-## How to Resume the Project
+## Technical Stack
+
+| Component | Technology |
+| --- | --- |
+| Language | Python 3.10+ |
+| EIS fitting | impedance.py (CNLS, K-K) |
+| Numerics | NumPy, SciPy |
+| Data | Pandas |
+| ML | PyTorch (EIS-GPT) |
+| Visualization | Plotly |
+| Web UI | Streamlit |
+| BioLogic | galvani |
+| Testing | pytest |
+| CI | GitHub Actions (Python 3.10 + 3.11) |
 
 ---
 
-## Commit Log (June 2026)
-
-| Date | Commit | Description |
-|------|--------|-------------|
-| Jun 03 2026 | feat: ecsa_calculator | ECSACalculator v3 - H-UPD, CO, Cdl |
-| Jun 03 2026 | feat: test_ecsa | 12 unit tests passing |
-| Jun 03 2026 | feat: ecsa tab | Tab 7 ECSA Calculator in Streamlit UI |
-| Jun 03 2026 | docs: status | Updated PROJECT_STATUS.md |
-
----
-
-*Document last updated: June 2026 | Project status: Active Development*
-
+*Document status: Active development. This file is maintained by hand — update it when
+major modules or releases land so it never drifts from the actual repository state.*
