@@ -26,7 +26,7 @@ EISforge/
 │   │
 │   ├── parsers/
 │   │   ├── base_parser.py          ← Abstract base + EISDataset dataclass
-│   │   ├── autolab_parser.py       ← Ivium .idf (CV + EIS)
+│   │   ├── ivium_parser.py        ← Ivium .idf (CV + EIS)
 │   │   ├── gamry_parser.py         ← Gamry .DTA files
 │   │   ├── biologic_parser.py      ← BioLogic .mpt/.mpr (via galvani)
 │   │   └── generic_csv_parser.py   ← CSV/TXT auto-detection
@@ -136,7 +136,7 @@ EISforge/
 
 | Format | Parser | Instrument |
 |--------|--------|------------|
-| `.idf` | `autolab_parser.py` | Ivium (CV + EIS, multi-scan) |
+| `.idf` | `ivium_parser.py` | Ivium (CV + EIS, multi-scan) |
 | `.DTA` | `gamry_parser.py` | Gamry Instruments |
 | `.mpt` / `.mpr` | `biologic_parser.py` | BioLogic (via galvani) |
 | `.csv` / `.txt` | `generic_csv_parser.py` | Any instrument, auto-detects delimiter |
@@ -160,8 +160,8 @@ EISforge/
 - **Commit style**: `feat(module): description` / `fix(module): description` / `test(module): description`
 - **Never call `impedance.py` internal fit** — it returns NaN; use `CNLSFitter` only
 - **`_split_scans()` uses `argmax`** — not `len//2` — this was a critical bug fix
-- **Current unit in autolab_parser**: A → mA conversion is done automatically
-- **Encoding in autolab_parser**: tries `latin-1` → `cp1252` → `utf-8` in that order
+- **Current unit in ivium_parser**: A → mA conversion is done automatically
+- **Encoding in ivium_parser**: tries `latin-1` → `cp1252` → `utf-8` in that order
 - **Z'' sign convention**: plot `-Z.imag` (not `+Z.imag`) on Nyquist y-axis
 
 ---

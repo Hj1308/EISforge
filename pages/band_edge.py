@@ -238,8 +238,8 @@ with tab_ms:
                     t.write(f.getvalue()); tmp = t.name
                 try:
                     if suffix == "idf":
-                        from eisforge.parsers.autolab_parser import AutolabIDFParser
-                        ds = AutolabIDFParser().parse(tmp)
+                        from eisforge.parsers.ivium_parser import IviumIDFParser
+                        ds = IviumIDFParser().parse(tmp)
                         freq, zr, zi = ds.frequency, ds.z_real, ds.z_imag
                     elif suffix == "dta":
                         from eisforge.parsers.gamry_parser import GamryParser

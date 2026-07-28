@@ -19,8 +19,8 @@ _PARSER_REGISTRY = {
 }
 
 try:
-    from eisforge.parsers.autolab_parser import AutolabIDFParser
-    _PARSER_REGISTRY[".idf"] = AutolabIDFParser
+    from eisforge.parsers.ivium_parser import IviumIDFParser
+    _PARSER_REGISTRY[".idf"] = IviumIDFParser
 except ImportError:
     pass
 

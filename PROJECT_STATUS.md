@@ -40,7 +40,7 @@ EISForge is an open-source Python framework that combines:
 - [x] base_parser.py - Abstract base class + EISDataset container
 - [x] gamry_parser.py - Gamry Instruments .DTA files
 - [x] generic_csv_parser.py - Generic CSV/TXT with auto-detection
-- [x] autolab_parser.py - Ivium .idf files (CV + EIS)
+- [x] ivium_parser.py - Ivium .idf files (CV + EIS)
   - Auto-detects CV vs EIS from method header
   - Handles latin-1 / cp1252 / utf-8 encodings
   - Converts current from Amperes to mA automatically
@@ -124,7 +124,7 @@ EISForge is an open-source Python framework that combines:
 ---
 
 ### 9. Debugging Sessions Completed (June 2026)
-- [x] Fixed autolab_parser.py encoding issues
+- [x] Fixed ivium_parser.py encoding issues
 - [x] Fixed multi-cycle .idf CV scan separation
 - [x] Resolved impedance.py version compatibility for linKK
 - [x] Fixed validators.py fallback Voigt-circuit crash
@@ -211,7 +211,7 @@ EISforge/
 │
 ├── eisforge/
 │ ├── core/ analyzer, fitter, validators
-│ ├── parsers/ autolab, gamry, biologic, csv
+│ ├── parsers/ ivium, gamry, biologic, csv
 │ ├── analysis/
 │ │ ├── cv_analyzer.py
 │ │ ├── lsv_analyzer.py

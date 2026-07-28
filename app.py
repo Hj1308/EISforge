@@ -138,8 +138,8 @@ def load_eis(f):
     tmp = save_upload(f)
     try:
         if suffix == ".idf":
-            from eisforge.parsers.autolab_parser import AutolabIDFParser
-            ds = AutolabIDFParser().parse(tmp)
+            from eisforge.parsers.ivium_parser import IviumIDFParser
+            ds = IviumIDFParser().parse(tmp)
             return ds.frequency, ds.z_real, ds.z_imag, ds.metadata
         elif suffix == ".dta":
             from eisforge.parsers.gamry_parser import GamryParser

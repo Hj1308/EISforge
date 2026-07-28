@@ -35,7 +35,7 @@ plt.show()
 |--------|-----------|--------|
 | Generic CSV | `.csv` | `eisforge.parsers.csv_parser` |
 | Gamry EXPLAIN | `.DTA` | `eisforge.parsers.gamry_parser` |
-| Autolab NOVA | `.csv` (Autolab) | `eisforge.parsers.autolab_parser` |
+| Autolab NOVA | `.csv` (Autolab) | `eisforge.parsers.ivium_parser` |
 | BioLogic EC-Lab | `.mpr`, `.mpt` | `eisforge.parsers.biologic_parser` |
 
 ## Planned (Roadmap)

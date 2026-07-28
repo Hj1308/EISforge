@@ -206,7 +206,7 @@ DearEIS additionally offer DRT analysis, which is on the EISForge roadmap.*
 |---|---|---|
 | Gamry Instruments | `.DTA` | `gamry_parser.py` |
 | BioLogic Science Instruments | `.mpt`, `.mpr` | `biologic_parser.py` |
-| Ivium Technologies | `.idf` | `autolab_parser.py` |
+| Ivium Technologies | `.idf` | `ivium_parser.py` |
 | Generic / custom | `.csv`, `.tsv` | `generic_csv_parser.py` |
 
 All parsers share automatic unit handling (A / mA / µA / nA) and multi-instrument detection.
@@ -293,7 +293,7 @@ EISforge/
 │   ├── parsers/
 │   │   ├── gamry_parser.py
 │   │   ├── biologic_parser.py
-│   │   ├── autolab_parser.py
+│   │   ├── ivium_parser.py
 │   │   └── generic_csv_parser.py
 │   ├── ml/
 │   │   ├── eis_gpt/              # Physics-informed Transformer

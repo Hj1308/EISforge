@@ -31,7 +31,7 @@ _CV_METHODS  = ("cyclic", "voltammetry", "linearsweep", "linear sweep",
 _EIS_METHODS = ("eis", "fra", "impedance", "frequency")
 
 
-class AutolabIDFParser(BaseEISParser):
+class IviumIDFParser(BaseEISParser):
     """Parser for Ivium .idf files (CV, LSV, EIS)."""
 
     def parse(self, filepath: Path | str) -> EISDataset:
@@ -255,3 +255,6 @@ class AutolabIDFParser(BaseEISParser):
                 continue
         with filepath.open("r", encoding="latin-1", errors="replace") as f:
             return f.read()
+
+
+AutolabIDFParser = IviumIDFParser  # deprecated alias, kept for backward compatibility
