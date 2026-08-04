@@ -80,3 +80,6 @@ find_source2.py
 *.bak2
 fix_ci_patch27.py
 fix_ci_patch27b.py
+*.bak2
+app_patch19_20_snippet.py
+*_snippet.py
