@@ -1405,6 +1405,8 @@ with tab5:
 with tab6:
     st.markdown('<h3>⚗️ Koutecký–Levich Analysis</h3>', unsafe_allow_html=True)
     st.info("Upload LSV files at different rotation speeds (rpm) for K-L analysis.")
+    st.caption("Potentials are converted to V vs RHE using the sidebar reference "
+               "electrode and pH before analysis.")
     kl_files = st.file_uploader(
         "Upload LSV files at different rotation speeds",
         type=CV_FORMATS, accept_multiple_files=True, key="kl_up"
@@ -1412,35 +1414,43 @@ with tab6:
     rpms_str = st.text_input("Rotation speeds (rpm, comma-separated)", value="400,900,1600,2500")
     if kl_files and st.button("▶ Run K-L Analysis", type="primary"):
         try:
-            from eisforge.analysis.kl_analyzer import KLAnalyzer
+            from eisforge.analysis.koutecky_levich import KLAnalyzer
             rpms = [float(x.strip()) for x in rpms_str.split(",")]
+            _nernst = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
             pots_kl, curs_kl = [], []
             for f in kl_files:
                 p, c, _ = load_cv_lsv(f, unit_factor=unit_factor)
-                pots_kl.append(p)
+                pots_kl.append(p + e_ref_val + _nernst * ph_value)
                 curs_kl.append(c)
-            kla = KLAnalyzer(electrode_area=area, temperature=temperature,
-                             e_ref_vs_rhe=e_ref_val)
-            klr = kla.analyze(pots_kl, curs_kl, rpms)
+            kla = KLAnalyzer(temperature_C=temperature)
+            klr = kla.analyze(rotation_speeds_rpm=rpms, potentials=pots_kl,
+                              currents=curs_kl, electrode_area=area)
             st.session_state["kl_r"] = klr
-            st.success(f"✅ n_electrons = {klr.n_electrons:.2f} | "
-                       f"j_k = {klr.kinetic_current:.4f} mA/cm²")
+            best = klr.best_result
+            st.success(f"✅ n_electrons = {klr.mean_n_electrons:.2f} | "
+                       f"j_k = {best.j_kinetic:.4f} mA/cm²")
         except Exception as e:
             st.error(f"K-L error: {e}")
     if "kl_r" in st.session_state:
         klr = st.session_state["kl_r"]
+        best = klr.best_result
         import plotly.graph_objects as go
+        inv_sqw = [1.0 / np.sqrt(rpm * 2 * np.pi / 60.0)
+                   for rpm in best.rotation_speeds_rpm]
+        inv_j = [1.0 / abs(j) for j in best.j_measured]
+        _slope = 1.0 / best.levich_slope
         fig_kl = go.Figure()
-        for rpm, slope_pts in zip(klr.rpms, klr.kl_lines):
-            fig_kl.add_trace(go.Scatter(x=slope_pts[0], y=slope_pts[1],
-                                        mode="lines", name=f"{rpm:.0f} rpm"))
-        fig_kl.update_layout(**PLOTLY_LAYOUT, title="K-L Plot",
+        fig_kl.add_trace(go.Scatter(x=inv_sqw, y=inv_j, mode="markers", name="Data"))
+        fig_kl.add_trace(go.Scatter(x=inv_sqw,
+                                    y=[best.intercept + _slope * x for x in inv_sqw],
+                                    mode="lines", name="K-L fit"))
+        fig_kl.update_layout(**PLOTLY_LAYOUT, title="K-L Plot (best E)",
                              xaxis_title="ω⁻¹/² (rad/s)⁻¹/²",
                              yaxis_title="j⁻¹ (cm²/mA)")
         st.plotly_chart(fig_kl, use_container_width=True)
         c1, c2 = st.columns(2)
-        c1.metric("Electron transfer number (n)", f"{klr.n_electrons:.2f}")
-        c2.metric("Kinetic current density (j_k)", f"{klr.kinetic_current:.4f} mA/cm²")
+        c1.metric("Electron transfer number (n)", f"{klr.mean_n_electrons:.2f}")
+        c2.metric("Kinetic current density (j_k)", f"{best.j_kinetic:.4f} mA/cm²")
 
 
 # ══════════════════ SCAN-RATE KINETICS ════════════════════════════════════════

@@ -239,7 +239,8 @@ python train_eis_gpt.py
 
 ## 📚 Knowledge Base
 
-The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer built from **195 peer-reviewed papers**. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
+The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer encoding parameter priors for **28 electrochemical systems**, distilled
+from a survey of over 200 papers on alcohol oxidation and carbon supports. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
 
 > This knowledge layer is an original contribution of EISForge. If your research uses EISForge diagnostics, interpretation outputs, or any results derived from this knowledge base, please cite EISForge accordingly (see **Citation and Attribution** below).
 
@@ -298,7 +299,7 @@ EISforge/
 │   ├── ml/
 │   │   ├── eis_gpt/              # Physics-informed Transformer
 │   │   └── uncertainty/          # Uncertainty quantification
-│   ├── knowledge/                # Literature-guided knowledge base (195 papers)
+│   ├── knowledge/                # Literature-guided knowledge base (28 systems)
 │   ├── standards/                # Electrochemical reference standards
 │   ├── utils/
 │   └── visualization/

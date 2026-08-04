@@ -10,8 +10,12 @@ version: "0.3.0"
 date-released: "2026-07-07"
 license: MIT
 repository-code: "https://github.com/Hj1308/EISforge"
-doi: 10.5281/zenodo.20649692
-url: "https://doi.org/10.5281/zenodo.20649692"
+doi: 10.5281/zenodo.21209400
+url: "https://doi.org/10.5281/zenodo.21209400"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20649692
+    description: Concept DOI — always resolves to the latest version
 
 authors:
   - family-names: Jafari
@@ -28,7 +32,8 @@ abstract: >
   analysis, scan-rate kinetics (b-value, Randles-Sevcik linearity),
   chronoamperometry stability metrics, AICc multi-model circuit ranking,
   rule-based EIS interpretation, a literature-guided knowledge base
-  (195 peer-reviewed papers), and a Physics-Informed Transformer architecture
+  (parameter priors for 28 electrochemical systems, distilled from a
+  survey of over 200 papers), and a Physics-Informed Transformer architecture
   (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Autolab (.idf),
   and generic CSV file formats. Includes a live Streamlit web demo.
 
