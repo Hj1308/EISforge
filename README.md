@@ -149,7 +149,9 @@ print(result.tafel_slope, "mV/dec",
   comparison with multi-scan-rate CV values
 - **Excel export** — multi-sheet .xlsx (Summary, Fit_Parameters, Data,
   Fit_Curve) ready for Origin/Excel manuscript figures
-- **Kramers–Kronig validation** (causality, linearity, stationarity)
+- **Kramers–Kronig validation** (causality, linearity, stationarity) — every
+  fit is reported with its K–K verdict, recorded in-session and in the Excel
+  export; validation is diagnostic and never blocks fitting
 - Charge-transfer resistance (R_ct), solution resistance (Rₛ) — R₀ is
   auto-linked to the iR-compensation field in the CV/LSV tabs
 - Low-frequency **pseudo-inductive / NDR** circuit topologies for alcohol
@@ -174,7 +176,7 @@ print(result.tafel_slope, "mV/dec",
 
 - **ECSA** — estimated from double-layer capacitance (Cdl) via multi-scan-rate CV in the non-Faradaic window, or from H/CO underpotential deposition for noble metals.
 
-- **Kramers–Kronig** — all EIS fits are validated against K–K constraints before reporting circuit parameters.
+- **Kramers–Kronig** — every EIS fit is accompanied by a K–K validation verdict, reported alongside the fitted parameters and carried into the Excel export; validation is diagnostic and does not block fitting.
 
 ---
 
@@ -356,7 +358,7 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 | CV / LSV / EIS analysis engine | ✅ Implemented |
 | Batch processing (n ≥ 3) | ✅ Implemented |
 | Multi-instrument parsers (Gamry, BioLogic, Ivium) | ✅ Implemented |
-| Kramers–Kronig validation | ✅ Implemented |
+| Kramers–Kronig validation (diagnostic, non-blocking) | ✅ Implemented |
 | Koutecký–Levich analysis | ✅ Implemented |
 | EIS-GPT Transformer model architecture | ✅ Implemented |
 | Robust (Huber IRLS) CNLS fitting | ✅ Implemented |

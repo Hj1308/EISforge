@@ -1256,16 +1256,31 @@ with tab3:
             value=_suggested_p0 if _suggested_p0 else "30, 31000, 2e-7, 0.78",
         )
 
+        kk_threshold = st.number_input(
+            "K-K residual threshold",
+            value=0.005, min_value=0.0001, max_value=0.5, step=0.0005,
+            format="%.4f",
+        )
+        st.caption(
+            "K-K residual threshold as a fraction of |Z| (Schönleber 2014 "
+            "convention: 0.005 = 0.5%). Failing K-K warns but does not block "
+            "the fit."
+        )
+
         if st.button("▶ Run CNLS Fit", type="primary"):
             try:
                 from eisforge.core.fitter import CNLSFitter
                 from eisforge.parsers.base_parser import EISDataset
+                from eisforge.core.validators import KramersKronigValidator
                 p0_list = [float(x.strip()) for x in p0s.split(",")]
                 bounds = smart_bounds(circ, p0_list) if use_bounds else None
                 fitter = CNLSFitter(circuit_string=circ, initial_guess=p0_list,
                                     bounds=bounds, allow_negative_r=ndr_hint,
                                     robust=True)
                 ds = EISDataset(frequency=fr, z_real=zr, z_imag=zi, metadata={})
+                st.session_state["kk_result"] = KramersKronigValidator(
+                    residual_threshold=kk_threshold).validate(ds)
+                st.session_state["kk_threshold_used"] = kk_threshold
                 fit_r = fitter.fit(ds)
                 st.session_state["eis_fit"] = fit_r
                 if fit_r.converged:
@@ -1285,6 +1300,45 @@ with tab3:
                              for k in fit_r.parameters.keys()],
             })
             st.dataframe(param_df, use_container_width=True, hide_index=True)
+
+            # ── Kramers-Kronig verdict (diagnostic; does not block fitting) ──
+            _kk = st.session_state.get("kk_result")
+            if _kk is not None:
+                _thr = st.session_state.get("kk_threshold_used", kk_threshold)
+                if abs(_thr - kk_threshold) > 1e-12:
+                    st.info(
+                        "The verdict shown was computed at a K-K threshold of "
+                        f"{_thr:.4f} — re-run the fit to apply the current "
+                        f"threshold ({kk_threshold:.4f})."
+                    )
+                _kk_css = "val-ok" if _kk.passed else "val-warn"
+                _kk_icon = "✅" if _kk.passed else "⚠"
+                st.markdown(
+                    f'<div class="{_kk_css}">{_kk_icon} {_kk.summary()}</div>',
+                    unsafe_allow_html=True,
+                )
+                if _kk.warning_message:
+                    st.markdown(
+                        f'<div class="{_kk_css}">{_kk.warning_message}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with st.expander("K-K residuals (real & imaginary vs frequency)"):
+                    import plotly.graph_objects as _go
+                    _fig_kk = _go.Figure()
+                    _fig_kk.add_trace(_go.Scatter(
+                        x=fr, y=_kk.residuals_real, mode="lines+markers",
+                        name="real", line=dict(width=1)))
+                    _fig_kk.add_trace(_go.Scatter(
+                        x=fr, y=_kk.residuals_imag, mode="lines+markers",
+                        name="imag", line=dict(width=1)))
+                    _fig_kk.add_hline(y=_thr, line_dash="dash", line_color="red")
+                    _fig_kk.add_hline(y=-_thr, line_dash="dash", line_color="red")
+                    _fig_kk.update_layout(
+                        **PLOTLY_LAYOUT, title="K-K residuals",
+                        xaxis_title="Frequency (Hz)",
+                        yaxis_title="Residual (rel.)", xaxis_type="log",
+                    )
+                    st.plotly_chart(_fig_kk, use_container_width=True)
 
             # ── Physical interpretation (rule-based, deterministic) ─────────
             st.markdown("#### Physical Interpretation")
@@ -1318,14 +1372,29 @@ with tab3:
                 import io as _io
                 _buf = _io.BytesIO()
                 with pd.ExcelWriter(_buf, engine="openpyxl") as _xw:
+                    _kk_exp = st.session_state.get("kk_result")
+                    _kk_thr_exp = st.session_state.get("kk_threshold_used",
+                                                       kk_threshold)
+                    if _kk_exp is not None:
+                        _maxpct = _kk_exp.residuals_max_pct
+                        _kk_vals = [
+                            "yes" if _kk_exp.passed else "no",
+                            _maxpct if np.isfinite(_maxpct) else "n/a",
+                            _kk_exp.n_rc_elements, _kk_exp.mu,
+                        ]
+                    else:
+                        _kk_vals = ["n/a", "", "", ""]
                     pd.DataFrame({
                         "Item": ["Circuit", "Reduced chi2 (modulus-weighted)",
                                  "Converged", "Points used", "Outliers removed",
-                                 "Source file"],
+                                 "Source file", "K-K passed",
+                                 "K-K max residual (%)", "K-K N_RC", "K-K mu",
+                                 "K-K threshold"],
                         "Value": [fit_r.circuit_string, fit_r.chi_squared,
                                   fit_r.converged, fit_r.n_points_used,
                                   fit_r.n_outliers_removed,
-                                  st.session_state.get("eis_filename", "")],
+                                  st.session_state.get("eis_filename", ""),
+                                  *_kk_vals, _kk_thr_exp],
                     }).to_excel(_xw, sheet_name="Summary", index=False)
                     param_df.to_excel(_xw, sheet_name="Fit_Parameters", index=False)
                     pd.DataFrame({
