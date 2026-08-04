@@ -6,9 +6,13 @@ without requiring real instrument files.
 """
 
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
+
+from eisforge.parsers.ivium_parser import IviumIDFParser
 
 
 # ---------------------------------------------------------------------------
@@ -89,3 +93,42 @@ class TestSyntheticCSV:
         df = pd.read_csv(csv_eis_file)
         assert df["Freq"].max() > 1e4
         assert df["Freq"].min() < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Tests: Ivium .idf parser (real instrument file, guarded by skipif)
+# ---------------------------------------------------------------------------
+
+DATA = Path(__file__).parent / "data" / "sample_eis.idf"
+
+
+class TestIviumIDF:
+
+    pytestmark = pytest.mark.skipif(
+        not DATA.exists(),
+        reason="sample_eis.idf not present",
+    )
+
+    def test_parse_returns_dataframe(self):
+        df = IviumIDFParser().parse(DATA).to_dataframe()
+        assert isinstance(df, pd.DataFrame)
+
+    def test_expected_columns_present(self):
+        df = IviumIDFParser().parse(DATA).to_dataframe()
+        expected = {"frequency", "z_real", "z_imag", "z_modulus", "phase_deg"}
+        assert expected.issubset(set(df.columns))
+
+    def test_non_empty_and_frequencies_positive(self):
+        df = IviumIDFParser().parse(DATA).to_dataframe()
+        assert len(df) > 0
+        assert (df["frequency"] > 0).all()
+
+    def test_no_nan_in_frequency_or_impedance(self):
+        df = IviumIDFParser().parse(DATA).to_dataframe()
+        cols = ["frequency", "z_real", "z_imag"]
+        assert not df[cols].isnull().any().any()
+
+    def test_frequency_monotonic(self):
+        df = IviumIDFParser().parse(DATA).to_dataframe()
+        f = df["frequency"].values
+        assert np.all(np.diff(f) <= 0) or np.all(np.diff(f) >= 0)

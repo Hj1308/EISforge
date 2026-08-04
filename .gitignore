@@ -83,3 +83,4 @@ fix_ci_patch27b.py
 *.bak2
 app_patch19_20_snippet.py
 *_snippet.py
+!tests/data/sample_eis.idf
