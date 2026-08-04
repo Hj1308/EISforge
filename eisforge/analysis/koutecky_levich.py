@@ -241,6 +241,11 @@ class KLAnalyzer:
         Electrolyte description: 'KOH', 'NaOH', 'H2SO4', etc.
     concentration_M : float
         Alcohol bulk concentration in mol/L (M). Default: 1.0.
+    C_mol_cm3 : float or None
+        Bulk concentration of the diffusing species, directly in mol/cm³.
+        Overrides the C derived from concentration_M, for systems where
+        the diffusing species is not the alcohol (e.g. dissolved O2 in
+        ORR). Default: None (derive C = concentration_M * 1e-3).
     temperature_C : float
         Temperature in Celsius. Default: 25.
     catalyst_type : str
@@ -260,6 +265,8 @@ class KLAnalyzer:
         catalyst_type: str = "noble_metal",
         D_cm2_s: Optional[float] = None,
         nu_cm2_s: Optional[float] = None,
+        *,
+        C_mol_cm3: Optional[float] = None,
     ) -> None:
         self.alcohol = alcohol
         self.electrolyte = electrolyte
@@ -273,12 +280,16 @@ class KLAnalyzer:
         # Store custom values (if provided) — they will override everything
         self._D_custom = D_cm2_s
         self._nu_custom = nu_cm2_s
+        self._C_custom = C_mol_cm3
 
         # Pre-compute the effective D and nu for use in all calculations
         # using the new database with fallback logic.
         self.D = self._get_diffusion_coeff()
         self.nu = self._get_kinematic_viscosity()
-        self.C = concentration_M * 1e-3  # mol/L → mol/cm³
+        if self._C_custom is not None:
+            self.C = self._C_custom  # direct bulk concentration (e.g. O2 in ORR)
+        else:
+            self.C = concentration_M * 1e-3  # mol/L → mol/cm³
 
         logger.info(
             "KLAnalyzer: D=%.2e cm²/s  ν=%.5f cm²/s  C=%.4e mol/cm³",

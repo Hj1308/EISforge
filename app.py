@@ -1407,6 +1407,41 @@ with tab6:
     st.info("Upload LSV files at different rotation speeds (rpm) for K-L analysis.")
     st.caption("Potentials are converted to V vs RHE using the sidebar reference "
                "electrode and pH before analysis.")
+    diff_species = st.radio(
+        "Diffusing species",
+        ["O2 (ORR)", "Alcohol (AOR)"],
+        index=0,
+        help="What actually diffuses to the electrode surface. n_electrons is "
+             "only meaningful for the species selected here.",
+    )
+    if diff_species == "O2 (ORR)":
+        oc1, oc2, oc3 = st.columns(3)
+        D_O2 = oc1.number_input("D (O₂, cm²/s)", value=1.9e-5, min_value=0.0,
+                                format="%.2e")
+        nu_kl = oc2.number_input("ν (electrolyte, cm²/s)", value=1.0e-2,
+                                 min_value=0.0, format="%.2e")
+        C_O2 = oc3.number_input("C (O₂, mol/cm³)", value=1.2e-6, min_value=0.0,
+                                format="%.2e")
+        st.caption("O₂ defaults are literature values for O2-saturated 0.1 M KOH "
+                   "(~25 °C, 1 atm). D, ν, C are electrolyte- and "
+                   "temperature-dependent — adjust for acid media or other "
+                   "temperatures.")
+    else:
+        kc1, kc2, kc3 = st.columns(3)
+        from eisforge.analysis.koutecky_levich import _DEFAULT_DIFFUSION
+        kl_alcohol = kc1.selectbox(
+            "Alcohol", list(_DEFAULT_DIFFUSION.keys()), index=1,
+            help="D lookup keys are these exact names — free text would silently "
+                 "hit the 1.0e-5 cm²/s fallback.",
+        )
+        kl_electrolyte = kc2.text_input("Electrolyte", value="KOH")
+        kl_conc = kc3.number_input("Concentration (M)", value=1.0, min_value=0.0)
+        if kl_electrolyte.strip().lower() != "koh":
+            st.warning(
+                "Built-in diffusion coefficients are for 0.1 M KOH at 25 °C "
+                "(our own data is 1 M H₂SO₄). Reported n_electrons assumes those "
+                "conditions — verify D and ν for this electrolyte."
+            )
     kl_files = st.file_uploader(
         "Upload LSV files at different rotation speeds",
         type=CV_FORMATS, accept_multiple_files=True, key="kl_up"
@@ -1422,7 +1457,12 @@ with tab6:
                 p, c, _ = load_cv_lsv(f, unit_factor=unit_factor)
                 pots_kl.append(p + e_ref_val + _nernst * ph_value)
                 curs_kl.append(c)
-            kla = KLAnalyzer(temperature_C=temperature)
+            if diff_species == "O2 (ORR)":
+                kla = KLAnalyzer(D_cm2_s=D_O2, nu_cm2_s=nu_kl, C_mol_cm3=C_O2,
+                                 temperature_C=temperature)
+            else:
+                kla = KLAnalyzer(alcohol=kl_alcohol, electrolyte=kl_electrolyte,
+                                 concentration_M=kl_conc, temperature_C=temperature)
             klr = kla.analyze(rotation_speeds_rpm=rpms, potentials=pots_kl,
                               currents=curs_kl, electrode_area=area)
             st.session_state["kl_r"] = klr
