@@ -1,6 +1,50 @@
 # EISForge — Patch Log
 
 
+## patch30 — visual consistency pass: single-source theme tokens + config.toml
+**Date:** 2026-08-05
+**Files changed:** eisforge/visualization/theme.py (new), app.py,
+pages/batch_eis.py, pages/band_edge.py, tests/test_visualization_consistency.py
+(new), .streamlit/config.toml (new), .gitignore
+**What it does:** four inconsistencies between charts and the app's design
+tokens fixed:
+- **Fonts:** charts used `family="Inter"` which is never loaded — switched to
+  `Plus Jakarta Sans` (already on every page's CSS @import), so charts match
+  the UI body.
+- **Trace colours:** 11 hardcoded `#2563eb` (blue) data traces → brand accent
+  `#6d28d9`; SD bands `rgba(37,99,235,…)` → `rgba(109,40,217,…)`; Tafel
+  markers `#7c3aed` → accent. Semantic colours (E_onset amber vlines, K-K
+  red threshold, data-vs-fit red, blank-grey/green-net LSV overlay, band-edge
+  redox refs, DRT/λ* peak markers) are LEFT as-is and now carry a comment
+  explaining why. Multi-series figures (CV overlay, K-L, K-K residuals, batch
+  Nyquist) use the shared palette via `series_style()`, which cycles colour +
+  dash + marker symbol automatically so greyscale/CVD distinguishability never
+  depends on a series count.
+- **plot_bgcolor:** `#f8f9fa` → `SURFACE #f7f7fb` (was a near-miss of the CSS
+  `--surface` token) in all four sites, sourced from one module.
+- **Native widgets:** new `.streamlit/config.toml` mirrors the tokens
+  (primaryColor/backgroundColor/secondaryBackgroundColor/textColor + 3 Google
+  font URLs) so checkboxes, dataframes, code blocks etc. no longer clash with
+  the purple CSS. `.gitignore` narrowed from `.streamlit/` to
+  `.streamlit/secrets.toml` so the theme ships to Streamlit Cloud.
+- **Single source + test contract:** `eisforge/visualization/theme.py` holds
+  the tokens, `PLOTLY_LAYOUT`, and the Okabe-Ito-based palette (accent first,
+  reordered so no adjacent pair is close in luminance or collapses under CVD).
+  The new test asserts CSS :root ↔ theme.py ↔ config.toml agree, PLOTLY_LAYOUT
+  uses the tokens, and the palette's length / first-entry / greyscale-adjacent
+  / CVD-adjacent properties hold, plus a "no stale chart literals" guard.
+  Decision: three readable mirrors + a loud test (option b), because TOML
+  cannot import Python and an injected-:root override would silently no-op
+  when the wrong copy is edited.
+**Tested on:** full suite `python -m pytest -q` -> 197 passed (7 new);
+`python -m ruff check .` -> clean; AppTest on app.py (base / spectrum load /
+`drt_run` click) and on both pages -> 0 exceptions; `st.get_option("theme.*")`
+returns the config values. Palette checked numerically: WCAG luminance spread
+0.098–0.416 (min adjacent gap 0.036), Vischeck pairwise CVD distances; weak
+pairs (blue↔green, purple↔blue, vermilion↔orange) appear only at 3+ series
+where dash/symbol encoding carries the load. Appearance itself requires a
+human browser check after a full restart (config.toml font changes).
+
 ## patch29 — dependency manifests: ML deps optional, requirements/pyproject floors reconciled
 **Date:** 2026-08-05
 **Files changed:** requirements.txt, pyproject.toml

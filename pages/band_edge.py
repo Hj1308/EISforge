@@ -19,6 +19,9 @@ from eisforge.analysis.band_edge_calculator import (
     MATERIALS_DB,
     BandEdgeCalculator,
 )
+from eisforge.visualization.theme import (
+    ACCENT, BG, FONT_FAMILY, SURFACE, rgba,
+)
 
 # ── page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -108,28 +111,29 @@ with tab_be:
 
             fig_bd = go.Figure()
 
-            # semiconductor band block
+            # Semiconductor band block — the main subject, in the brand accent.
             fig_bd.add_shape(
                 type="rect",
                 x0=0.3, x1=0.7,
                 y0=r.Evb_NHE, y1=r.Ecb_NHE,
-                fillcolor="rgba(109,40,217,0.15)",
-                line=dict(color="#6d28d9", width=2),
+                fillcolor=rgba(ACCENT, 0.15),
+                line=dict(color=ACCENT, width=2),
             )
             # Ecb label
             fig_bd.add_annotation(
                 x=0.5, y=r.Ecb_NHE, text=f"Ecb = {r.Ecb_NHE:+.3f} V",
                 showarrow=False, yanchor="bottom",
-                font=dict(color="#6d28d9", size=12),
+                font=dict(color=ACCENT, size=12),
             )
             # Evb label
             fig_bd.add_annotation(
                 x=0.5, y=r.Evb_NHE, text=f"Evb = {r.Evb_NHE:+.3f} V",
                 showarrow=False, yanchor="top",
-                font=dict(color="#6d28d9", size=12),
+                font=dict(color=ACCENT, size=12),
             )
 
-            # redox reference lines
+            # Redox reference lines: colour identifies the redox couple and dash
+            # adds a second channel (semantic) — keep both.
             ref_lines = [
                 (H2_NHE,   "H⁺/H₂  (0.00 V)",   "#1d4ed8", "dot"),
                 (O2_NHE,   "O₂/H₂O (1.23 V)",   "#b91c1c", "dot"),
@@ -147,9 +151,9 @@ with tab_be:
 
             fig_bd.update_layout(
                 template="plotly_white",
-                paper_bgcolor="#ffffff",
-                plot_bgcolor="#f8f9fa",
-                font=dict(family="Inter"),
+                paper_bgcolor=BG,
+                plot_bgcolor=SURFACE,
+                font=dict(family=FONT_FAMILY),
                 title=f"Band Diagram — {r.material} (vs NHE, pH {r.pH:.1f})",
                 xaxis=dict(visible=False, range=[0, 1]),
                 yaxis=dict(
@@ -319,17 +323,19 @@ with tab_ms:
                 x=V_data, y=inv_C2_all,
                 mode="markers",
                 name="1/C² data",
-                marker=dict(color="#6d28d9", size=7),
+                marker=dict(color=ACCENT, size=7),
             ))
             # linear fit line
             V_line = np.linspace(ms.V_fit.min(), ms.V_fit.max(), 100)
             invC2_line = ms.slope * V_line + ms.intercept
+            # Semantic: red dashed fit distinguishes fit from data — keep.
             fig_ms.add_trace(go.Scatter(
                 x=V_line, y=invC2_line,
                 mode="lines",
                 name=f"Linear fit (R²={ms.R2:.4f})",
                 line=dict(color="#dc2626", dash="dash", width=2),
             ))
+            # Semantic: green flat-band line marks Vfb — keep.
             fig_ms.add_vline(
                 x=ms.V_fb,
                 line=dict(color="#059669", dash="dot", width=1.5),
@@ -338,9 +344,9 @@ with tab_ms:
             )
             fig_ms.update_layout(
                 template="plotly_white",
-                paper_bgcolor="#ffffff",
-                plot_bgcolor="#f8f9fa",
-                font=dict(family="Inter"),
+                paper_bgcolor=BG,
+                plot_bgcolor=SURFACE,
+                font=dict(family=FONT_FAMILY),
                 title=f"Mott-Schottky — {ms.semiconductor_type} | εᵣ={ms.epsilon_r}",
                 xaxis_title="Potential (V vs ref)",
                 yaxis_title="1/C² (F⁻²)",

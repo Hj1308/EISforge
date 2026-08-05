@@ -49,7 +49,8 @@ htmlcov/
 coverage.xml
 
 # === Streamlit ===
-.streamlit/
+# Track .streamlit/config.toml (the app theme) but never local secrets.
+.streamlit/secrets.toml
 
 # === ML model weights (large files — use Git LFS or release assets) ===
 *.pt

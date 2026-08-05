@@ -1,0 +1,19 @@
+[theme]
+# Mirrors eisforge/visualization/theme.py and the CSS :root block in app.py.
+# TOML cannot import Python, so this is a literal copy — the consistency test
+# (tests/test_visualization_consistency.py) asserts all three agree.
+# Font URLs use the documented "{family}:{css_url}" form with inner quotes for
+# multi-word family names (see docs "Customize fonts"). [[theme.fontFaces]] is
+# for self-hosted font FILES only, so Google fonts go through these URLs.
+# A new/changed config.toml requires a full server restart to take effect.
+base = "light"
+primaryColor = "#6d28d9"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f7f7fb"
+textColor = "#18162a"
+font = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+headingFont = "'Plus Jakarta Sans':https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
+# NOTE: chartCategoricalColors is intentionally absent — no native
+# (st.line_chart & co.) charts exist yet. If one is added, set it to
+# CHART_PALETTE from eisforge/visualization/theme.py at the same time.

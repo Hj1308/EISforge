@@ -13,8 +13,11 @@ from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 import streamlit as st
+
+from eisforge.visualization.theme import (
+    PLOTLY_LAYOUT, series_style,
+)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -52,14 +55,6 @@ def _load_eis_bytes(file_bytes: bytes, filename: str):
     finally:
         os.unlink(tmp)
 
-
-PLOTLY_LAYOUT = dict(
-    template="plotly_white",
-    paper_bgcolor="#ffffff",
-    plot_bgcolor="#f8f9fa",
-    font=dict(family="Inter", color="#1e293b"),
-    margin=dict(l=60, r=20, t=50, b=50),
-)
 
 # ── page ──────────────────────────────────────────────────────────────────────
 
@@ -269,22 +264,23 @@ st.divider()
 # ── Nyquist overlay ───────────────────────────────────────────────────────────
 st.markdown("### 🔵 Nyquist Overlay")
 fig_ny = go.Figure()
-colors = px.colors.qualitative.Bold
 
 for i, r in enumerate(br.results):
-    col = colors[i % len(colors)]
-    # raw data
+    # Colour pairs each spectrum's data with its own fit (semantic pairing);
+    # data vs fit are additionally separated by open markers vs solid lines,
+    # and marker symbols cycle, so >3 spectra stay distinguishable.
+    _st = series_style(i, marker_size=5)
     fig_ny.add_trace(go.Scatter(
         x=zr_g[i], y=zi_g[i],
         mode="markers", name=f"{r.label} (data)",
-        marker=dict(color=col, size=5, symbol="circle-open"),
+        marker=_st["marker"],
     ))
     # fit
     if r.success:
         fig_ny.add_trace(go.Scatter(
             x=r.z_fit.real, y=r.z_fit.imag,
             mode="lines", name=f"{r.label} (fit)",
-            line=dict(color=col, width=1.5),
+            line=dict(color=_st["line"]["color"], width=1.5),
         ))
 
 fig_ny.update_layout(
@@ -316,8 +312,8 @@ if param_plot:
         x=cond_arr,
         y=vals,
         mode="lines+markers",
-        marker=dict(size=8, color="#6d28d9"),
-        line=dict(color="#6d28d9", width=2),
+        marker=series_style(0, marker_size=8)["marker"],
+        line=series_style(0)["line"],
         name=param_plot,
     ))
     fig_tr.update_layout(

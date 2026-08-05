@@ -13,6 +13,10 @@ import os
 import math
 from pathlib import Path
 
+from eisforge.visualization.theme import (
+    ACCENT, PLOTLY_LAYOUT, rgba, series_style,
+)
+
 st.set_page_config(page_title="EISForge", page_icon="⚡", layout="wide")
 
 st.markdown("""
@@ -58,14 +62,6 @@ st.divider()
 
 EIS_FORMATS = ["idf", "dta", "mpt", "mpr", "csv", "txt"]
 CV_FORMATS = ["idf", "csv", "txt", "dta"]
-
-PLOTLY_LAYOUT = dict(
-    template="plotly_white",
-    paper_bgcolor="#ffffff",
-    plot_bgcolor="#f8f9fa",
-    font=dict(family="Inter", color="#1e293b"),
-    margin=dict(l=60, r=20, t=50, b=50),
-)
 
 E_REF_MAP = {
     "RHE": 0.000, "Ag/AgCl (sat.)": 0.197, "Ag/AgCl (3M KCl)": 0.210,
@@ -679,10 +675,14 @@ with tab1:
                 j_arr = np.append(j_arr, j_arr[0])
         fig.add_trace(go.Scatter(x=x_plot, y=j_arr, mode="lines",
                                  name="CV" + (" (iR-corrected)" if actual_rs > 0 else ""),
-                                 line=dict(color="#2563eb", width=2)))
+                                 line=dict(color=ACCENT, width=2)))
+        # Semantic boundary marker: dashed amber E_onset line + label carry the
+        # meaning (a reader without our design system understands it) — keep.
         fig.add_vline(x=r.e_onset, line_dash="dash", line_color="#d97706",
                       annotation_text=f"E_onset = {r.e_onset:.3f} V",
                       annotation_font=dict(color="#d97706"))
+        # Semantic peak markers: green/red stars distinguish forward vs
+        # backward peaks while sharing the same symbol — keep both colours.
         if r.e_forward_peak is not None:
             fig.add_trace(go.Scatter(
                 x=[r.e_forward_peak], y=[r.i_forward_peak / area],
@@ -766,13 +766,14 @@ with tab1:
             fig_b.add_trace(go.Scatter(
                 x=np.concatenate([pot_c, pot_c[::-1]]),
                 y=np.concatenate([cur_m + cur_s, (cur_m - cur_s)[::-1]]),
-                fill="toself", fillcolor="rgba(37,99,235,0.12)",
-                line=dict(color="rgba(37,99,235,0)"), name="± SD band",
+                fill="toself", fillcolor=rgba(ACCENT, 0.12),
+                line=dict(color=rgba(ACCENT, 0)), name="± SD band",
             ))
             fig_b.add_trace(go.Scatter(
                 x=pot_c, y=cur_m, mode="lines",
-                name=f"Mean CV (n={br.n_valid})", line=dict(color="#2563eb", width=2.5),
+                name=f"Mean CV (n={br.n_valid})", line=dict(color=ACCENT, width=2.5),
             ))
+            # Semantic boundary marker (E_onset) — keep amber.
             fig_b.add_vline(x=br.e_onset_mean, line_dash="dash", line_color="#d97706",
                             annotation_text=f"E_onset = {br.e_onset_mean:.3f} ± {br.e_onset_std:.3f} V",
                             annotation_font=dict(color="#d97706"))
@@ -1007,7 +1008,9 @@ with tab2:
             _rbc = st.session_state["lsv_raw_blk_cur"] / area if area > 0 else st.session_state["lsv_raw_blk_cur"]
             fig.add_trace(go.Scatter(x=_rap, y=_rac, mode="lines",
                                      name="Alcohol (raw)",
-                                     line=dict(color="#2563eb", width=2)), row=1, col=1)
+                                     line=dict(color=ACCENT, width=2)), row=1, col=1)
+            # Semantic: grey dashed blank baseline, green "analysed" net curve
+            # (matches --green used for success states) — keep.
             fig.add_trace(go.Scatter(x=_rbp, y=_rbc, mode="lines",
                                      name="Blank (electrolyte)",
                                      line=dict(color="#9ca3af", width=1.5, dash="dash")), row=1, col=1)
@@ -1017,7 +1020,8 @@ with tab2:
         else:
             fig.add_trace(go.Scatter(x=p_lsv, y=j_lsv, mode="lines",
                                      name="LSV" + ("+iR-corr." if actual_rs > 0 else ""),
-                                     line=dict(color="#2563eb", width=2)), row=1, col=1)
+                                     line=dict(color=ACCENT, width=2)), row=1, col=1)
+        # Semantic boundary marker (E_onset) — keep amber.
         fig.add_vline(x=r.e_onset + _off, line_dash="dash", line_color="#d97706",
                       annotation_text=f"E_onset={r.e_onset + _off:.3f}V",
                       annotation_font=dict(color="#d97706"), row=1, col=1)
@@ -1034,7 +1038,7 @@ with tab2:
         if np.sum(mask) > 3:
             fig.add_trace(go.Scatter(x=np.log10(j_lsv[mask]), y=p_lsv[mask],
                                      mode="markers", name="Tafel region",
-                                     marker=dict(color="#7c3aed", size=6)), row=1, col=2)
+                                     marker=dict(color=ACCENT, size=6)), row=1, col=2)
         title = f"LSV — {sr_lsv} mV/s | {temperature}°C | {catalyst or 'Catalyst'}"
         if actual_rs > 0:
             title += " | iR-corrected"
@@ -1121,13 +1125,14 @@ with tab2:
             fig_blsv.add_trace(go.Scatter(
                 x=np.concatenate([pot_c, pot_c[::-1]]),
                 y=np.concatenate([j_m + j_s, (j_m - j_s)[::-1]]),
-                fill="toself", fillcolor="rgba(37,99,235,0.12)",
-                line=dict(color="rgba(37,99,235,0)"), name="± SD band",
+                fill="toself", fillcolor=rgba(ACCENT, 0.12),
+                line=dict(color=rgba(ACCENT, 0)), name="± SD band",
             ))
             fig_blsv.add_trace(go.Scatter(
                 x=pot_c, y=j_m, mode="lines",
-                name=f"Mean LSV ({n_str})", line=dict(color="#2563eb", width=2.5),
+                name=f"Mean LSV ({n_str})", line=dict(color=ACCENT, width=2.5),
             ))
+            # Semantic boundary marker (E_onset) — keep amber.
             fig_blsv.add_vline(x=blr.e_onset_mean, line_dash="dash", line_color="#d97706",
                                annotation_text=f"E_onset = {blr.e_onset_mean:.3f} ± {blr.e_onset_std:.3f} V",
                                annotation_font=dict(color="#d97706"))
@@ -1182,10 +1187,11 @@ with tab3:
         fig_eis = go.Figure()
         # Convention: z_imag stores -Im(Z) (positive, capacitive) -> plot y=zi
         fig_eis.add_trace(go.Scatter(x=zr, y=zi, mode="markers",
-                                     name="Data", marker=dict(color="#2563eb", size=6)))
+                                     name="Data", marker=dict(color=ACCENT, size=6)))
         _fit_prev = st.session_state.get("eis_fit")
         if _fit_prev is not None and getattr(_fit_prev, "z_fit_smooth", None) is not None:
             _zs = _fit_prev.z_fit_smooth  # complex Z on 400 log-spaced freqs
+            # Semantic: red distinguishes the CNLS fit from the data — keep.
             fig_eis.add_trace(go.Scatter(
                 x=_zs.real, y=-_zs.imag, mode="lines",
                 name="CNLS fit",
@@ -1363,8 +1369,9 @@ with tab3:
             _fig_drt = _go_drt.Figure()
             _fig_drt.add_trace(_go_drt.Scatter(
                 x=_drt.tau, y=_drt.gamma, mode="lines", name="γ(ln τ)",
-                line=dict(color="#2563eb", width=2)))
+                line=dict(color=ACCENT, width=2)))
             if len(_drt.peaks_tau):
+                # Semantic: red marks the detected peaks against the curve — keep.
                 _fig_drt.add_trace(_go_drt.Scatter(
                     x=_drt.peaks_tau, y=_drt.peaks_gamma, mode="markers",
                     name="peaks", marker=dict(color="#dc2626", size=9,
@@ -1380,7 +1387,8 @@ with tab3:
                 _fig_lc = _go_drt.Figure()
                 _fig_lc.add_trace(_go_drt.Scatter(
                     x=_drt.lambda_range, y=_drt.curvature, mode="lines",
-                    name="curvature κ(λ)", line=dict(color="#2563eb")))
+                    name="curvature κ(λ)", line=dict(color=ACCENT)))
+                # Semantic: dashed red marks the chosen regularisation λ* — keep.
                 _fig_lc.add_vline(
                     x=_drt.lambda_opt, line_dash="dash", line_color="#dc2626",
                     annotation_text=f"λ* = {_drt.lambda_opt:.2e}",
@@ -1430,12 +1438,16 @@ with tab3:
                 with st.expander("K-K residuals (real & imaginary vs frequency)"):
                     import plotly.graph_objects as _go
                     _fig_kk = _go.Figure()
+                    _st_r = series_style(0, line_width=1, marker_size=5)
+                    _st_i = series_style(1, line_width=1, marker_size=5)
                     _fig_kk.add_trace(_go.Scatter(
                         x=fr, y=_kk.residuals_real, mode="lines+markers",
-                        name="real", line=dict(width=1)))
+                        name="real", line=_st_r["line"], marker=_st_r["marker"]))
                     _fig_kk.add_trace(_go.Scatter(
                         x=fr, y=_kk.residuals_imag, mode="lines+markers",
-                        name="imag", line=dict(width=1)))
+                        name="imag", line=_st_i["line"], marker=_st_i["marker"]))
+                    # Semantic: red dashed lines are the K-K acceptability
+                    # threshold ("boundary, pay attention") — keep.
                     _fig_kk.add_hline(y=_thr, line_dash="dash", line_color="red")
                     _fig_kk.add_hline(y=-_thr, line_dash="dash", line_color="red")
                     _fig_kk.update_layout(
@@ -1932,10 +1944,12 @@ with tab7:
         inv_j = [1.0 / abs(j) for j in best.j_measured]
         _slope = 1.0 / best.levich_slope
         fig_kl = go.Figure()
-        fig_kl.add_trace(go.Scatter(x=inv_sqw, y=inv_j, mode="markers", name="Data"))
+        fig_kl.add_trace(go.Scatter(x=inv_sqw, y=inv_j, mode="markers", name="Data",
+                                    marker=series_style(0, marker_size=8)["marker"]))
         fig_kl.add_trace(go.Scatter(x=inv_sqw,
                                     y=[best.intercept + _slope * x for x in inv_sqw],
-                                    mode="lines", name="K-L fit"))
+                                    mode="lines", name="K-L fit",
+                                    line=series_style(1)["line"]))
         fig_kl.update_layout(**PLOTLY_LAYOUT, title="K-L Plot (best E)",
                              xaxis_title="ω⁻¹/² (rad/s)⁻¹/²",
                              yaxis_title="j⁻¹ (cm²/mA)")
@@ -2022,10 +2036,11 @@ with tab8:
 
                 # (a) overlay of all CVs
                 fig_ov = go.Figure()
-                for r in sorted(data):
+                for i, r in enumerate(sorted(data)):
                     E, I = data[r]
                     fig_ov.add_trace(go.Scatter(x=E, y=I, mode="lines",
-                                                name=f"{r:.0f} mV/s"))
+                                                name=f"{r:.0f} mV/s",
+                                                line=series_style(i)["line"]))
                 fig_ov.update_layout(**PLOTLY_LAYOUT, title="CV overlay",
                                      xaxis_title="E (V)", yaxis_title="I")
                 st.plotly_chart(fig_ov, use_container_width=True)
@@ -2036,8 +2051,9 @@ with tab8:
                 fig_b.add_trace(go.Scatter(x=_np.log10(nu),
                                            y=_np.log10(res.ipa),
                                            mode="markers", name="data",
-                                           marker=dict(size=9, color="#2563eb")))
+                                           marker=dict(size=9, color=ACCENT)))
                 xfit = _np.array([_np.log10(nu).min(), _np.log10(nu).max()])
+                # Semantic: red line is the linear fit vs the data — keep.
                 fig_b.add_trace(go.Scatter(
                     x=xfit, y=res.b_value * xfit + res.b_intercept,
                     mode="lines", name=f"slope b={res.b_value:.3f}",
@@ -2052,8 +2068,9 @@ with tab8:
                 fig_rs = go.Figure()
                 fig_rs.add_trace(go.Scatter(x=_np.sqrt(nu), y=res.ipa,
                                             mode="markers", name="data",
-                                            marker=dict(size=9, color="#2563eb")))
+                                            marker=dict(size=9, color=ACCENT)))
                 xr = _np.array([_np.sqrt(nu).min(), _np.sqrt(nu).max()])
+                # Semantic: red line is the linear fit vs the data — keep.
                 fig_rs.add_trace(go.Scatter(
                     x=xr, y=res.rs_slope * xr + res.rs_intercept,
                     mode="lines", name=f"R²={res.rs_r2:.4f}",
@@ -2172,7 +2189,7 @@ with tab9:
             import plotly.graph_objects as go
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=res.time, y=res.current, mode="lines",
-                                     name="i–t", line=dict(color="#2563eb")))
+                                     name="i–t", line=dict(color=ACCENT)))
             fig.update_layout(**PLOTLY_LAYOUT, title="Chronoamperometry",
                               xaxis_title="Time (s)",
                               yaxis_title=f"|Current| ({res.unit_label})")
