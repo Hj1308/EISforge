@@ -1,6 +1,33 @@
 # EISForge — Patch Log
 
 
+## patch29 — dependency manifests: ML deps optional, requirements/pyproject floors reconciled
+**Date:** 2026-08-05
+**Files changed:** requirements.txt, pyproject.toml
+**What it does:**
+- requirements.txt: torch / scikit-learn / xgboost moved out of the active
+  install list into a clearly-marked "Optional: Machine Learning (EIS-GPT)"
+  comment block with explicit `pip install` instructions. Verified by import
+  scan: torch is imported only inside `eisforge/ml/` (11 sites across 6
+  files); scikit-learn and xgboost have zero imports in any of the 145 .py
+  files; the deployed app (app.py + pages/) never imports them; CI runs
+  without torch and the test suite guards torch with
+  `pytest.importorskip("torch")`.
+- pyproject.toml: main `dependencies` floors raised to match
+  requirements.txt (streamlit>=1.30.0, numpy>=1.26.0, scipy>=1.11.0,
+  pandas>=2.1.0, matplotlib>=3.8.0, plotly>=5.18.0, galvani>=0.4.0,
+  impedance>=1.4.1); `openpyxl>=3.1.0` added to main deps (app.py uses
+  `pd.ExcelWriter(engine="openpyxl")` in four places — it was missing from
+  the package metadata); `scikit-learn`/`xgboost`/`pyarrow` moved out of
+  main deps into the `ml` extra; ml floors aligned to torch>=2.1.0; dev
+  pytest floor aligned to >=7.4.0. beautifulsoup4>=4.12 kept in main deps —
+  it is genuinely used by `eisforge/knowledge/parse_review_html.py` (a
+  standalone CLI, not the app path), so pyproject is the correct manifest
+  for it and requirements.txt correctly omits it.
+**Tested on:** full suite `python -m pytest -q` -> 190 passed;
+`python -m ruff check .` -> clean; `streamlit.testing.v1.AppTest`
+(base / after spectrum load / after `drt_run` click) -> 0 exceptions.
+
 ## patch27 — JOSS doc fixes (README CV example, test table, paper.md escapes) + validator tests
 **Date:** 2026-08-05  
 **Files changed:** README.md, paper.md, tests/test_validators.py (new)

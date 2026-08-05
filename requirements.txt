@@ -18,10 +18,15 @@ impedance>=1.4.1          # CNLS fitting + K-K validation
                           # of 2026-08-05), so the K-K validator relies on the
                           # Voigt-circuit fallback in practice.
 
-# ── Machine Learning ──────────────────────────────────────────────
-torch>=2.1.0              # PyTorch — EIS-GPT Transformer
-scikit-learn>=1.3.0       # Random Forest + preprocessing
-xgboost>=2.0.0            # Gradient Boosting
+# ── Optional: Machine Learning (EIS-GPT) ──────────────────────────
+# These packages are NOT on the app's deployment path — they are
+# imported only inside eisforge/ml/ (EIS-GPT work). The deployed app
+# (app.py + pages/) never imports torch, sklearn, or xgboost, and CI
+# runs without them. Install them only if you run the ML pathway:
+#     pip install "torch>=2.1.0" "scikit-learn>=1.3.0" "xgboost>=2.0.0"
+# torch>=2.1.0              # PyTorch — EIS-GPT Transformer (eisforge/ml only)
+# scikit-learn>=1.3.0       # Random Forest + preprocessing (no app usage)
+# xgboost>=2.0.0            # Gradient Boosting (no app usage)
 
 # ── Visualization ─────────────────────────────────────────────────
 plotly>=5.18.0            # Nyquist و Bode plots تعاملی
