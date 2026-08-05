@@ -420,7 +420,7 @@ with st.sidebar:
         st.caption(f"→ Area = {area:.4f} cm²")
     else:
         area = st.number_input("Geometric area (cm²)", value=1.0, min_value=0.0001,
-                               step=0.0001, format="%.4f")
+                               step=0.0001, format="%.4f", key="sidebar_area")
     _ecsa_label = "ECSA (cm²_BET)" if catalyst_type == "carbon_material" else "ECSA (cm²_metal)"
     ecsa = st.number_input(_ecsa_label, value=0.0, step=0.1, min_value=0.0)
     mass_ug = st.number_input(
@@ -1290,6 +1290,106 @@ with tab3:
             except Exception as e:
                 st.error(f"Fit error: {e}")
 
+        # ── DRT (Distribution of Relaxation Times) ──────────────────────────
+        st.markdown("#### DRT (Distribution of Relaxation Times)")
+        st.warning(
+            "DRT is an **ill-posed inversion**: the number and position of "
+            "peaks depend on the regularization parameter, and an "
+            "under-regularized solution invents peaks that are not physically "
+            "real. λ was chosen by the L-curve; peak counts should not be "
+            "treated as a definitive count of physical processes."
+        )
+        dc1, dc2 = st.columns(2)
+        drt_n_tau = dc1.number_input(
+            "n_tau (τ grid points)", value=80, min_value=20, max_value=400,
+            step=10, key="drt_n_tau",
+        )
+        drt_reg_order = dc2.selectbox(
+            "Regularization order", [1, 2], index=0, key="drt_reg_order",
+        )
+        st.caption(
+            "A larger n_tau resolves more detail in γ(ln τ) but amplifies "
+            "noise; regularization order 1 penalizes large values, order 2 "
+            "penalizes rapid variations (smoother)."
+        )
+        if st.button("▶ Run DRT Analysis", type="primary", key="drt_run"):
+            try:
+                from eisforge.analysis.drt_analyzer import DRTAnalyzer
+                with st.spinner("Deconvolving DRT (L-curve λ sweep)..."):
+                    _drt = DRTAnalyzer(
+                        n_tau=drt_n_tau,
+                        regularization_order=drt_reg_order,
+                    ).analyze(fr, zr, zi)
+                st.session_state["drt_result"] = _drt
+            except Exception as e:
+                st.error(f"DRT error: {e}")
+
+        if "drt_result" in st.session_state:
+            _drt = st.session_state["drt_result"]
+            _drt_bound = getattr(_drt, "r_inf_at_bound", False)
+            if _drt_bound:
+                st.error(
+                    "**R_inf pinned at its 0 Ω lower bound — treat as 'not "
+                    "recovered', not as a measurement** (poorly conditioned "
+                    "spectrum)."
+                )
+            dm1, dm2, dm3, dm4, dm5, dm6 = st.columns(6)
+            dm1.metric("R_inf (Ω)", f"{_drt.r_inf:.4f}")
+            dm2.metric("λ_opt", f"{_drt.lambda_opt:.3e}")
+            dm3.metric("RMS Re (Ω)", f"{_drt.rms_real:.4e}")
+            dm4.metric("RMS Im (Ω)", f"{_drt.rms_imag:.4e}")
+            dm5.metric("R_pol (Ω)", f"{_drt.total_resistance:.4f}")
+            dm6.metric("r_ct est. (Ω)", f"{_drt.r_ct_estimate:.4f}")
+            st.caption(
+                "On poorly conditioned spectra the bounded solver can pin R_inf "
+                "to its 0 Ω lower bound; an R_inf of exactly (or very near) 0 "
+                "means 'not recovered', not a measurement."
+            )
+            st.caption(
+                "R_pol = Σ γ_k·Δlnτ — a discrete sum over a τ grid truncated by "
+                "tau_extend_factor; processes outside the measured frequency "
+                "window are underestimated."
+            )
+            st.caption(
+                "r_ct est. is the **largest γ peak height** — a rough proxy "
+                "derived from the DRT distribution, NOT a fitted R_ct; do not "
+                "compare it with the CNLS-fitted R_ct as if both were "
+                "measurements of the same quality."
+            )
+            if getattr(_drt, "data_warning", None):
+                st.warning(_drt.data_warning)
+
+            import plotly.graph_objects as _go_drt
+            _fig_drt = _go_drt.Figure()
+            _fig_drt.add_trace(_go_drt.Scatter(
+                x=_drt.tau, y=_drt.gamma, mode="lines", name="γ(ln τ)",
+                line=dict(color="#2563eb", width=2)))
+            if len(_drt.peaks_tau):
+                _fig_drt.add_trace(_go_drt.Scatter(
+                    x=_drt.peaks_tau, y=_drt.peaks_gamma, mode="markers",
+                    name="peaks", marker=dict(color="#dc2626", size=9,
+                                              symbol="circle-open")))
+            _fig_drt.update_layout(
+                **PLOTLY_LAYOUT, title="DRT spectrum",
+                xaxis_title="τ (s)", yaxis_title="γ(ln τ) (Ω)",
+                xaxis_type="log")
+            st.plotly_chart(_fig_drt, use_container_width=True)
+            st.text(_drt.summary())
+
+            with st.expander("L-curve (debug)"):
+                _fig_lc = _go_drt.Figure()
+                _fig_lc.add_trace(_go_drt.Scatter(
+                    x=_drt.lambda_range, y=_drt.curvature, mode="lines",
+                    name="curvature κ(λ)", line=dict(color="#2563eb")))
+                _fig_lc.add_vline(
+                    x=_drt.lambda_opt, line_dash="dash", line_color="#dc2626",
+                    annotation_text=f"λ* = {_drt.lambda_opt:.2e}",
+                )
+                _fig_lc.update_layout(
+                    **PLOTLY_LAYOUT, title="L-curve curvature",
+                    xaxis_title="λ", yaxis_title="κ(λ)", xaxis_type="log")
+                st.plotly_chart(_fig_lc, use_container_width=True)
+
         if "eis_fit" in st.session_state:
             fit_r = st.session_state["eis_fit"]
             st.markdown("#### Fit Parameters")
@@ -1413,6 +1513,24 @@ with tab3:
                             "Z_real_Ohm": fit_r.z_fit_smooth.real,
                             "minus_Z_imag_Ohm": -fit_r.z_fit_smooth.imag,
                         }).to_excel(_xw, sheet_name="Fit_Curve", index=False)
+                    _drt_exp = st.session_state.get("drt_result")
+                    if _drt_exp is not None:
+                        pd.DataFrame({
+                            "Item": ["R_inf_Ohm", "lambda_opt", "RMS_Re_Ohm",
+                                     "RMS_Im_Ohm", "R_pol_Ohm", "r_ct_est_Ohm",
+                                     "n_freq", "n_tau", "data_ratio",
+                                     "span_decades", "r_inf_at_bound",
+                                     "data_warning"],
+                            "Value": [_drt_exp.r_inf, _drt_exp.lambda_opt,
+                                      _drt_exp.rms_real, _drt_exp.rms_imag,
+                                      _drt_exp.total_resistance,
+                                      _drt_exp.r_ct_estimate,
+                                      _drt_exp.n_freq, _drt_exp.n_tau,
+                                      _drt_exp.data_ratio,
+                                      _drt_exp.span_decades,
+                                      _drt_exp.r_inf_at_bound,
+                                      _drt_exp.data_warning or ""],
+                        }).to_excel(_xw, sheet_name="DRT", index=False)
                 st.download_button(
                     "📥 Download EIS results (Excel)",
                     data=_buf.getvalue(),
@@ -2009,7 +2127,7 @@ with tab9:
     ca_per_area = c1.checkbox("Show current density (per area)", value=True)
     ca_area = c2.number_input("Geometric area (cm²)", value=0.07068583,
                               format="%.5f", min_value=1e-6,
-                              disabled=not ca_per_area)
+                              disabled=not ca_per_area, key="ca_area")
 
     if ca_file is not None:
         try:

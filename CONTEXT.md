@@ -169,7 +169,7 @@ EISforge/
 ## Next Modules to Build (Priority Order)
 
 1. **`band_edge_calculator.py`** — Ecb/Evb for BCN/g-C3N4/TiO2/ZnO ← NEXT
-2. **DRT Analysis** — Distribution of Relaxation Times (Tikhonov regularization)
+2. **DRT Analysis** — ✅ shipped — Distribution of Relaxation Times (Tikhonov regularization) via `eisforge/analysis/drt_analyzer.py`, surfaced as a DRT expander in the EIS tab
 3. **Statistical Reproducibility** — batch multi-file mean ± std
 4. **EIS-GPT Training** — 10,000+ synthetic spectra + physics-informed loss
 5. **CI/CD Pipeline** — GitHub Actions

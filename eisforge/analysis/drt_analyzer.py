@@ -43,6 +43,10 @@ class DRTResult:
     peaks_gamma: np.ndarray = field(default_factory=lambda: np.array([]))
     n_freq: int = 0
     n_tau: int = 0
+    r_inf_at_bound: bool = False  # True when solver pinned R_inf at its 0 lb
+    data_ratio: float = 0.0    # 2*n_freq / (n_tau+1); <1 -> regularizer-driven
+    span_decades: float = 0.0  # log10(f_max / f_min) of the measured window
+    data_warning: str | None = None  # composed flag message, None when fine
 
     @property
     def total_resistance(self) -> float:
@@ -66,9 +70,18 @@ class DRTResult:
             f"  RMS Re(Z)      = {self.rms_real:.5f} Ohm",
             f"  RMS Im(Z)      = {self.rms_imag:.5f} Ohm",
             f"  Peaks detected : {len(self.peaks_tau)}",
+            f"  Data ratio     = {self.data_ratio:.3f} (2*n_freq/(n_tau+1))",
+            f"  Freq window    = {self.span_decades:.2f} decades",
         ]
         for i, (t, g) in enumerate(zip(self.peaks_tau, self.peaks_gamma)):
             lines.append(f"    peak {i+1}: tau={t:.3e} s  f={1/t:.1f} Hz  gamma={g:.3f}")
+        if self.r_inf_at_bound:
+            lines.append(
+                "  R_inf pinned at its 0 Ohm lower bound — not recovered for "
+                "this spectrum."
+            )
+        if self.data_warning:
+            lines.append(f"  WARNING: {self.data_warning}")
         return "\n".join(lines)
 
 
@@ -119,10 +132,12 @@ class DRTAnalyzer:
         lambda_opt, lambdas, curvatures = self._l_curve(A, b, tau_vec)
 
         # Solve at optimal λ
-        x = self._solve(A, b, tau_vec, lambda_opt)
+        x, active_mask = self._solve(A, b, tau_vec, lambda_opt)
 
         # Extract R_inf from first element, gamma from rest
         r_inf  = float(x[0])
+        r_inf_at_bound = bool(active_mask is not None and len(active_mask) > 0
+                              and active_mask[0] == -1)
         gamma  = x[1:]
 
         # Compute fit and residuals
@@ -137,6 +152,20 @@ class DRTAnalyzer:
         # Find peaks in γ(ln τ)
         peaks_tau, peaks_gamma = self._find_peaks(tau_vec, gamma)
 
+        # Data adequacy: the data alone supplies 2*n_freq equations for
+        # n_tau+1 unknowns.  When the ratio drops below 1 the regularizer
+        # fills the gap — the solution becomes partly or wholly a smoothness
+        # artifact rather than a measurement.  Window span matters too: a
+        # narrow window cannot even contain one relaxation peak (see
+        # _compose_data_warning).
+        n_freq       = len(freq)
+        n_tau        = len(tau_vec)
+        span_decades = float(np.log10(freq.max() / freq.min()))
+        data_ratio   = 2.0 * n_freq / (n_tau + 1)
+        data_warning = self._compose_data_warning(
+            n_freq, n_tau, data_ratio, span_decades
+        )
+
         return DRTResult(
             tau          = tau_vec,
             gamma        = gamma,
@@ -149,9 +178,62 @@ class DRTAnalyzer:
             lambda_range = lambdas,
             peaks_tau    = peaks_tau,
             peaks_gamma  = peaks_gamma,
-            n_freq       = len(freq),
-            n_tau        = len(tau_vec),
+            n_freq       = n_freq,
+            n_tau        = n_tau,
+            r_inf_at_bound = r_inf_at_bound,
+            data_ratio   = data_ratio,
+            span_decades = span_decades,
+            data_warning = data_warning,
         )
+
+    # ── Internal: data-adequacy flags ─────────────────────────────────────────
+
+    @staticmethod
+    def _compose_data_warning(
+        n_freq: int, n_tau: int, data_ratio: float, span_decades: float
+    ) -> str | None:
+        """Compose the runtime data-adequacy warning, or None when fine.
+
+        Two independent conditions, kept separate because they describe
+        different information states:
+
+        - Ratio tier: 2*n_freq / (n_tau+1) < 1 means the measurement cannot
+          determine the solution on its own.  The hard '<10 points' rule was
+          deliberately demoted to a label tier: fewer than 10 points is a
+          judgement call, not a mathematical limit, so it is reported rather
+          than refused.
+        - Span tier: resolvable time constants are bounded by the measured
+          frequency window.  A single DRT relaxation peak is roughly a decade
+          wide at its base (~1.14 decades under typical regularization), so a
+          window narrower than one decade clips the peak: its shape then comes
+          from the grid extension (tau_extend) rather than from the
+          measurement.  This is the honest basis for the "1 decade" figure,
+          not a settled constant.
+        """
+        parts = []
+        if n_freq < 10:
+            parts.append(
+                f"Only {n_freq} frequency points for {n_tau + 1} unknowns "
+                f"(data ratio 2*{n_freq}/({n_tau}+1) = {data_ratio:.3f}): the "
+                f"solution is dominated by regularization rather than by the "
+                f"measurement."
+            )
+        elif data_ratio < 1.0:
+            parts.append(
+                f"n_tau ({n_tau}) is large relative to the number of "
+                f"frequencies ({n_freq}): data ratio "
+                f"2*{n_freq}/({n_tau}+1) = {data_ratio:.3f} < 1, so the "
+                f"solution is not well determined by the measurement alone."
+            )
+        if span_decades < 1.0:
+            parts.append(
+                f"Frequency window spans only {span_decades:.2f} decades — "
+                f"narrower than a single relaxation peak (~1 decade wide at "
+                f"its base, ~1.14 decades under typical regularization), so "
+                f"the peak shape comes from the grid extension rather than "
+                f"from the measurement."
+            )
+        return "; ".join(parts) if parts else None
 
     # ── Internal: τ grid ──────────────────────────────────────────────────────
 
@@ -242,12 +324,15 @@ class DRTAnalyzer:
         b: np.ndarray,
         tau_vec: np.ndarray,
         lambda_val: float,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Solve regularized NNLS: min ||A x - b||^2 + lam^2 ||L x||^2,
         subject to x >= 0 (R_inf and gamma all non-negative).
 
         Implemented as augmented least squares with bounds:
             min ||[A; lam*L] x - [b; 0]||^2  s.t. lb <= x <= ub
+
+        Returns (x, active_mask); active_mask[i] == -1 means x[i] hit its
+        lower bound (used to detect R_inf pinned at 0).
         """
         from scipy.optimize import lsq_linear
 
@@ -263,7 +348,7 @@ class DRTAnalyzer:
             A_aug, b_aug, bounds=(lb, ub),
             method="trf",
         )
-        return result.x
+        return result.x, result.active_mask
 
     # ── Internal: L-curve ─────────────────────────────────────────────────────
 
@@ -283,7 +368,7 @@ class DRTAnalyzer:
         L = self._build_regularization(len(tau_vec))
 
         for i, lam in enumerate(lambdas):
-            x      = self._solve(A, b, tau_vec, lam)
+            x, _ = self._solve(A, b, tau_vec, lam)
             res    = A @ x - b
             res_norms[i] = np.log(float(np.sum(res ** 2)))
             reg_norms[i] = np.log(float(np.sum((L @ x) ** 2)))
@@ -340,12 +425,22 @@ class DRTAnalyzer:
 
     @staticmethod
     def _validate_input(freq, z_real, z_imag):
+        """Enforce only the mathematically unrecoverable conditions.
+
+        The old ">=10 points" rule is a judgement call, not a mathematical
+        limit, so it is deliberately NOT enforced here — a short spectrum is
+        flagged at runtime via data_ratio / data_warning instead.
+        """
         n = len(freq)
-        if n < 10:
-            raise ValueError(f"Need ≥10 frequency points, got {n}.")
         if len(z_real) != n or len(z_imag) != n:
             raise ValueError("freq, z_real, z_imag must have same length.")
         if not np.all(np.isfinite(z_real)) or not np.all(np.isfinite(z_imag)):
             raise ValueError("z_real / z_imag contain NaN or Inf.")
         if not np.all(freq > 0):
             raise ValueError("All frequencies must be positive.")
+        if n < 1 or not (freq.max() > freq.min()):
+            raise ValueError(
+                "Frequency window is degenerate (need at least two distinct "
+                "positive frequencies) — the tau grid would be defined "
+                "entirely by the extension factor, not by the measurement."
+            )

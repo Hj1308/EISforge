@@ -130,7 +130,7 @@ semiconductor photocatalysts, and corrosion.
 
 ### Phase D — Future features
 - [ ] `litbase` — lightweight literature database engine (pandas/stdlib only, to stay within Streamlit Cloud free tier); design initiated
-- [ ] DRT (distribution of relaxation times) with Tikhonov regularization
+- [x] DRT (distribution of relaxation times) with Tikhonov regularization (EIS tab, DRT expander)
 - [ ] Train EIS-GPT on synthetic data and ship pretrained weights (v0.4)
 - [ ] Additional parsers (Zahner, PalmSens, CHI)
 

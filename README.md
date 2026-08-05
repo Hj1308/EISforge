@@ -199,7 +199,8 @@ print(result.tafel_slope, "mV/dec",
 
 *impedance.py is used internally by EISForge for circuit evaluation — the
 comparison refers to what each tool offers out of the box. pyimpspec and
-DearEIS additionally offer DRT analysis, which is on the EISForge roadmap.*
+DearEIS additionally offer DRT analysis, which EISForge now also provides
+(Tikhonov-regularized DRT in the EIS tab).*
 
 ---
 
@@ -372,7 +373,7 @@ A `CITATION.cff` file is included for automatic citation parsing by GitHub and Z
 | Chronoamperometry (i–t stability) tab | ✅ Implemented |
 | Live web demo (Streamlit Cloud) | ✅ Implemented |
 | Pre-trained EIS-GPT model weights | 🔬 In development (v0.4) |
-| DRT (distribution of relaxation times) | 📋 Planned |
+| DRT (distribution of relaxation times) | ✅ Implemented |
 | PyPI package release | 📋 Planned |
 
 ---
