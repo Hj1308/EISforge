@@ -51,10 +51,10 @@ the result as unverified — do not present untested logic as working.
 Give one command, show the expected output, wait for the actual output
 before proposing the next step. Do not chain multiple untested steps.
 
-### 4. Document immediately — this is the step we skipped last time
+### 4. Document immediately — but never run git yourself
 
 The moment a patch is applied and verified working, add an entry to
-`PATCHES.md` in the same commit:
+`PATCHES.md`:
 
 ```markdown
 ## patchNN — <short name>
@@ -64,19 +64,13 @@ The moment a patch is applied and verified working, add an entry to
 **Tested on:** <real files used> → <key results>
 ```
 
-Then:
-
-```
-git add <changed files> PATCHES.md
-git commit -m "patchNN: <short description>"
-git push origin main
-```
-
-A patch that is not committed and not logged in `PATCHES.md` does not
-count as done — it will be lost the next time something goes wrong locally.
-(This is exactly how the E_onset hybrid-detection fix was lost: it was
-written directly into `lsv_analyzer.py`, tested, and worked, but was never
-committed or logged before the local file was deleted.)
+Do **not** commit or push it. Logging the patch is the agent's job; the
+commit is the human's (see rule 7 below). A patch that is not logged in
+`PATCHES.md` does not count as done — it will be lost the next time
+something goes wrong locally. (This is exactly how the E_onset
+hybrid-detection fix was lost: it was written directly into
+`lsv_analyzer.py`, tested, and worked, but was never committed or logged
+before the local file was deleted.)
 
 ### 5. Restart, don't rely on Streamlit's hot-reload
 
@@ -89,6 +83,23 @@ Streamlit's browser "Rerun" is not enough — fully restart:
 The correct project folder is `C:\Users\hoda\Desktop\EISforg`
 (not `C:\Users\hoda\eisforge`, which is a stale duplicate). Confirm `pwd`/`cd`
 before running any patch script.
+
+### 7. Never run git commands — leave changes for human review
+
+Coding agents must not run git. **No `git add`, no `git commit`, no
+`git push`, no `git checkout`, no `git reset`, no `git stash` — none.** Never
+stage, commit, amend, push, or otherwise modify the repository or its
+history. Leave all changes uncommitted in the working tree.
+
+The reason: reviewing the diff before it becomes public has caught real
+problems. One example: an empty junk file named `2.0` that `git add -A`
+would have swept into a commit. Another: a policy decision in the K-K work
+that needed a human call before it went in. The diff must be seen by a human
+first.
+
+When you finish a task, report what changed and stop. Do not end with a
+commit. Do not offer to commit. The human reviews the diff and commits it
+themselves.
 
 ---
 
