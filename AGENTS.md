@@ -104,6 +104,24 @@ before running any patch script.
 - **`@st.cache_data` cache keys** must include a `content_hash` (e.g. via
   `hashlib.md5`), not just an index like `cycle_idx` — otherwise different
   files with the same index collide in the cache.
+- **Every Streamlit widget needs an explicit unique `key=`, prefixed by its
+  tab** (e.g. `ecsa_`, `kl_`, `cv_`). Streamlit derives a widget's ID from
+  its type plus its parameter values (label, defaults, options), so two
+  widgets with the same label and defaults collide — and the
+  `StreamlitDuplicateElementId` error is raised **at module level**, taking
+  down the whole app, not just one tab. Do not rename labels to dodge a
+  collision; the label is what the user reads. (This bit us once: an ECSA
+  `number_input("Scan rate (mV/s)", value=50, min_value=1)` collided with
+  the CV tab's identical widget and killed all nine tabs.)
+- **pytest cannot catch app.py widget bugs.** No test imports or executes
+  `app.py`, so a duplicate-ID crash passes the full suite silently. For any
+  `app.py` change, verify with `streamlit.testing.v1.AppTest`, which really
+  executes the script body and reports exceptions:
+  `AppTest.from_file("app.py").run()` → assert `len(at.exception) == 0`.
+  Starting the server alone is **not** enough — Streamlit executes the
+  script body only on the first page session, so a clean `streamlit run
+  app.py --server.headless true` startup proves nothing about widget
+  collisions. AppTest is the check that actually runs every widget call.
 
 ---
 

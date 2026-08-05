@@ -103,7 +103,7 @@ semiconductor photocatalysts, and corrosion.
 
 ### 8. Web interface (`app.py`)
 - [x] Streamlit UI with catalyst-family / electrolyte awareness
-- [x] Tabs: CV | LSV | EIS | EIS-GPT | Correlation | K-L | ECSA | Scan-Rate | Chronoamperometry
+- [x] Tabs: CV | LSV | EIS | EIS-GPT | Correlation | ECSA | K-L | Scan-Rate | Chronoamperometry
 - [x] Interactive Plotly visualizations
 - [x] Multi-format upload (.idf, .dta, .mpt, .csv, .txt)
 - [x] Automatic unit + RHE conversion

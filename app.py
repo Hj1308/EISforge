@@ -539,10 +539,10 @@ _auto_idx = _onset_methods.index(default_onset_method)
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📈 CV Analysis", "📉 LSV Analysis", "🔬 EIS Analysis",
-    "🤖 EIS-GPT", "🔗 Correlation", "⚗️ K-L Analysis",
-    "📊 Scan-Rate Kinetics", "⏱️ Chronoamperometry"
+    "🤖 EIS-GPT", "🔗 Correlation", "🧪 ECSA Analysis",
+    "⚗️ K-L Analysis", "📊 Scan-Rate Kinetics", "⏱️ Chronoamperometry"
 ])
 
 # ══════════════════ CV ═══════════════════════════════════════════════════════
@@ -1475,8 +1475,268 @@ with tab5:
         st.info("Complete both EIS fit (tab 3) and CV analysis (tab 1) to see correlations.")
 
 
-# ══════════════════ K-L ANALYSIS ═════════════════════════════════════════════
+# ══════════════════ ECSA ANALYSIS ════════════════════════════════════════════
 with tab6:
+    st.markdown('<h3>🧪 ECSA Calculation</h3>', unsafe_allow_html=True)
+    st.info(
+        "Electrochemically Active Surface Area from CV: H-UPD (Pt/Pd), "
+        "CO stripping (PtRu/PtSn/Pd), or the double-layer capacitance (Cdl) "
+        "method for carbon materials."
+    )
+    st.caption(
+        "Potentials are converted to V vs RHE using the sidebar reference "
+        "electrode and pH before analysis. Currents are converted to A from the "
+        "sidebar current unit. Loading (mg) comes from the sidebar (µg mass or "
+        "mg/cm² × area)."
+    )
+    _ecsa_method = st.radio(
+        "ECSA method",
+        ["Auto (catalyst-aware)", "H-UPD (Pt/Pd)", "CO stripping", "Cdl (multi-scan-rate CV)"],
+        horizontal=True,
+        key="ecsa_method",
+        help="Auto routes by sidebar catalyst type: noble metal → H-UPD, "
+             "alloy (PtRu/PtSn) → CO stripping, carbon → Cdl.",
+    )
+
+    _ecsa_vr = st.text_input(
+        "Integration window v_range (V vs RHE, comma-separated)",
+        value="0.05,0.40",
+        key="ecsa_v_range",
+        help="H-UPD window (0.05–0.40 V) or CO oxidation window. For Cdl: "
+             "the non-Faradaic window; v_mid = midpoint.",
+    )
+    try:
+        _vlo, _vhi = (float(x.strip()) for x in _ecsa_vr.split(","))
+        _v_range = (_vlo, _vhi)
+    except Exception:
+        _v_range = (0.05, 0.40)
+
+    _qref_in = st.number_input(
+        "q_ref override (µC/cm², 0 = method default)",
+        value=0.0, min_value=0.0, step=10.0, key="ecsa_q_ref",
+        help="Defaults: 210 (Pt H-UPD), 420 (Pt CO stripping). Pd: 212/424. "
+             "PtRu 1:1 CO ≈ 300. See ECSACalculator docstring.",
+    )
+    _q_ref = _qref_in if _qref_in > 0 else None
+
+    _is_cdl = _ecsa_method.startswith("Cdl")
+    _is_auto = _ecsa_method.startswith("Auto")
+
+    if _is_auto:
+        # Catalyst-aware routing: noble → H-UPD, alloy → CO stripping,
+        # carbon → Cdl (multi-file). Matches ECSACalculator.auto_ecsa routing.
+        _auto_target = (
+            "Cdl" if catalyst_type == "carbon_material"
+            else "CO stripping" if catalyst_type == "alloy"
+            else "H-UPD"
+        )
+        if catalyst_type == "metal_oxide":
+            st.error(
+                "Auto cannot choose a method for metal oxides (RuO₂, MnO₂, "
+                "Co₃O₄): they are pseudo-capacitive and no automatic dispatch "
+                "is safe. **Select the Cdl method manually** and treat the "
+                "result as a relative comparison only."
+            )
+            _auto_target = "Cdl"
+        st.caption(f"Auto routing: **{_auto_target}** (catalyst_type={catalyst_type})")
+        _is_cdl = _auto_target == "Cdl"
+        _eff_method = _auto_target
+        _auto_blocked = catalyst_type == "metal_oxide"
+    else:
+        _eff_method = _ecsa_method
+        _auto_blocked = False
+
+    if _is_cdl:
+        st.caption(
+            "**Caveat:** the Cdl method requires a genuinely non-faradaic "
+            "potential window and a flat, well-defined double-layer region. On "
+            "rough or porous electrodes (carbon paste, thick catalyst films) "
+            "the Cdl method is unreliable and the resulting ECSA can be "
+            "meaningless."
+        )
+        ecsa_files = st.file_uploader(
+            "Upload CV files at different scan rates",
+            type=CV_FORMATS, accept_multiple_files=True, key="ecsa_cdl_up",
+        )
+        sr_list = st.text_input(
+            "Scan rates (mV/s, comma-separated, same order as files)",
+            value="20,50,100,200", key="ecsa_scan_rates",
+        )
+        _cs_in = st.number_input(
+            "cs specific capacitance (mF/cm², 0 = carbon default 0.035)",
+            value=0.0, min_value=0.0, step=0.001, format="%.4f",
+            key="ecsa_cs",
+        )
+        st.caption(
+            "Default 0 = **CS_CARBON = 0.035 mF/cm²** (porous carbon / CNT / "
+            "graphene). ECSA scales linearly with cs — halving cs doubles the "
+            "answer. The module cites **no literature source** for this "
+            "constant and states no electrolyte; treat it as an assumption to "
+            "verify for your material and electrolyte."
+        )
+        _cs = _cs_in if _cs_in > 0 else None
+    else:
+        ecsa_file = st.file_uploader(
+            "Upload CV file", type=CV_FORMATS, key="ecsa_cv_up",
+        )
+        sr_ecsa = st.number_input("Scan rate (mV/s)", value=50, min_value=1,
+                                  key="ecsa_scan_rate")
+
+    _run_ecsa = st.button("▶ Run ECSA Analysis", type="primary", key="ecsa_run")
+
+    if _run_ecsa:
+        try:
+            from eisforge.analysis.ecsa_calculator import ECSACalculator
+
+            _load_ecsa = []
+            if _is_cdl:
+                if not ecsa_files:
+                    raise ValueError("Upload at least 3 CV files for Cdl.")
+                rates = [float(x.strip()) for x in sr_list.split(",")]
+                if len(rates) != len(ecsa_files):
+                    raise ValueError(
+                        f"{len(ecsa_files)} files but {len(rates)} scan rates."
+                    )
+                for _f in ecsa_files:
+                    if Path(_f.name).suffix.lower() == ".idf":
+                        import hashlib as _hl2
+                        _b = _f.getvalue()
+                        _p, _c, _m = _parse_idf_cached(
+                            _hl2.md5(_b).hexdigest(), _b, cycle_idx=-1)
+                    else:
+                        _p, _c, _m = load_cv_lsv(_f, unit_factor=unit_factor)
+                    _load_ecsa.append((_p + e_ref_val + 0.059 * ph_value,
+                                       _c / 1000.0))
+                _sr_Vs = [r / 1000.0 for r in rates]
+                if _is_auto and not _auto_blocked:
+                    res_ecsa = ECSACalculator.auto_ecsa(
+                        catalyst_type=catalyst_type,
+                        potential=np.zeros(1), current=np.zeros(1),
+                        scan_rate=1.0, loading_mg=_mass_mg, area_cm2=area,
+                        potentials_list=[p for p, _ in _load_ecsa],
+                        currents_list=[c for _, c in _load_ecsa],
+                        scan_rates_list=_sr_Vs, v_range=_v_range,
+                        cs_mF_cm2=_cs,
+                    )
+                else:
+                    res_ecsa = ECSACalculator.method_c_cdl(
+                        potentials_list=[p for p, _ in _load_ecsa],
+                        currents_list=[c for _, c in _load_ecsa],
+                        scan_rates=_sr_Vs, v_range=_v_range, cs_mF_cm2=_cs,
+                        loading_mg=_mass_mg, area_cm2=area,
+                    )
+            else:
+                if not ecsa_file:
+                    raise ValueError("Upload a CV file.")
+                if Path(ecsa_file.name).suffix.lower() == ".idf":
+                    import hashlib as _hl2
+                    _b = ecsa_file.getvalue()
+                    _p, _c, _m = _parse_idf_cached(
+                        _hl2.md5(_b).hexdigest(), _b, cycle_idx=-1)
+                else:
+                    _p, _c, _m = load_cv_lsv(ecsa_file, unit_factor=unit_factor)
+                _p_rhe = _p + e_ref_val + 0.059 * ph_value
+                _c_a = _c / 1000.0
+                _sr_Vs = float(sr_ecsa) / 1000.0
+                if _is_auto:
+                    res_ecsa = ECSACalculator.auto_ecsa(
+                        catalyst_type=catalyst_type,
+                        potential=_p_rhe, current=_c_a, scan_rate=_sr_Vs,
+                        loading_mg=_mass_mg, area_cm2=area,
+                        v_range=_v_range, q_ref=_q_ref,
+                    )
+                elif _ecsa_method.startswith("CO"):
+                    res_ecsa = ECSACalculator.method_b_co(
+                        potential=_p_rhe, current=_c_a, scan_rate=_sr_Vs,
+                        loading_mg=_mass_mg, v_range=_v_range, q_ref=_q_ref,
+                        area_cm2=area, catalyst=catalyst,
+                    )
+                else:
+                    res_ecsa = ECSACalculator.method_a_hupd(
+                        potential=_p_rhe, current=_c_a, scan_rate=_sr_Vs,
+                        loading_mg=_mass_mg, v_range=_v_range, q_ref=_q_ref,
+                        area_cm2=area, catalyst=catalyst,
+                    )
+            st.session_state["ecsa_r"] = res_ecsa
+            st.session_state["ecsa_method_ui"] = _ecsa_method
+            st.success(
+                f"✅ {res_ecsa['method']}: ECSA = {res_ecsa['ecsa_cm2']:.4f} cm²"
+            )
+        except Exception as e:
+            st.error(f"ECSA error: {e}")
+
+    if "ecsa_r" in st.session_state:
+        res_ecsa = st.session_state["ecsa_r"]
+        st.divider()
+        st.markdown("#### ECSA Result — full output")
+        st.caption(
+            f"Method selected: **{st.session_state['ecsa_method_ui']}** | "
+            f"resolved: **{res_ecsa['method']}** | "
+            f"loading = {_mass_mg:.4f} mg | area = {area:.4f} cm²"
+        )
+        _dict_df = pd.DataFrame({
+            "Key": list(res_ecsa.keys()),
+            "Value": [str(v) for v in res_ecsa.values()],
+        })
+        st.dataframe(_dict_df, use_container_width=True, hide_index=True)
+
+        _kka_vals = {
+            "H-UPD": ("charge_uC", "µC"),
+            "CO stripping": ("charge_uC", "µC"),
+            "Cdl": ("cdl_mF_cm2", "mF/cm²"),
+        }
+        if res_ecsa["method"] in _kka_vals:
+            _ck, _cu = _kka_vals[res_ecsa["method"]]
+            cA, cB, cC = st.columns(3)
+            cA.metric(f"{_ck} ({_cu})", f"{res_ecsa[_ck]:.4g}")
+            cB.metric("ECSA (cm²)", f"{res_ecsa['ecsa_cm2']:.4f}")
+            cC.metric("Specific ECSA (cm²/mg)",
+                      f"{res_ecsa['specific_ecsa_cm2_mg']:.4f}")
+            if res_ecsa["method"] == "Cdl":
+                dA, dB = st.columns(2)
+                dA.metric("R² (Cdl fit)", f"{res_ecsa['r_squared']:.4f}")
+                dB.metric("cs used (mF/cm²)", f"{res_ecsa['cs_used_mF_cm2']:.4f}")
+
+        # ── Excel export ──────────────────────────────────────────────────
+        try:
+            import io as _io3
+            _buf3 = _io3.BytesIO()
+            with pd.ExcelWriter(_buf3, engine="openpyxl") as _xw:
+                _dict_df.to_excel(_xw, sheet_name="Result", index=False)
+                _inputs = {
+                    "Method selected": st.session_state["ecsa_method_ui"],
+                    "Method used": res_ecsa["method"],
+                    "Electrode area (cm²)": area,
+                    "Scan rate(s) (mV/s)":
+                        (sr_list if _is_cdl else sr_ecsa) if _ecsa_method
+                        else "",
+                    "Loading (mg)": _mass_mg,
+                    "Current unit": current_unit,
+                    "v_range (V vs RHE)": _v_range,
+                }
+                if res_ecsa["method"] == "Cdl":
+                    _inputs["Caveat"] = (
+                        "Cdl-derived ECSA assumes a genuinely non-faradaic "
+                        "window and a well-defined double-layer region; "
+                        "unreliable on rough/porous electrodes."
+                    )
+                pd.DataFrame({
+                    "Item": list(_inputs.keys()),
+                    "Value": [str(v) for v in _inputs.values()],
+                }).to_excel(_xw, sheet_name="Inputs", index=False)
+            st.download_button(
+                "📥 Download ECSA results (Excel)",
+                data=_buf3.getvalue(),
+                file_name="eisforge_ecsa_results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="ecsa_download",
+            )
+        except Exception as e:
+            st.warning(f"Excel export unavailable: {e}")
+
+
+# ══════════════════ K-L ANALYSIS ═════════════════════════════════════════════
+with tab7:
     st.markdown('<h3>⚗️ Koutecký–Levich Analysis</h3>', unsafe_allow_html=True)
     st.info("Upload LSV files at different rotation speeds (rpm) for K-L analysis.")
     st.caption("Potentials are converted to V vs RHE using the sidebar reference "
@@ -1568,7 +1828,7 @@ with tab6:
 
 
 # ══════════════════ SCAN-RATE KINETICS ════════════════════════════════════════
-with tab7:
+with tab8:
     st.markdown('<h3>Scan-Rate Kinetics</h3>', unsafe_allow_html=True)
     st.caption(
         "Upload one Excel file with paired columns per scan rate. "
@@ -1734,7 +1994,7 @@ with tab7:
 
 
 # ══════════════════ CHRONOAMPEROMETRY ═════════════════════════════════════════
-with tab8:
+with tab9:
     st.markdown('<h3>Chronoamperometry (i–t Stability)</h3>', unsafe_allow_html=True)
     st.caption(
         "Upload a single chronoamperometry file (Ivium .idf: time, current). "
