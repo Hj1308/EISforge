@@ -1159,16 +1159,28 @@ with tab3:
     with col1:
         eis_file = st.file_uploader("Upload EIS file", type=EIS_FORMATS, key="eis_up")
         st.markdown("##### Nyquist shape hints (optional)")
-        st.caption(
-            "Set these if the low-frequency arc curls below the axis "
-            "(4th quadrant) or crosses into negative Re(Z) — the definitive "
-            "AOR kinetic fingerprint of adsorbed-intermediate relaxation."
-        )
         hint_c1, hint_c2 = st.columns(2)
-        inductive_hint = hint_c1.checkbox("Low-f inductive loop (4th quadrant)", value=False)
-        ndr_hint = hint_c2.checkbox("Low-f arc crosses Re(Z) < 0 (NDR)", value=False)
-        use_bounds = st.checkbox("Use smart bounds (custom circuit only)", value=False)
-        st.caption("💡 Tip: After fit, use R0 value as R_s for iR compensation in CV/LSV tabs.")
+        inductive_hint = hint_c1.checkbox(
+            "Low-f inductive loop (4th quadrant)", value=False,
+            key="eis_hint_inductive",
+            help=("Select if the low-frequency arc curls below the axis into the 4th "
+                  "quadrant. This shape is consistent with adsorbed-intermediate "
+                  "relaxation, but can also arise from corrosion, drift during "
+                  "acquisition, or a system not at steady state — a hint, not proof "
+                  "of mechanism."),
+        )
+        ndr_hint = hint_c2.checkbox(
+            "Low-f arc crosses Re(Z) < 0 (NDR)", value=False,
+            key="eis_hint_ndr",
+            help=("Select if the low-frequency arc crosses into negative Re(Z). "
+                  "Negative differential resistance at low frequency is consistent "
+                  "with an NDR surface response; it does not by itself identify the "
+                  "mechanism."),
+        )
+        st.markdown("##### Fit options")
+        use_bounds = st.checkbox("Use smart bounds (custom circuit only)", value=False,
+                                 key="eis_use_bounds")
+        st.caption("After fitting, reuse the R0 value as R_s for iR compensation in the CV/LSV tabs.")
     with col2:
         if eis_file:
             try:
@@ -1266,11 +1278,10 @@ with tab3:
             "K-K residual threshold",
             value=0.005, min_value=0.0001, max_value=0.5, step=0.0005,
             format="%.4f",
-        )
-        st.caption(
-            "K-K residual threshold as a fraction of |Z| (Schönleber 2014 "
-            "convention: 0.005 = 0.5%). Failing K-K warns but does not block "
-            "the fit."
+            key="drt_kk_threshold",
+            help=("Residual threshold as a fraction of |Z| (Schönleber 2014 "
+                  "convention: 0.005 = 0.5%). Failing K-K warns but does not "
+                  "block the fit."),
         )
 
         if st.button("▶ Run CNLS Fit", type="primary"):
@@ -1309,14 +1320,12 @@ with tab3:
         drt_n_tau = dc1.number_input(
             "n_tau (τ grid points)", value=80, min_value=20, max_value=400,
             step=10, key="drt_n_tau",
+            help="A larger grid resolves more detail in γ(ln τ) but amplifies noise.",
         )
         drt_reg_order = dc2.selectbox(
             "Regularization order", [1, 2], index=0, key="drt_reg_order",
-        )
-        st.caption(
-            "A larger n_tau resolves more detail in γ(ln τ) but amplifies "
-            "noise; regularization order 1 penalizes large values, order 2 "
-            "penalizes rapid variations (smoother)."
+            help="Order 1 penalizes large γ values; order 2 penalizes rapid "
+                 "variations (smoother).",
         )
         if st.button("▶ Run DRT Analysis", type="primary", key="drt_run"):
             try:
@@ -1346,11 +1355,6 @@ with tab3:
             dm4.metric("RMS Im (Ω)", f"{_drt.rms_imag:.4e}")
             dm5.metric("R_pol (Ω)", f"{_drt.total_resistance:.4f}")
             dm6.metric("r_ct est. (Ω)", f"{_drt.r_ct_estimate:.4f}")
-            st.caption(
-                "On poorly conditioned spectra the bounded solver can pin R_inf "
-                "to its 0 Ω lower bound; an R_inf of exactly (or very near) 0 "
-                "means 'not recovered', not a measurement."
-            )
             st.caption(
                 "R_pol = Σ γ_k·Δlnτ — a discrete sum over a τ grid truncated by "
                 "tau_extend_factor; processes outside the measured frequency "
@@ -1425,11 +1429,12 @@ with tab3:
                     f'<div class="{_kk_css}">{_kk_icon} {_kk.summary()}</div>',
                     unsafe_allow_html=True,
                 )
-                st.caption(
-                    f"K-K method used: {_kk.method} — linKK = linear K-K "
-                    "(Schönleber 2014); voigt = Voigt-circuit fallback; "
-                    "unavailable = no solver; not_run = fewer than 10 points."
-                )
+                with st.expander("K-K method legend"):
+                    st.markdown(
+                        f"**K-K method used:** {_kk.method} — linKK = linear K-K "
+                        "(Schönleber 2014); voigt = Voigt-circuit fallback; "
+                        "unavailable = no solver; not_run = fewer than 10 points."
+                    )
                 if _kk.warning_message:
                     st.markdown(
                         f'<div class="{_kk_css}">{_kk.warning_message}</div>',
@@ -1613,12 +1618,13 @@ with tab6:
         "CO stripping (PtRu/PtSn/Pd), or the double-layer capacitance (Cdl) "
         "method for carbon materials."
     )
-    st.caption(
-        "Potentials are converted to V vs RHE using the sidebar reference "
-        "electrode and pH before analysis. Currents are converted to A from the "
-        "sidebar current unit. Loading (mg) comes from the sidebar (µg mass or "
-        "mg/cm² × area)."
-    )
+    with st.expander("How inputs are converted before analysis"):
+        st.caption(
+            "Potentials are converted to V vs RHE using the sidebar reference "
+            "electrode and pH before analysis. Currents are converted to A from the "
+            "sidebar current unit. Loading (mg) comes from the sidebar (µg mass or "
+            "mg/cm² × area)."
+        )
     _ecsa_method = st.radio(
         "ECSA method",
         ["Auto (catalyst-aware)", "H-UPD (Pt/Pd)", "CO stripping", "Cdl (multi-scan-rate CV)"],
@@ -1677,16 +1683,14 @@ with tab6:
         _auto_blocked = False
 
     if _is_cdl:
-        st.caption(
-            "**Caveat:** the Cdl method requires a genuinely non-faradaic "
-            "potential window and a flat, well-defined double-layer region. On "
-            "rough or porous electrodes (carbon paste, thick catalyst films) "
-            "the Cdl method is unreliable and the resulting ECSA can be "
-            "meaningless."
-        )
         ecsa_files = st.file_uploader(
             "Upload CV files at different scan rates",
             type=CV_FORMATS, accept_multiple_files=True, key="ecsa_cdl_up",
+            help=("Caveat: the Cdl method requires a genuinely non-faradaic "
+                  "potential window and a flat, well-defined double-layer region. "
+                  "On rough or porous electrodes (carbon paste, thick catalyst "
+                  "films) the Cdl method is unreliable and the resulting ECSA can "
+                  "be meaningless."),
         )
         sr_list = st.text_input(
             "Scan rates (mV/s, comma-separated, same order as files)",
@@ -1696,13 +1700,11 @@ with tab6:
             "cs specific capacitance (mF/cm², 0 = carbon default 0.035)",
             value=0.0, min_value=0.0, step=0.001, format="%.4f",
             key="ecsa_cs",
-        )
-        st.caption(
-            "Default 0 = **CS_CARBON = 0.035 mF/cm²** (porous carbon / CNT / "
-            "graphene). ECSA scales linearly with cs — halving cs doubles the "
-            "answer. The module cites **no literature source** for this "
-            "constant and states no electrolyte; treat it as an assumption to "
-            "verify for your material and electrolyte."
+            help=("Default 0 = CS_CARBON = 0.035 mF/cm² (porous carbon / CNT / "
+                  "graphene). ECSA scales linearly with cs — halving cs doubles "
+                  "the answer. The module cites no literature source for this "
+                  "constant and states no electrolyte; treat it as an assumption "
+                  "to verify for your material and electrolyte."),
         )
         _cs = _cs_in if _cs_in > 0 else None
     else:
@@ -1869,8 +1871,6 @@ with tab6:
 with tab7:
     st.markdown('<h3>⚗️ Koutecký–Levich Analysis</h3>', unsafe_allow_html=True)
     st.info("Upload LSV files at different rotation speeds (rpm) for K-L analysis.")
-    st.caption("Potentials are converted to V vs RHE using the sidebar reference "
-               "electrode and pH before analysis.")
     diff_species = st.radio(
         "Diffusing species",
         ["O2 (ORR)", "Alcohol (AOR)"],
@@ -1881,15 +1881,17 @@ with tab7:
     if diff_species == "O2 (ORR)":
         oc1, oc2, oc3 = st.columns(3)
         D_O2 = oc1.number_input("D (O₂, cm²/s)", value=1.9e-5, min_value=0.0,
-                                format="%.2e")
+                                format="%.2e", key="kl_D",
+                                help="Literature O₂ diffusion in O2-saturated "
+                                     "0.1 M KOH (~25 °C, 1 atm).")
         nu_kl = oc2.number_input("ν (electrolyte, cm²/s)", value=1.0e-2,
-                                 min_value=0.0, format="%.2e")
+                                 min_value=0.0, format="%.2e", key="kl_nu",
+                                 help="Kinematic viscosity — electrolyte- and "
+                                      "temperature-dependent.")
         C_O2 = oc3.number_input("C (O₂, mol/cm³)", value=1.2e-6, min_value=0.0,
-                                format="%.2e")
-        st.caption("O₂ defaults are literature values for O2-saturated 0.1 M KOH "
-                   "(~25 °C, 1 atm). D, ν, C are electrolyte- and "
-                   "temperature-dependent — adjust for acid media or other "
-                   "temperatures.")
+                                format="%.2e", key="kl_C",
+                                help="O₂ bulk concentration in O2-saturated "
+                                     "0.1 M KOH (~25 °C, 1 atm).")
     else:
         kc1, kc2, kc3 = st.columns(3)
         from eisforge.analysis.koutecky_levich import _DEFAULT_DIFFUSION

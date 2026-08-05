@@ -38,10 +38,11 @@ body,[data-testid="stAppViewContainer"]{font-family:'Plus Jakarta Sans',sans-ser
 
 st.markdown('<h1 class="title">🔬 Band Edge & Mott-Schottky Calculator</h1>',
             unsafe_allow_html=True)
-st.caption(
-    "Butler-Ginley formula (1978) for Ecb/Evb. "
-    "Mott-Schottky analysis for flat-band potential (Vfb) and carrier density (Nd)."
-)
+with st.expander("What this calculator does"):
+    st.caption(
+        "Butler-Ginley formula (1978) for Ecb/Evb. "
+        "Mott-Schottky analysis for flat-band potential (Vfb) and carrier density (Nd)."
+    )
 st.divider()
 
 tab_be, tab_ms = st.tabs(["📐 Band Edge Calculator", "📊 Mott-Schottky Analysis"])

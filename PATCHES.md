@@ -1,6 +1,44 @@
 # EISForge — Patch Log
 
 
+## patch31 — text-density pass: captions → help=/expander, overclaim fixed
+**Date:** 2026-08-05
+**Files changed:** app.py, pages/band_edge.py
+**What it does:**
+- EIS Nyquist shape hints: removed the 3-line preamble caption. The two
+  checkboxes now carry `help=` tooltips each with the *consistent-with* wording
+  (inductive loop: consistent with adsorbed-intermediate relaxation but can
+  also arise from corrosion, acquisition drift, or non-steady-state — a hint,
+  not proof of mechanism; NDR: consistent with an NDR surface response, does
+  not by itself identify the mechanism). The overclaim "the definitive AOR
+  kinetic fingerprint" is gone. "Use smart bounds" + iR tip regrouped under a
+  separate "Fit options" heading; emoji removed from the iR tip.
+- Widget keys added per AGENTS.md rule: `eis_hint_inductive`, `eis_hint_ndr`,
+  `eis_use_bounds` (were unkeyed, violating the key rule).
+- Unkeyed widgets being given `help=` got explicit keys so the identity change
+  is explicit and future-stable: `drt_kk_threshold` (was unkeyed),
+  `kl_D`/`kl_nu`/`kl_C` (were unkeyed). Keyed widgets got `help=` only:
+  `drt_n_tau`, `drt_reg_order`, `ecsa_cdl_up`, `ecsa_cs`.
+- Caption-to-`help=` moves: K-K threshold (Schönleber convention) → help on
+  `drt_kk_threshold`; DRT n_tau/reg-order tradeoff → split onto the two
+  widgets; Cdl caveat → help on `ecsa_cdl_up`; cs default caveat → help on
+  `ecsa_cs`; O₂ D/ν/C provenance caption → help on each input (one line each,
+  tab `kl_` prefix).
+- Caption-to-expander moves: ECSA conversions (potentials/currents/loading)
+  → expander "How inputs are converted before analysis"; K-K method legend →
+  expander; band_edge intro → expander. K-L tab duplicate conversion caption
+  folded into the ECSA expander (identical first sentence).
+- Dropped standing DRT caption that duplicated the conditional `st.error` on
+  R_inf pinned at bound (kept the error, which fires only when true).
+**Tested on:** full suite `python -m pytest -q` → 197 passed; ruff clean;
+AppTest on app.py (base / after EIS load / after setting all touched widgets /
+Cdl branch) → 0 exceptions, all set values persisted across reruns; page
+AppTest band_edge + batch_eis → 0 exceptions. One-time reset consequence: the
+three previously-unkeyed number inputs (`drt_kk_threshold`, `kl_D`, `kl_nu`,
+`kl_C`) and the three EIS checkboxes change identity, so any value a user had
+typed is reset to default once on first run of the new build; thereafter the
+explicit keys make the identity stable.
+
 ## patch30 — visual consistency pass: single-source theme tokens + config.toml
 **Date:** 2026-08-05
 **Files changed:** eisforge/visualization/theme.py (new), app.py,
