@@ -11,6 +11,12 @@ pyarrow>=14.0.0          # ذخیره دیتاست به فرمت parquet
 
 # ── EIS-Specific ──────────────────────────────────────────────────
 impedance>=1.4.1          # CNLS fitting + K-K validation
+                          # NOTE: 1.7.1 is the newest PyPI release (2023-07-10).
+                          # Its eval_linKK is broken under numpy>=2.0
+                          # (NameError: np not defined in eval; upstream issue
+                          # #318, fixed on master by PR #322 but unreleased as
+                          # of 2026-08-05), so the K-K validator relies on the
+                          # Voigt-circuit fallback in practice.
 
 # ── Machine Learning ──────────────────────────────────────────────
 torch>=2.1.0              # PyTorch — EIS-GPT Transformer

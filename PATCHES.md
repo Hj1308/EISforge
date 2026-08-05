@@ -12,7 +12,9 @@
   `catalyst_type="noble_metal"` were valid as written (isinstance branch in
   `CVAnalyzer.__init__`; literal string equals the module constant). The
   corrected example runs verbatim on a synthetic CV -> prints
-  `0.1225 cm2` / `0.44511209108550553 V vs. RHE`.
+  `0.55 cm2` / `0.44511209108550553 V vs. RHE`. The `ecsa=` value is
+  deliberately illustrative (0.55 cm2) and commented "not the geometric
+  area" so beginners do not infer ECSA = geometric area.
 - README test-coverage table: corrected the `test_eis_fitting.py` row
   (analytic Randles/RC impedance math only, no eisforge imports) and added
   rows for `test_validators.py` and `test_koutecky_levich.py`
@@ -40,6 +42,58 @@ rejects the `mu=` kwarg, so the Voigt fallback is the effective K-K path
 in production. The real `sample_eis.idf` fails K-K via that fallback
 (43.8 %) — expected for a pseudo-inductive spectrum, but worth surfacing
 in the app UI.
+
+---
+
+## patch28 — K-K validator: real-part linKK, no mu, method provenance
+**Date:** 2026-08-05  
+**Files changed:** eisforge/core/validators.py, app.py, requirements.txt,
+tests/test_validators.py (extended 5 -> 7 tests), PATCHES.md
+**What it does:**
+- Removed the `mu=` kwarg from the `linKK()` call (validators.py). It was
+  never a parameter of `linKK(f, Z, c, max_M, fit_type, add_cap)` in the
+  installed impedance 1.7.1 — the call could never have succeeded. Also
+  normalised the double space in `self.c  = c` to `self.c = c` (cosmetic
+  only — `self.c` was always assigned; E221 is preview-only in this ruff
+  version and never flagged it).
+- Set the call to `fit_type="real", add_cap=False`, with an inline comment
+  recording the reasoning. Schönleber 2014 (the same source we cite for
+  the 0.005 threshold in README, app caption, and UI) fits the real part
+  of the impedance; with `fit_type="real"` the RC resistors are locked by
+  that real-part fit and only the series L/C absorb imaginary deviation,
+  so the imaginary residual is a genuine predict-and-compare — the actual
+  power of the K-K test. `fit_type="complex"` fits both components
+  simultaneously and lets one compensate the other, weakening the test.
+  `add_cap=False`: the serial capacitance suits blocking electrodes (no
+  low-frequency intercept) but as extra freedom it depresses residuals
+  and lets bad spectra pass — the wrong direction for a general-purpose
+  validator.
+- Method provenance: `KKValidationResult` gains `method` field ("linKK",
+  "voigt", "unavailable", "not_run"); `summary()` prefixes `K-K ({method}):`
+  and only prints `μ=` when `method=="linKK"` (the Voigt path has no mu —
+  `self.mu` is an input, not an output). app.py K-K caption and the Excel
+  Summaries sheet surface the method.
+- Silent fallback eliminated: `_try_linkk` logs at WARNING with the
+  exception text before falling back to Voigt.
+- requirements.txt: recorded the upstream bug — impedance 1.7.1 is the
+  newest PyPI release (2023-07-10); `eval_linKK` is broken under
+  numpy>=2.0 (`NameError: name 'np' is not defined`), upstream issue #318,
+  PR #322 merged to master 2026-04-10 but unreleased. Not pinning a
+  non-existent version.
+- Extended tests/test_validators.py to 7 tests: monkeypatched linKK to
+  assert the call uses only valid kwargs (`no mu`, `add_cap=False`,
+  `fit_type="real"`) and that a linKK failure is logged and falls back to
+  Voigt (`method == "voigt"`, no `μ=` in summary).
+**Tested on:** real `tests/data/sample_eis.idf` probe — all three fit_type
+settings (`real`/`imag`/`complex`) with `add_cap=False` fail identically
+at `eval_linKK` (NameError) before any fit runs, so the linKK path is
+currently **unreachable** and the new settings are reasoned but not yet
+executed. `python -m pytest -q` -> 180 passed; `python -m ruff check .`
+-> clean.
+**Known follow-up:** when upstream impedance PR #322 (or any fixed
+release) lands, the linKK path will start running for the first time —
+re-test on real data then, since the settings were validated only in
+reasoning, never in execution.
 
 ---
 

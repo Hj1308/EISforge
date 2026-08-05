@@ -88,7 +88,7 @@ from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
 analyzer = CVAnalyzer(
     scan_rate=50,                      # mV/s
     electrode_area=0.1225,             # cm²
-    ecsa=0.1225,                       # ECSA estimate from H-UPD or Cdl (cm²)
+    ecsa=0.55,                         # cm², e.g. from H-UPD; not the geometric area
     catalyst_type="noble_metal",
     electrolyte=ElectrolyteInfo("alkaline", "KOH", 1.0),
 )

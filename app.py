@@ -1317,6 +1317,11 @@ with tab3:
                     f'<div class="{_kk_css}">{_kk_icon} {_kk.summary()}</div>',
                     unsafe_allow_html=True,
                 )
+                st.caption(
+                    f"K-K method used: {_kk.method} — linKK = linear K-K "
+                    "(Schönleber 2014); voigt = Voigt-circuit fallback; "
+                    "unavailable = no solver; not_run = fewer than 10 points."
+                )
                 if _kk.warning_message:
                     st.markdown(
                         f'<div class="{_kk_css}">{_kk.warning_message}</div>',
@@ -1380,16 +1385,16 @@ with tab3:
                         _kk_vals = [
                             "yes" if _kk_exp.passed else "no",
                             _maxpct if np.isfinite(_maxpct) else "n/a",
-                            _kk_exp.n_rc_elements, _kk_exp.mu,
+                            _kk_exp.n_rc_elements, _kk_exp.mu, _kk_exp.method,
                         ]
                     else:
-                        _kk_vals = ["n/a", "", "", ""]
+                        _kk_vals = ["n/a", "", "", "", ""]
                     pd.DataFrame({
                         "Item": ["Circuit", "Reduced chi2 (modulus-weighted)",
                                  "Converged", "Points used", "Outliers removed",
                                  "Source file", "K-K passed",
                                  "K-K max residual (%)", "K-K N_RC", "K-K mu",
-                                 "K-K threshold"],
+                                 "K-K method", "K-K threshold"],
                         "Value": [fit_r.circuit_string, fit_r.chi_squared,
                                   fit_r.converged, fit_r.n_points_used,
                                   fit_r.n_outliers_removed,

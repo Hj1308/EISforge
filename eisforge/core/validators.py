@@ -7,12 +7,15 @@ RC-based approximation otherwise.
 """
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 from eisforge.parsers.base_parser import EISDataset
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,6 +27,7 @@ class KKValidationResult:
     n_rc_elements: int
     mu: float
     warning_message: Optional[str] = None
+    method: str = "unknown"
 
     @property
     def residuals_max_pct(self) -> float:
@@ -34,9 +38,11 @@ class KKValidationResult:
     def summary(self) -> str:
         status = "PASSED" if self.passed else "FAILED"
         if np.isinf(self.max_residual) or np.isnan(self.max_residual):
-            return f"K-K: {status} (validator could not run reliably)"
-        return (f"K-K: {status} | max residual={self.residuals_max_pct:.3f}% | "
-                f"N_RC={self.n_rc_elements} | μ={self.mu:.3f}")
+            return f"K-K ({self.method}): {status} (validator could not run reliably)"
+        mu_part = f" | μ={self.mu:.3f}" if self.method == "linKK" else ""
+        return (f"K-K ({self.method}): {status} | "
+                f"max residual={self.residuals_max_pct:.3f}% | "
+                f"N_RC={self.n_rc_elements}{mu_part}")
 
 
 class KramersKronigValidator:
@@ -57,7 +63,7 @@ class KramersKronigValidator:
     ) -> None:
         self.residual_threshold = residual_threshold
         self.mu = mu
-        self.c  = c
+        self.c = c
 
     def validate(self, dataset: EISDataset) -> KKValidationResult:
         """Validate dataset against K-K relations."""
@@ -74,6 +80,7 @@ class KramersKronigValidator:
                 n_rc_elements=0,
                 mu=self.mu,
                 warning_message=f"Insufficient data points ({n}). K-K requires ≥10.",
+                method="not_run",
             )
 
         # ── Method 1: Try impedance.py linKK ──────────────────────────────────
@@ -95,6 +102,7 @@ class KramersKronigValidator:
             n_rc_elements=0,
             mu=self.mu,
             warning_message="K-K validation skipped — validator unavailable.",
+            method="unavailable",
         )
 
     # ── Method 1: impedance.py linKK ──────────────────────────────────────────
@@ -104,15 +112,31 @@ class KramersKronigValidator:
         try:
             from impedance.validation import linKK
         except ImportError:
+            logger.warning(
+                "linKK unavailable (impedance not installed): using Voigt fallback."
+            )
             return None
 
         try:
+            # fit_type="real": Schönleber 2014 fits the real part of the
+            # impedance; the RC resistors are locked by that fit and only the
+            # series L/C absorb imaginary deviation, so the imaginary residual
+            # is a genuine predict-and-compare. A "complex" simultaneous fit
+            # would let one component compensate the other, weakening the test.
+            # add_cap=False: the series capacitance suits blocking electrodes
+            # (no low-frequency intercept) but as extra freedom it depresses
+            # residuals and lets bad spectra pass, the wrong direction for a
+            # general-purpose validator.
+            # NOTE: this path is currently unreachable — upstream impedance
+            # issue #318 (eval_linKK NameError under numpy>=2.0, fixed by
+            # PR #322, unreleased) raises before any fit runs. These settings
+            # are reasoned but not yet executed on real data.
             output = linKK(
-                freq, Z, c=self.c, mu=self.mu,
-                fit_type="complex", add_cap=True,
+                freq, Z, c=self.c,
+                fit_type="real", add_cap=False,
             )
         except Exception as e:
-            warnings.warn(f"linKK failed: {e}. Trying fallback.", stacklevel=2)
+            logger.warning("linKK failed (%s): using Voigt fallback.", e)
             return None
 
         # impedance.py returns different formats in different versions
@@ -167,6 +191,7 @@ class KramersKronigValidator:
             n_rc_elements=int(M) if M is not None else 0,
             mu=float(mu_out) if mu_out is not None else self.mu,
             warning_message=msg,
+            method="linKK",
         )
 
     # ── Method 2: Simple Voigt-circuit fallback ───────────────────────────────
@@ -222,6 +247,7 @@ class KramersKronigValidator:
                 n_rc_elements=M,
                 mu=self.mu,
                 warning_message=msg,
+                method="voigt",
             )
         except Exception as e:
             warnings.warn(f"Voigt fallback failed: {e}", stacklevel=2)

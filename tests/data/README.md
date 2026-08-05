@@ -24,6 +24,14 @@ provided by the project author.
   measurement was made. The file carries a January 2005 date, which reads
   as a vendor demo file rather than real data; that date is an artifact
   and should be ignored.
+- **Kramers-Kronig:** this spectrum FAILS the built-in K-K validation
+  (max residual ~43.8% via the Voigt-circuit fallback). This is expected:
+  the spectrum has pseudo-inductive character in the high-frequency tail,
+  and inductive loops violate the K-K causality assumptions. The file is
+  still a valid parser and CNLS fitting test case — a failed K-K check is
+  an informative scientific result, not a sign of a broken tool. If you
+  see a red K-K warning in the app for this file, that is the expected
+  behaviour.
 
 ## What is intentionally not stored here
 
