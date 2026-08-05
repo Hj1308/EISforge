@@ -34,7 +34,7 @@ abstract: >
   rule-based EIS interpretation, a literature-guided knowledge base
   (parameter priors for 28 electrochemical systems, distilled from a
   survey of over 200 papers), and a Physics-Informed Transformer architecture
-  (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Autolab (.idf),
+  (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Ivium (.idf),
   and generic CSV file formats. Includes a live Streamlit web demo.
 
 keywords:
