@@ -88,14 +88,15 @@ from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
 analyzer = CVAnalyzer(
     scan_rate=50,                      # mV/s
     electrode_area=0.1225,             # cm²
+    ecsa=0.1225,                       # ECSA estimate from H-UPD or Cdl (cm²)
     catalyst_type="noble_metal",
     electrolyte=ElectrolyteInfo("alkaline", "KOH", 1.0),
 )
 E, I = CVAnalyzer.load_csv("sample_cv.csv")
 result = analyzer.analyze(E, I, r_s_ohms=3.2)
 
-print(result.ecsa_cm2, "cm²")
-print(result.onset_potential, "V vs. RHE")
+print(result.ecsa, "cm²")
+print(result.e_onset, "V vs. RHE")
 ```
 
 ---
@@ -260,7 +261,9 @@ pytest --cov=eisforge --cov-report=term-missing
 
 | Test File | Covers |
 |---|---|
-| `tests/test_eis_fitting.py` | EIS CNLS fitting & Kramers–Kronig |
+| `tests/test_eis_fitting.py` | Impedance math for Randles & R-C circuits (analytic, no eisforge imports) |
+| `tests/test_validators.py` | Kramers–Kronig validation (Voigt/linKK, non-blocking) |
+| `tests/test_koutecky_levich.py` | Koutecký–Levich analyzer (`C_mol_cm3` override) |
 | `tests/test_eis_interpreter.py` | Rule-based EIS interpretation |
 | `tests/test_suggestion_engine.py` | AICc multi-model circuit ranking |
 | `tests/test_inductive_aor.py` | Pseudo-inductive / NDR circuits |
