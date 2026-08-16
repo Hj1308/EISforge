@@ -790,7 +790,7 @@ class LSVAnalyzer:
             warnings.append("Manual potential window has <4 valid points -> auto.")
 
         # Hybrid Tafel domain: percentile-based OER-onset detection +
-        # noise-floor threshold + valley detection (see PROJECT_STATUS.md)
+        # noise-floor threshold + valley detection
         _dj_full = np.gradient(j, potential)
         _zc_idx  = int(np.argmin(np.abs(j)))
         _after   = _dj_full[_zc_idx:]; _E_after = potential[_zc_idx:]
