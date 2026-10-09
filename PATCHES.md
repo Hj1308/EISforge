@@ -1,5 +1,20 @@
 # EISForge — Patch Log
 
+## patch37 — task 2.1 (part 1): CVData module with sweep split and blank subtraction
+**Date:** 2026-10-09
+**Files changed:** eisforge/data/cv_data.py (new), tests/test_cv_data.py (new)
+**What it does:** dedicated voltammogram container (instead of CV stored inside EISDataset) with explicit
+units (potential_V vs reference, current_mA, IUPAC sign); `CVData.from_ivium()` reads through the package
+parser; `branches()` splits sweeps by the sign of dE; `subtract(blank)` subtracts branch by branch, NaN outside
+the blank's potential range (no silent clamping), with warnings for scan-rate mismatch, <80% shared window and
+OCP difference > 50 mV. Library only; the CV-tab uploader follows in patch38.
+**Inspired by:** pyimpspec DataSet (one data class with its own operations: subtract_impedances, average);
+ixdat CyclicVoltammogram (find_signed_sections sweep split, diff_with blank subtraction — improved: NaN instead
+of np.interp clamping outside the blank range).
+**Tested on:** private pair koh_ipa_50mVs.idf - koh_50mVs.idf: net -0.613 uA @ 0.30 V_RHE, -0.236 uA @ 0.70
+V_RHE (= hand calculation), 87% shared window, warning "OCP differs by 165 mV". New tests: collection error
+before, 9 passed after. Full suite 237 passed; ruff All checks passed!; AppTest 0 exceptions.
+
 ## patch36 — B4: CV peak search with prominence, explicit "no anodic peak", C_dl from loop half-width
 **Date:** 2026-10-09
 **Files changed:** eisforge/analysis/cv_analyzer.py, app.py, tests/test_cv_peak_double_layer.py (new)
