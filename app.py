@@ -189,7 +189,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
 
     # Extract ONLY the primary_data block (anchored to the section header)
     _lines = text.splitlines()
-    E_list, I_list = [], []
+    E_list, I_list, E3_list = [], [], []
     for _i, _ln in enumerate(_lines):
         if _ln.strip().lower() == "primary_data":
             try:
@@ -201,6 +201,7 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
                 if len(_parts) >= 2:
                     try:
                         E_list.append(float(_parts[0])); I_list.append(float(_parts[1]))
+                        E3_list.append(float(_parts[2]) if len(_parts) >= 3 else np.nan)
                     except ValueError:
                         continue
             break
@@ -208,6 +209,25 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
         raise ValueError("No primary_data block found in .idf file")
     E_arr = np.array(E_list, dtype=float)
     I_mA = np.array(I_list, dtype=float) * unit_mult   # apply the parsed unit multiplier
+
+    # patch34 (B2): with "Apply wrt OCP=true", column 1 is the potential applied
+    # relative to the open-circuit potential; column 3 is the absolute potential
+    # vs the reference electrode (= column 1 + OCP). Use column 3 so that E_onset,
+    # E vs RHE and blank-vs-alcohol comparisons are on the reference scale.
+    meta["_ocp_V"] = None
+    meta["_potential_source"] = "column 1 (vs reference)"
+    if re.search(r"^Apply wrt OCP=true", text, re.M):
+        E3_arr = np.array(E3_list, dtype=float)
+        if len(E3_arr) == len(E_arr) and np.all(np.isfinite(E3_arr)):
+            meta["_ocp_V"] = float(np.mean(E3_arr - E_arr))
+            meta["_potential_source"] = "column 3 (vs reference; scan applied wrt OCP)"
+            E_arr = E3_arr
+        else:
+            meta["_potential_source"] = "column 1 (RELATIVE TO OCP; OCP not stored)"
+            meta["_potential_warning"] = (
+                "This scan was applied relative to OCP and the file has no absolute-"
+                "potential column: potentials are relative to OCP, NOT to the reference "
+                "electrode. E_onset and E vs RHE are shifted by the (unknown) OCP.")
 
     sign_ch = np.diff(np.sign(np.diff(E_arr)))
     vertices = np.where(sign_ch != 0)[0] + 1
@@ -580,9 +600,13 @@ with tab1:
                 _nc = _meta.get("_n_cycles", "?")
                 _cu = _meta.get("_cycle_used", "?")
                 _ul = _meta.get("_unit_label", "mA")
+                _ocp = _meta.get("_ocp_V")
                 st.success(f"✅ {len(pot)} points | {cv_file.name} | "
                            f"cycle {_cu}/{_nc} | unit: {_ul} | sr: {sr_cv} mV/s"
+                           + (f" | E vs ref (OCP {_ocp:+.3f} V)" if _ocp is not None else "")
                            + (" | smoothed" if use_smooth else ""))
+                if _meta.get("_potential_warning"):
+                    st.warning(_meta["_potential_warning"])
                 Q_total, Q_f, Q_b = _compute_charge(pot, cur, sr_cv)
                 st.session_state.update({"cv_Q_total": Q_total, "cv_Q_f": Q_f, "cv_Q_b": Q_b})
                 from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo

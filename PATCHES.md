@@ -1,5 +1,20 @@
 # EISForge — Patch Log
 
+## patch34 — B2: Ivium .idf potential read vs reference electrode (not vs OCP)
+**Date:** 2026-10-09
+**Files changed:** app.py, eisforge/parsers/ivium_parser.py, tests/test_ivium_potential_column.py (new)
+**What it does:** with Ivium "Apply wrt OCP=true", column 1 is the potential relative to OCP and column 3 the
+absolute potential vs the reference electrode (= column 1 + OCP). `_load_ivium_cv` (app) and
+`IviumIDFParser._parse_cv` now use column 3 in that case and store the OCP (`meta["_ocp_V"]`,
+`metadata["ocp_V"]`). The CV-tab status line shows `E vs ref (OCP ...)`. If the scan was wrt OCP but column 3 is
+missing, column 1 is kept and an explicit warning is shown. Side effect (intended): LSV (incl. blank subtraction)
+and ECSA tabs now also get absolute potentials. Windows typed earlier from the old relative axis must be re-entered.
+**Tested on:** koh_50mVs.idf -> E -1.08720..+0.212072 V vs Ag/AgCl (3 M KCl), OCP -0.287 V;
+koh_ipa_50mVs.idf -> E -0.922795..+0.376479 V, OCP -0.123 V (private files, 1 M KOH / + 1 M IPA, 50 mV/s).
+Before patch: 6 new tests failed (control passed); after: 7 passed. Full suite 208 passed;
+ruff All checks passed!; AppTest 0 exceptions.
+**Not fixed here:** B3 (sign detection) and B4 (peak/background) in cv_analyzer.py; see ROADMAP.md.
+
 ## patch33 — CI: test suite collects on Python 3.10 (tomllib -> tomli fallback)
 **Date:** 2026-10-09
 **Files changed:** tests/test_visualization_consistency.py, .github/workflows/ci.yml, pyproject.toml

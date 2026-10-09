@@ -115,6 +115,13 @@ class IviumIDFParser(BaseEISParser):
         """
         potential = raw_data[:, 0]
         current_a = raw_data[:, 1]
+        # patch34 (B2): scan applied wrt OCP -> column 3 is the absolute potential
+        # vs the reference electrode (column 1 is relative to OCP).
+        metadata["ocp_V"] = None
+        if (str(metadata.get("apply_wrt_ocp", "")).lower() == "true"
+                and raw_data.shape[1] >= 3 and np.all(np.isfinite(raw_data[:, 2]))):
+            metadata["ocp_V"] = float(np.mean(raw_data[:, 2] - raw_data[:, 0]))
+            potential = raw_data[:, 2]
         current_ma = current_a * 1000.0   # A → mA
 
         # Tag data type for downstream code
