@@ -146,6 +146,10 @@ class CVAnalysisResult:
     catalyst_loading : float = 0.0
     interpretation   : str   = ""
 
+    # Current sign convention (patch35)
+    current_sign_flipped    : bool = False
+    current_convention_used : str  = ""
+
     def summary(self) -> str:
         el = self.electrolyte
         is_carbon_material = self.catalyst_type == CATALYST_METAL_FREE
@@ -249,6 +253,9 @@ class CVAnalyzer:
         Controls which metrics are computed and how results are interpreted.
     current_unit : str
         Unit of input current: 'mA', 'A', 'uA', 'nA'.
+    current_convention : str
+        'auto' (default): orientation from the CV loop area (closed CVs);
+        'iupac': anodic current positive; 'polarographic': cathodic positive.
     catalyst_loading : float
         Catalyst loading in mg/cm².
     """
@@ -292,6 +299,7 @@ class CVAnalyzer:
         current_unit           : str   = "mA",
         catalyst_loading       : float = 0.0,
     e_ref_vs_rhe     : float = 0.0,
+        current_convention     : str   = "auto",
     ) -> None:
         self.scan_rate               = scan_rate
         self.electrode_area          = max(electrode_area, 1e-10)
@@ -304,6 +312,10 @@ class CVAnalyzer:
         self.e_ref_vs_rhe = e_ref_vs_rhe
         self.current_unit            = current_unit
         self._unit_factor            = self._UNIT_TO_MA.get(current_unit, 1.0)
+        if current_convention not in ("auto", "iupac", "polarographic"):
+            raise ValueError("current_convention must be 'auto', 'iupac' or 'polarographic', "
+                             f"got {current_convention!r}")
+        self.current_convention      = current_convention
 
         # Build ElectrolyteInfo
         if isinstance(electrolyte, ElectrolyteInfo):
@@ -365,6 +377,10 @@ class CVAnalyzer:
             )
 
         current_ma     = current * self._unit_factor
+        # patch35 (B3): decide the sign convention on the RAW current, before iR
+        # correction, smoothing or background subtraction.
+        current_ma, sign_flipped, convention_used, open_path_auto = \
+            self._orient_current(potential, current_ma)
         ir_compensated = r_s_ohms > 0
 
         if ir_compensated:
@@ -398,10 +414,14 @@ class CVAnalyzer:
         # of the forward scan: for an anodic wave, |i| should GROW with
         # potential. If it shrinks, the current is inverted -> flip sign
         # before peak/onset detection. Apply same correction to backward.
+        # patch35 (B3): closed CVs were oriented from the loop area above and explicit
+        # conventions need no guess; this pre-patch35 rule now runs for open paths only.
         _seg_fwd = max(int(0.15 * len(e_fwd)), 3)
-        if float(np.mean(np.abs(i_fwd[:_seg_fwd]))) > float(np.mean(np.abs(i_fwd[-_seg_fwd:]))):
+        if open_path_auto and float(np.mean(np.abs(i_fwd[:_seg_fwd]))) > float(np.mean(np.abs(i_fwd[-_seg_fwd:]))):
             i_fwd = -i_fwd
             i_bwd = -i_bwd
+            sign_flipped = True
+            convention_used += " -> flipped"
 
         # Peaks
         i_f = float(i_fwd[np.argmax(i_fwd)])
@@ -471,9 +491,39 @@ class CVAnalyzer:
             ecsa                    = self.ecsa,
             catalyst_loading        = self.catalyst_loading,
             interpretation          = self._interpret(e_onset, i_f, i_b, ratio),
+            current_sign_flipped    = sign_flipped,
+            current_convention_used = convention_used,
         )
 
     # ── Capacitive background subtraction (metal-free) ────────────────────────
+
+    def _orient_current(self, potential, current_ma):
+        """Return (current, flipped, label, open_path_auto) with anodic current positive.
+
+        "iupac": data already anodic-positive. "polarographic": cathodic-positive data,
+        sign flipped. "auto": for a closed CV (a forward and a backward sweep that return
+        near the start potential) the sign of the loop area, the closed-path integral of
+        I dE, decides. A passive electrode traces the I-E loop in one fixed direction
+        (capacitive charging and faradaic hysteresis both add positive area in the IUPAC
+        convention), so a negative area means the current is stored cathodic-positive.
+        Open paths return open_path_auto=True so the caller applies the pre-patch35
+        forward-sweep rule unchanged.
+        """
+        if self.current_convention == "iupac":
+            return current_ma, False, "iupac (user setting)", False
+        if self.current_convention == "polarographic":
+            return -current_ma, True, "polarographic (user setting, sign flipped)", False
+        n = len(potential)
+        span = float(np.ptp(potential))
+        turns = (2 < int(np.argmax(potential)) < n - 3) or (2 < int(np.argmin(potential)) < n - 3)
+        closed = span > 0 and turns and abs(float(potential[-1] - potential[0])) < 0.5 * span
+        if not closed:
+            return current_ma, False, "auto: open path (forward-sweep rule)", True
+        area = float(np.trapezoid(np.append(current_ma, current_ma[0]),
+                                  np.append(potential, potential[0])))
+        if area < 0:
+            return -current_ma, True, "auto: CV loop area < 0 (cathodic-positive data, flipped)", False
+        return current_ma, False, "auto: CV loop area > 0 (anodic-positive)", False
 
     def _subtract_capacitive_background(
         self,

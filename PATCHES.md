@@ -1,5 +1,24 @@
 # EISForge — Patch Log
 
+## patch35 — B3: CVAnalyzer current-sign detection from the CV loop area
+**Date:** 2026-10-09
+**Files changed:** eisforge/analysis/cv_analyzer.py, tests/test_cv_orientation.py (new)
+**What it does:** the old rule flipped the current when |I| at the low-E end of the forward sweep exceeded |I|
+at the high-E end, so a full CV starting at the cathodic limit (normal in KOH) was inverted and a cathodic
+current was reported as the anodic peak (1 M KOH blank: "peak" at the lower vertex, -1.087 V vs Ag/AgCl).
+New `current_convention` = "auto" (default) | "iupac" | "polarographic". "auto" on a closed CV uses the sign
+of the loop area (closed-path integral of I dE), decided on the raw current before iR/smoothing/background;
+open paths keep the pre-patch35 rule. The result gains `current_sign_flipped` and `current_convention_used`.
+Design informed by SoftPotato (explicit `anodic_positive`, IUPAC default) and ixdat (assumes the instrument
+convention); EISForge offers both automatic detection and an explicit override.
+**Tested on:** koh_50mVs.idf / koh_ipa_50mVs.idf (private) normal and with negated current: correct
+orientation in all cases; noble-metal-path forward maximum moved from the cathodic vertex to +0.192 V / +0.357 V.
+Synthetic Pt-like CVs (incl. I_b > I_f and cycles starting at the upper vertex): correct in both signs.
+New tests: 12 failed before, 12 passed after. Full suite 220 passed; ruff All checks passed!;
+AppTest 0 exceptions.
+**Not verified:** no real file with anodic current stored negative was available.
+**Not fixed here:** B4 (background, peak search without a real peak, E_onset when no peak); see ROADMAP.md.
+
 ## patch34 — B2: Ivium .idf potential read vs reference electrode (not vs OCP)
 **Date:** 2026-10-09
 **Files changed:** app.py, eisforge/parsers/ivium_parser.py, tests/test_ivium_potential_column.py (new)
