@@ -29,6 +29,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install numpy scipy pandas matplotlib plotly scikit-learn impedance
+          pip install "tomli>=2.0; python_version < '3.11'"
           pip install pytest pytest-cov
           # Install package itself without ML extras
           pip install -e . --no-deps

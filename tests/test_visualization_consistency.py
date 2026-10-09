@@ -14,8 +14,14 @@ greyscale-printable series order and colour-vision-deficiency-safe adjacency.
 
 import math
 import re
-import tomllib
 from pathlib import Path
+
+import pytest
+
+try:
+    import tomllib  # Python >= 3.11
+except ModuleNotFoundError:  # Python 3.10: API-identical backport (patch33)
+    tomllib = pytest.importorskip("tomli")
 
 from eisforge.visualization.theme import (
     ACCENT, BG, DANGER, GREEN, PLOTLY_LAYOUT, SURFACE, TEXT, WARN,

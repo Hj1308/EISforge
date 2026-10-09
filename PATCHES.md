@@ -1,5 +1,18 @@
 # EISForge — Patch Log
 
+## patch33 — CI: test suite collects on Python 3.10 (tomllib -> tomli fallback)
+**Date:** 2026-10-09
+**Files changed:** tests/test_visualization_consistency.py, .github/workflows/ci.yml, pyproject.toml
+**What it does:** `import tomllib` (Python >= 3.11 only, added in patch30) broke test collection on the
+CI's Python 3.10 job, so CI on main had been red since patch30. On 3.10 the test now uses the API-identical
+`tomli` backport (module skipped only if neither is available); CI installs `tomli` on Python < 3.11;
+`tomli` added to the `dev` extra for Python < 3.11. Decision D5: Python 3.10 stays supported.
+Note: pytest itself depends on tomli on 3.10, so the CI line mainly makes the dependency explicit.
+**Tested on:** reference copy of main: Python 3.10 -> 177 passed, 2 skipped, 0 failed (before: collection
+error); Python 3.11 -> 0 failed; ci.yml parsed as valid YAML. Local (Windows): test module 7 passed;
+full suite 201 passed; ruff All checks passed!; AppTest 0 exceptions.
+**After push:** confirm both "Tests (Python 3.10)" and "Tests (Python 3.11)" are green on GitHub Actions.
+
 ## patch32 — B1: Ivium .idf CV current read in amperes (fix 10^6 unit error)
 **Date:** 2026-10-09
 **Files changed:** app.py, tests/test_ivium_cv_units.py (new)
