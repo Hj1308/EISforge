@@ -164,25 +164,10 @@ def load_eis(f):
         os.unlink(tmp)
 
 
-def _parse_ivium_current_unit(text: str) -> float:
-    """Parse 'Current Range=' from Ivium metadata -> multiplier to mA."""
-    m = re.search(r"Current Range\s*=\s*([\d.]+)\s*([A-Za-zµ]+)", text)
-    if not m:
-        return 1.0
-    _, unit = m.groups()
-    unit = unit.lower().strip()
-    if unit == "a":
-        return 1000.0
-    elif unit == "ma":
-        return 1.0
-    elif unit in ("ua", "µa"):
-        return 0.001
-    return 1.0
-
-
 def _load_ivium_cv(path: str, cycle_idx: int = -1):
     """Load Ivium .idf CV. Returns (E_arr, I_mA, meta).
-    Auto-detects current unit; supports cycle selection (-1 = last complete)."""
+    Current column is always amperes in .idf (converted to mA here);
+    supports cycle selection (-1 = last complete)."""
     text = open(path, "rb").read().decode("latin-1")
     meta = {}
     for key in ["Scanrate", "N scans", "E start", "Vertex 1", "Vertex 2"]:
@@ -193,10 +178,14 @@ def _load_ivium_cv(path: str, cycle_idx: int = -1):
             except Exception:
                 meta[key] = mm.group(1).strip()
 
-    unit_mult = _parse_ivium_current_unit(text)
+    # Ivium .idf stores current in amperes regardless of the hardware
+    # "Current Range" setting (patch32). The range is kept for reference only;
+    # it must never be used as a unit multiplier.
+    unit_mult = 1000.0   # A -> mA
     meta["_unit_mult"] = unit_mult
-    meta["_unit_label"] = ("A" if unit_mult == 1000.0 else
-                           "µA" if unit_mult == 0.001 else "mA")
+    meta["_unit_label"] = "mA"
+    _cr = re.search(r"Current Range\s*=\s*([^\r\n]+)", text)
+    meta["_current_range"] = _cr.group(1).strip() if _cr else None
 
     # Extract ONLY the primary_data block (anchored to the section header)
     _lines = text.splitlines()

@@ -1,5 +1,20 @@
 # EISForge — Patch Log
 
+## patch32 — B1: Ivium .idf CV current read in amperes (fix 10^6 unit error)
+**Date:** 2026-10-09
+**Files changed:** app.py, tests/test_ivium_cv_units.py (new)
+**What it does:** `_load_ivium_cv` no longer derives a multiplier from the hardware "Current Range"
+(100uA -> x0.001 made 2.31e-6 A appear as 2.31e-9 "mA"). Ivium .idf current is always amperes, so a
+constant x1000 (A -> mA) is used; the range string is kept in `meta["_current_range"]` for reference.
+Unused `_parse_ivium_current_unit` removed. Affects CV, LSV and ECSA tabs (all use `_parse_idf_cached`).
+New AppTest-based tests upload an .idf into the CV tab: synthetic file for 100uA/1mA/10nA ranges
+(always runs) + real 1 M KOH file (runs only when EISFORGE_LOCAL_DATA is set; data kept outside the repo).
+**Tested on:** koh_50mVs.idf (1 M KOH, Ag/AgCl 3 M KCl, 50 mV/s; private) -> I_max 2.30957e-3 mA,
+I_min -5.04540e-3 mA (raw file: +2.30957E-06 / -5.04540E-06 A). Before patch: 4 new tests failed
+(2.31e-09); after: 4 passed. Full suite 201 passed; ruff All checks passed; AppTest app.py + 3 pages 0 exceptions.
+check_idf_current_range.py: all files store amperes.
+**Not fixed here:** B2 (potential relative to OCP), B3 (sign detection), B4 (peak/background) — see ROADMAP.md.
+
 
 ## patch31 — text-density pass: captions → help=/expander, overclaim fixed
 **Date:** 2026-08-05
