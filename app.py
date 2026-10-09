@@ -559,6 +559,12 @@ with tab1:
     col1, col2 = st.columns([1, 1])
     with col1:
         cv_file = st.file_uploader("Upload CV file", type=CV_FORMATS, key="cv_up")
+        cv_blank_file = st.file_uploader(
+            "Blank CV (electrolyte only, optional)", type=CV_FORMATS, key="cv_blank_up",
+            help="Same electrode, scan rate and window, recorded without alcohol. It is "
+                 "subtracted branch by branch (net = alcohol - blank). E_onset, peak search "
+                 "and C_dl still use the alcohol CV itself.",
+        )
         sr_cv = st.number_input("Scan rate (mV/s)", value=50, min_value=1)
         cycle_idx = st.number_input(
             "Cycle to analyse (0=first, -1=last complete)", value=-1, min_value=-1, step=1,
@@ -620,6 +626,36 @@ with tab1:
                     "cv_pot_corr": CVAnalyzer.apply_ir_compensation(pot, cur, actual_rs)
                                   if actual_rs > 0 else pot
                 })
+                # ── optional blank subtraction (patch38) ─────────────────────
+                for _k in ("cv_blank_pot", "cv_blank_cur", "cv_net", "cv_blank_res",
+                           "cv_blank_name"):
+                    st.session_state.pop(_k, None)
+                if cv_blank_file is not None:
+                    from eisforge.data.cv_data import CVData
+                    if Path(cv_blank_file.name).suffix.lower() == ".idf":
+                        import hashlib as _hl
+                        _bkb = cv_blank_file.getvalue()
+                        bpot, bcur, _bmeta = _parse_idf_cached(
+                            _hl.md5(_bkb).hexdigest(), _bkb, cycle_idx=int(cycle_idx))
+                    else:
+                        bpot, bcur, _bmeta = load_cv_lsv(cv_blank_file, unit_factor=unit_factor)
+                    if use_smooth and w >= 5 and len(bcur) > w:   # same filter as the alcohol CV
+                        bcur = savgol_filter(bcur, window_length=w, polyorder=3)
+                    _bsr = (float(_bmeta["Scanrate"]) * 1000 if "Scanrate" in _bmeta
+                            else float(sr_cv))
+                    _bres = CVData(pot, cur, scan_rate_mV_s=float(sr_cv),
+                                   meta={"ocp_V": _meta.get("_ocp_V")}).subtract(
+                        CVData(bpot, bcur, scan_rate_mV_s=_bsr,
+                               meta={"ocp_V": _bmeta.get("_ocp_V")}))
+                    st.session_state.update({
+                        "cv_blank_pot": np.asarray(bpot, dtype=float),
+                        "cv_blank_cur": np.asarray(bcur, dtype=float),
+                        "cv_net": _bres.net_mA, "cv_blank_res": _bres,
+                        "cv_blank_name": cv_blank_file.name,
+                    })
+                    st.info(f"🧪 Blank: {cv_blank_file.name} | cycle "
+                            f"{_bmeta.get('_cycle_used', '?')}/{_bmeta.get('_n_cycles', '?')} | "
+                            f"sr: {_bsr:g} mV/s | shared window {_bres.overlap_fraction:.0%}")
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -696,6 +732,16 @@ with tab1:
         fig.add_trace(go.Scatter(x=x_plot, y=j_arr, mode="lines",
                                  name="CV" + (" (iR-corrected)" if actual_rs > 0 else ""),
                                  line=dict(color=ACCENT, width=2)))
+        if "cv_net" in st.session_state:   # patch38: blank dashed, as ixdat CVDiffPlotter
+            from eisforge.analysis.cv_analyzer import CVAnalyzer
+            _bp = st.session_state["cv_blank_pot"]
+            _bc = st.session_state["cv_blank_cur"]
+            if actual_rs > 0:
+                _bp = CVAnalyzer.apply_ir_compensation(_bp, _bc, actual_rs)
+            fig.add_trace(go.Scatter(
+                x=_bp, y=_bc / area if area > 0 else _bc, mode="lines",
+                name=f"Blank ({st.session_state['cv_blank_name']})",
+                line=dict(color="#6b7280", width=1.5, dash="dash")))
         # Semantic boundary marker: dashed amber E_onset line + label carry the
         # meaning (a reader without our design system understands it) — keep.
         if _onset_ok:
@@ -725,6 +771,56 @@ with tab1:
                           xaxis_title=f"E (V vs {e_ref_type})",
                           yaxis_title="j (mA cm⁻²)")
         st.plotly_chart(fig, use_container_width=True)
+
+        # ── Blank subtraction: net = alcohol - blank (patch38) ──────────────
+        if "cv_net" in st.session_state:
+            from eisforge.data.cv_data import CVData
+            st.markdown("#### 🧪 Blank subtraction (net = alcohol − blank)")
+            _bres = st.session_state["cv_blank_res"]
+            for _wmsg in _bres.warnings:
+                st.warning(f"Blank: {_wmsg}")
+            _net = np.asarray(st.session_state["cv_net"], dtype=float)
+            _net_j = _net / area if area > 0 else _net
+            _x_net = np.asarray(st.session_state.get("cv_pot_corr", st.session_state["cv_pot"]),
+                                dtype=float)
+            _anodic = np.zeros(len(_net), dtype=bool)
+            for _br in CVData(st.session_state["cv_pot"], st.session_state["cv_cur"]).branches():
+                if _br.kind == "anodic":
+                    _anodic[_br.index] = True
+            _okn = _anodic & np.isfinite(_net_j)
+            if _okn.any():
+                _kn = int(np.flatnonzero(_okn)[np.argmax(_net_j[_okn])])
+                cn1, cn2, cn3 = st.columns(3)
+                cn1.metric("Max net j (anodic sweep)", f"{_net_j[_kn]:.4g} mA cm⁻²")
+                cn2.metric("at E (vs ref)", f"{_x_net[_kn]:.3f} V")
+                cn3.metric("Shared window", f"{_bres.overlap_fraction:.0%}")
+                if _net_j[_kn] <= 0:
+                    st.warning("The net current is not positive anywhere on the anodic sweep: "
+                               "no oxidation current above the blank.")
+            else:
+                st.warning("The alcohol and blank anodic sweeps do not overlap: "
+                           "the net current is undefined.")
+            fig_net = go.Figure()
+            fig_net.add_trace(go.Scatter(x=_x_net, y=_net_j, mode="lines",
+                                         name="net = alcohol − blank [BKS]",
+                                         line=dict(color=ACCENT, width=2)))
+            fig_net.add_hline(y=0, line_dash="dot", line_color="#6b7280")
+            fig_net.update_layout(**PLOTLY_LAYOUT, title="Net current (alcohol − blank)",
+                                  xaxis_title=f"E (V vs {e_ref_type})",
+                                  yaxis_title="j_net (mA cm⁻²)")
+            st.plotly_chart(fig_net, use_container_width=True)
+            _cur_s = np.asarray(st.session_state["cv_cur"], dtype=float)
+            _csv_net = pd.DataFrame({
+                "E_V_vs_ref": np.asarray(st.session_state["cv_pot"], dtype=float),
+                "E_plot_V": _x_net,
+                "I_alcohol_mA": _cur_s,
+                "I_blank_interp_mA": _cur_s - _net,
+                "I_net_mA": _net,
+                "j_net_mA_cm2": _net_j,
+            }).to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download net current (CSV)", _csv_net,
+                               file_name="cv_net_current.csv", mime="text/csv",
+                               key="cv_net_dl")
 
     # ── Batch CV ─────────────────────────────────────────────────────────────
     st.divider()

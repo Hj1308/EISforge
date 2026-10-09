@@ -44,6 +44,7 @@ class BlankSubtraction:
     overlap_fraction: float            # shared potential span / sample span
     pairs: List[tuple] = field(default_factory=list)      # (kind, n_finite, n_points)
     warnings: List[str] = field(default_factory=list)
+    blank_dominant_fraction: float = 0.0   # share of shared points with |I_blank| > 2|I_sample|
 
 
 @dataclass
@@ -150,6 +151,18 @@ class CVData:
         if o1 is not None and o2 is not None and abs(o1 - o2) > 0.05:
             res.warnings.append(f"OCP differs by {abs(o1 - o2) * 1e3:.0f} mV: the scans were applied "
                                 "relative to OCP, so their absolute windows differ")
+        # patch38: a blank that is much larger than the sample over most of the window is not
+        # a background of the same electrode (real pairs: valid 0.11 / 0.14, invalid 0.91).
+        shared = np.isfinite(net)
+        if shared.any():
+            i_s = self.current_mA[shared]
+            i_b = i_s - net[shared]
+            res.blank_dominant_fraction = float(np.mean(np.abs(i_b) > 2.0 * np.abs(i_s)))
+            if res.blank_dominant_fraction > 0.5:
+                res.warnings.append(
+                    f"the blank current is more than twice the sample current on "
+                    f"{res.blank_dominant_fraction:.0%} of the shared window: the two scans are "
+                    "probably not comparable (different electrode, contact or day?)")
         return res
 
     # ── export ────────────────────────────────────────────────────────────────

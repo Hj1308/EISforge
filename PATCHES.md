@@ -1,5 +1,22 @@
 # EISForge — Patch Log
 
+## patch38 — task 2.1 (part 2): blank CV uploader in the CV tab, net-current plot, blank-dominates warning
+**Date:** 2026-10-09
+**Files changed:** app.py, eisforge/data/cv_data.py, tests/test_cv_blank_tab.py (new)
+**What it does:** optional "Blank CV" uploader (key cv_blank_up) in the CV tab, loaded with the same loader,
+cycle rule and smoothing as the alcohol CV; blank drawn dashed on the main plot; separate net plot
+(alcohol − blank, [BKS]); metrics max net j on the anodic sweep, its potential and shared window; all
+CVData.subtract warnings shown in the UI; CSV download of E, I_alcohol, I_blank, I_net, j_net. E_onset, peak and
+C_dl still from the alcohol CV. cv_data: blank_dominant_fraction + warning when |I_blank| > 2|I_sample| on > 50%
+of the shared window (a linear-R² criterion was rejected: false alarm on a valid blank, R² 0.981).
+**Inspired by:** ixdat CVDiffPlotter (sample solid, blank dashed, separate difference plot); Gamry Echem Analyst
+"Subtract Background From File" (interpolated subtraction, [BKS] legend tag).
+**Tested on:** private pairs koh_ipa_50mVs - koh_50mVs (max net −0.236 uA, OCP warning, "not positive"),
+koh_ipa_lsv_5mVs - koh_lsv_5mVs (dominant fraction 0.14, no warning); second-catalyst LSV pair (0.91, warning;
+comparison only, not in tests). New tests: 6 failed / 1 passed / 1 skipped before, 7 passed / 1 skipped after
+(LSV pair filenames in the private folder differ). Full suite 244 passed / 1 skipped; ruff All checks passed!;
+AppTest 0 exceptions.
+
 ## patch37 — task 2.1 (part 1): CVData module with sweep split and blank subtraction
 **Date:** 2026-10-09
 **Files changed:** eisforge/data/cv_data.py (new), tests/test_cv_data.py (new)
