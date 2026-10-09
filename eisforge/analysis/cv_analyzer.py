@@ -150,6 +150,10 @@ class CVAnalysisResult:
     current_sign_flipped    : bool = False
     current_convention_used : str  = ""
 
+    # Peak search / double layer (patch36)
+    peak_found : bool = True
+    dl_window  : tuple | None = None
+
     def summary(self) -> str:
         el = self.electrolyte
         is_carbon_material = self.catalyst_type == CATALYST_METAL_FREE
@@ -256,6 +260,10 @@ class CVAnalyzer:
     current_convention : str
         'auto' (default): orientation from the CV loop area (closed CVs);
         'iupac': anodic current positive; 'polarographic': cathodic positive.
+    dl_window : tuple or None
+        Double-layer potential window (E1, E2) for C_dl; default: central 50% of the CV.
+    peak_rel_prominence, peak_noise_factor : float
+        A forward peak needs prominence >= max(rel x current range, factor x noise).
     catalyst_loading : float
         Catalyst loading in mg/cm².
     """
@@ -300,6 +308,9 @@ class CVAnalyzer:
         catalyst_loading       : float = 0.0,
     e_ref_vs_rhe     : float = 0.0,
         current_convention     : str   = "auto",
+        dl_window              : tuple | None = None,
+        peak_rel_prominence    : float = 0.10,
+        peak_noise_factor      : float = 5.0,
     ) -> None:
         self.scan_rate               = scan_rate
         self.electrode_area          = max(electrode_area, 1e-10)
@@ -316,6 +327,9 @@ class CVAnalyzer:
             raise ValueError("current_convention must be 'auto', 'iupac' or 'polarographic', "
                              f"got {current_convention!r}")
         self.current_convention      = current_convention
+        self.dl_window               = dl_window
+        self.peak_rel_prominence     = peak_rel_prominence
+        self.peak_noise_factor       = peak_noise_factor
 
         # Build ElectrolyteInfo
         if isinstance(electrolyte, ElectrolyteInfo):
@@ -387,15 +401,14 @@ class CVAnalyzer:
             potential = self.apply_ir_compensation(potential, current_ma, r_s_ohms)
             logger.info(f"iR compensation applied: R_s = {r_s_ohms:.3f} Ω")
 
+        current_unsmoothed = current_ma.copy()      # patch36: noise estimate
         if self.smoothing:
             current_ma = self._smooth(current_ma)
+        noise_mA = float(np.std(current_unsmoothed - current_ma))
 
-        # Metal-free: background subtraction before peak detection
-        background = np.zeros_like(current_ma)
-        if self.catalyst_type == CATALYST_METAL_FREE:
-            current_ma, background = self._subtract_capacitive_background(
-                potential, current_ma
-            )
+        # patch36 (B4): the straight background fitted through the first/last 15% of the
+        # whole array was removed (in a full CV both ends sit at the cathodic vertex).
+        # The capacitive contribution now comes from a double-layer window below.
 
         # Split scans
         fwd_mask, bwd_mask = self._split_scans(potential, current_ma)
@@ -424,8 +437,10 @@ class CVAnalyzer:
             convention_used += " -> flipped"
 
         # Peaks
-        i_f = float(i_fwd[np.argmax(i_fwd)])
-        e_f = float(e_fwd[np.argmax(i_fwd)])
+        # patch36 (B4): a peak needs prominence; a maximum at the anodic vertex is not one.
+        peak_found, _k_f = self._find_forward_peak(e_fwd, i_fwd, noise_mA)
+        i_f = float(i_fwd[_k_f])
+        e_f = float(e_fwd[_k_f])
         # Backward scan is cathodic -> peak is a minimum
         i_b = float(i_bwd[np.argmin(i_bwd)])
         e_b = float(e_bwd[np.argmin(i_bwd)])
@@ -437,9 +452,13 @@ class CVAnalyzer:
             and self.onset_method == "tangent"
             else self.onset_method
         )
-        e_onset, baseline = self._detect_onset_method(
-            onset_method, e_fwd, i_fwd, i_f
-        )
+        if peak_found:
+            e_onset, baseline = self._detect_onset_method(
+                onset_method, e_fwd, i_fwd, i_f
+            )
+        else:
+            e_onset, baseline = float("nan"), float("nan")
+            onset_method = "undefined (no anodic peak in the scan window)"
 
         # I_f/I_b — only for metal/alloy catalysts
         if self.catalyst_type in (CATALYST_NOBLE_METAL, CATALYST_ALLOY):
@@ -454,14 +473,18 @@ class CVAnalyzer:
         j_spec_b = i_b / self.ecsa if self.ecsa > 0 else 0.0
 
         # Capacitive background (metal-free)
-        bg_mean   = float(np.mean(np.abs(background))) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
-        net_farad = i_f - bg_mean
-        cdl       = self._estimate_cdl(background) if self.catalyst_type == CATALYST_METAL_FREE else 0.0
+        # patch36 (B4): C_dl = median (I_fwd - I_bwd)/(2 nu) in a double-layer window
+        # (ixdat calc_capacitance); net = peak minus a straight forward-branch baseline
+        # fitted in that window (PyVoltammetry). Without a peak, net is undefined.
+        bg_mean, net_farad, cdl, dl_win = 0.0, i_f, 0.0, None
+        if self.catalyst_type == CATALYST_METAL_FREE:
+            bg_mean, cdl, dl_win, _base_pk = self._double_layer(potential, current_ma, e_f)
+            net_farad = (i_f - _base_pk) if peak_found else float("nan")
 
         # ── Edge guard: onset must not land on the very edge (detection failure) ──
         _p10 = float(np.percentile(e_fwd, 10))
         _p90 = float(np.percentile(e_fwd, 90))
-        if e_onset <= _p10 or e_onset >= _p90:
+        if peak_found and (e_onset <= _p10 or e_onset >= _p90):
             e_onset, baseline = self._onset_threshold(e_fwd, i_fwd, i_f)
             onset_method = "threshold (auto-fallback)"
 
@@ -493,9 +516,72 @@ class CVAnalyzer:
             interpretation          = self._interpret(e_onset, i_f, i_b, ratio),
             current_sign_flipped    = sign_flipped,
             current_convention_used = convention_used,
+            peak_found              = peak_found,
+            dl_window               = dl_win,
         )
 
     # ── Capacitive background subtraction (metal-free) ────────────────────────
+
+    def _find_forward_peak(self, e_fwd, i_fwd, noise_mA):
+        """Return (peak_found, index) for the forward (anodic-going) branch.
+
+        A peak must have a prominence >= max(peak_rel_prominence * current range,
+        peak_noise_factor * noise) and lie more than 3% of the potential window away
+        from either vertex (a maximum at the anodic vertex is not a peak). Without a
+        qualifying peak the argmax index is returned with peak_found=False.
+        """
+        from scipy.signal import find_peaks
+
+        k_max = int(np.argmax(i_fwd))
+        span = float(np.max(e_fwd) - np.min(e_fwd))
+        if len(i_fwd) < 5 or span <= 0:
+            return False, k_max
+        prom_min = max(self.peak_rel_prominence * float(np.ptp(i_fwd)),
+                       self.peak_noise_factor * float(noise_mA))
+        if prom_min <= 0:
+            return False, k_max
+        edge = 0.03 * span
+        lo, hi = float(np.min(e_fwd)) + edge, float(np.max(e_fwd)) - edge
+        idx, _ = find_peaks(np.asarray(i_fwd, dtype=float), prominence=prom_min)
+        idx = [int(k) for k in idx if lo < float(e_fwd[k]) < hi]
+        if not idx:
+            return False, k_max
+        return True, max(idx, key=lambda k: float(i_fwd[k]))
+
+    def _double_layer(self, potential, current_ma, e_peak):
+        """Capacitive current, C_dl and a linear forward baseline from a double-layer window.
+
+        C = (I_fwd - I_bwd) / (2 nu), median over the window (as ixdat's calc_capacitance).
+        Window: self.dl_window if given, else the central 50% of the potential range common
+        to both branches. Returns (I_cap [mA], C_dl [mF/cm2], (E1, E2) or None,
+        baseline current at e_peak [mA] from a straight line fitted to the forward branch
+        inside the window, PyVoltammetry-style).
+        """
+        none = (0.0, 0.0, None, float("nan"))
+        n = len(potential)
+        v = int(np.argmax(potential))
+        if v < 3 or v > n - 4:
+            return none
+        ef, i_f = potential[:v + 1], current_ma[:v + 1]
+        eb, i_b = potential[v:][::-1], current_ma[v:][::-1]
+        lo, hi = max(float(ef.min()), float(eb.min())), min(float(ef.max()), float(eb.max()))
+        if hi <= lo:
+            return none
+        if self.dl_window is not None:
+            w0, w1 = sorted(float(x) for x in self.dl_window)
+            w0, w1 = max(w0, lo), min(w1, hi)
+        else:
+            w0, w1 = lo + 0.25 * (hi - lo), lo + 0.75 * (hi - lo)
+        if w1 <= w0:
+            return none
+        grid = np.linspace(w0, w1, 60)
+        half = (np.interp(grid, ef, i_f) - np.interp(grid, eb, i_b)) / 2.0      # mA
+        i_cap = float(np.median(half))
+        cdl = i_cap / (self.scan_rate * 1e-3) / self.electrode_area              # mF/cm2
+        m = (ef >= w0) & (ef <= w1)
+        base = (float(np.polyval(np.polyfit(ef[m], i_f[m], 1), e_peak))
+                if int(m.sum()) >= 3 else float("nan"))
+        return i_cap, cdl, (float(w0), float(w1)), base
 
     def _orient_current(self, potential, current_ma):
         """Return (current, flipped, label, open_path_auto) with anodic current positive.
@@ -697,6 +783,11 @@ class CVAnalyzer:
     # ── Interpretation ────────────────────────────────────────────────────────
 
     def _interpret(self, e_onset, i_f, i_b, ratio, e_ref_vs_rhe: float = 0.0) -> str:
+        if not np.isfinite(e_onset):   # patch36: no anodic peak in the scan window
+            return ("No anodic peak within the scan window: the forward-scan maximum is at "
+                    "the anodic vertex, so no peak current or E_onset is reported. For a "
+                    "metal-free catalyst, subtract a blank CV (electrolyte only) and/or extend "
+                    "the anodic limit before claiming alcohol-oxidation activity.")
         parts  = []
         el     = self.electrolyte_info
         ctype  = self.catalyst_type

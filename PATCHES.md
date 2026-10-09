@@ -1,5 +1,24 @@
 # EISForge — Patch Log
 
+## patch36 — B4: CV peak search with prominence, explicit "no anodic peak", C_dl from loop half-width
+**Date:** 2026-10-09
+**Files changed:** eisforge/analysis/cv_analyzer.py, app.py, tests/test_cv_peak_double_layer.py (new)
+**What it does:** (1) removed the metal-free straight background fitted through the first/last 15% of the whole
+array (both ends are at the cathodic vertex in a full CV; it produced fake peaks, e.g. 0.13 V_RHE on the 1 M KOH
+blank). (2) forward peak = scipy.signal.find_peaks with prominence >= max(10% of current range, 5x noise),
+3% of the window excluded at each vertex; no peak -> peak_found=False, E_onset = NaN ("undefined"), explicit
+interpretation; app shows a warning and "—" (no onset line / peak star). (3) metal-free C_dl = median
+(I_fwd - I_bwd)/(2 nu) in a double-layer window (default central 50%, or dl_window=(E1, E2)); net peak current
+against a straight forward-branch baseline in that window. New options: dl_window, peak_rel_prominence,
+peak_noise_factor; new result fields: peak_found, dl_window.
+**Inspired by:** ixdat CyclicVoltammogram.calc_capacitance (MIT), PyVoltammetry FittingDoubleLayer (MIT),
+voltcycle (branch split + edge trim before peak search).
+**Tested on:** koh_50mVs.idf / koh_ipa_50mVs.idf (private; area 0.1256 cm2): no anodic peak, E_onset undefined,
+C_dl 0.2304 / 0.1239 mF/cm2 (before: fake peaks at 0.13 / 0.33 V_RHE). Synthetic: Pt peak 0.600 V, carbon peak
+0.805 V, rising-without-peak and noisy cases -> no peak. New tests 8 failed before, 8 passed after.
+Full suite 228 passed; ruff All checks passed!; AppTest 0 exceptions.
+**Not fixed here:** B5 (backward peak I_b for Pt -> I_f/I_b always NaN); see ROADMAP.md.
+
 ## patch35 — B3: CVAnalyzer current-sign detection from the CV loop area
 **Date:** 2026-10-09
 **Files changed:** eisforge/analysis/cv_analyzer.py, tests/test_cv_orientation.py (new)

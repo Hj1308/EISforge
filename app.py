@@ -629,13 +629,19 @@ with tab1:
         if r.ir_compensated:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
         _is_mf = catalyst_type == "carbon_material"
+        _onset_ok = bool(np.isfinite(r.e_onset))
+        if not getattr(r, "peak_found", True):
+            st.warning("No anodic peak within the scan window: the forward-scan maximum is "
+                       "at the anodic vertex. Peak current, E_onset and net faradaic current "
+                       "are not reported. Subtract a blank CV and/or extend the anodic limit.")
         _e_onset_rhe = r.e_onset + e_ref_val + 0.059 * ph_value
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("E_onset (vs ref)", f"{r.e_onset:.4f} V")
-        c2.metric("E_onset (vs RHE)", f"{_e_onset_rhe:.4f} V",
+        c1.metric("E_onset (vs ref)", f"{r.e_onset:.4f} V" if _onset_ok else "—")
+        c2.metric("E_onset (vs RHE)", f"{_e_onset_rhe:.4f} V" if _onset_ok else "—",
                   help=f"= {r.e_onset:.4f} + {e_ref_val:.3f}(ref) + 0.059×{ph_value:.2f}(pH)")
         if _is_mf:
-            c3.metric("Net faradaic I", f"{r.net_faradaic_current_mA:.4f} mA")
+            c3.metric("Net faradaic I", f"{r.net_faradaic_current_mA:.4f} mA"
+                      if np.isfinite(r.net_faradaic_current_mA) else "—")
             c4.metric("C_dl", f"{r.cdl_mF_cm2:.4f} mF/cm²")
         else:
             c3.metric("I_b", f"{r.i_backward_peak:.4f} mA")
@@ -670,8 +676,9 @@ with tab1:
                 user_min_uF=cdl_user_min, user_max_uF=cdl_user_max,
             )
             _show_validation(val_result)
-            onset_val = CarbonValidator.validate_onset(r.e_onset)
-            _show_validation(onset_val)
+            if _onset_ok:
+                onset_val = CarbonValidator.validate_onset(r.e_onset)
+                _show_validation(onset_val)
 
         import plotly.graph_objects as go
         fig = go.Figure()
@@ -691,12 +698,13 @@ with tab1:
                                  line=dict(color=ACCENT, width=2)))
         # Semantic boundary marker: dashed amber E_onset line + label carry the
         # meaning (a reader without our design system understands it) — keep.
-        fig.add_vline(x=r.e_onset, line_dash="dash", line_color="#d97706",
-                      annotation_text=f"E_onset = {r.e_onset:.3f} V",
-                      annotation_font=dict(color="#d97706"))
+        if _onset_ok:
+            fig.add_vline(x=r.e_onset, line_dash="dash", line_color="#d97706",
+                          annotation_text=f"E_onset = {r.e_onset:.3f} V",
+                          annotation_font=dict(color="#d97706"))
         # Semantic peak markers: green/red stars distinguish forward vs
         # backward peaks while sharing the same symbol — keep both colours.
-        if r.e_forward_peak is not None:
+        if r.e_forward_peak is not None and getattr(r, "peak_found", True):
             fig.add_trace(go.Scatter(
                 x=[r.e_forward_peak], y=[r.i_forward_peak / area],
                 mode="markers",
