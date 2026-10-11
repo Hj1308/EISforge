@@ -1,5 +1,21 @@
 # EISForge — Patch Log
 
+## patch39 — B6 + B7: LSV E_onset only with a sustained anodic current; vs-RHE conversion fixed
+**Date:** 2026-10-11
+**Files changed:** eisforge/analysis/lsv_analyzer.py, app.py (LSV tab), tests/test_lsv_onset_gate.py (new)
+**What it does:** E_onset is reported only if the anodic current density reaches onset_min_j (default
+0.01 mA/cm², input lsv_onset_jmin) for 5 consecutive points; otherwise NaN, onset_found=False, a Tafel warning
+and "Not rated". The sign comes from current_convention (IUPAC default), not the magnitude rule. The LSV tab
+shows a warning and "—", the vs-RHE value in the help text, and a warning above 1.23 V_RHE. B7: the
+dual-onset vs-RHE help no longer adds the reference offset twice (+0.210 V for Ag/AgCl 3 M).
+**Inspired by:** threshold definition of the onset potential (review "Defining the Onset Potential": no single
+definition, state the threshold). No onset implementation was found in ixdat, PyVoltammetry or the other
+packages reviewed.
+**Tested on:** private koh_ipa_lsv_5mVs (raw, and net vs koh_lsv_5mVs): no onset (net was 1.024 V_RHE before).
+2nd-catalyst IPA LSV (comparison only, not in the tests): OER warning, j-threshold 1.455 V_RHE (was shown as
+1.665). New tests: 9 failed before, 9 passed after. Full suite 254 passed; ruff All checks passed!;
+AppTest 0 exceptions.
+
 ## patch38 — task 2.1 (part 2): blank CV uploader in the CV tab, net-current plot, blank-dominates warning
 **Date:** 2026-10-09
 **Files changed:** app.py, eisforge/data/cv_data.py, tests/test_cv_blank_tab.py (new)

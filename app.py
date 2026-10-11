@@ -963,6 +963,13 @@ with tab2:
             _onset_methods, index=_auto_idx, horizontal=True, key="om_lsv",
             help=f"Auto: {default_onset_method} for {catalyst_type_ui}.",
         )
+        onset_jmin_lsv = st.number_input(
+            "Onset requires anodic j ≥ (mA/cm²)", value=0.010, min_value=0.0001,
+            step=0.005, format="%.4f", key="lsv_onset_jmin",
+            help="E_onset is reported only if the anodic current density reaches this value "
+                 "and stays above it for 5 consecutive points. State this threshold when "
+                 "you report E_onset.",
+        )
     with col2:
         if lsv_file:
             try:
@@ -1004,6 +1011,7 @@ with tab2:
                 #                                                    of auto_tafel_region)
                 #   otherwise                                     -> auto-detection
                 la.auto_tafel_region = (tafel_mode_lsv != "Current window (mA/cm²)")
+                la.onset_min_j = float(onset_jmin_lsv)
                 if tafel_mode_lsv == "Potential window (V)":
                     # Convert the user-typed window into the analyzer's internal frame,
                     # which is (raw_potential + e_ref_val) -- see module docstring above.
@@ -1038,8 +1046,22 @@ with tab2:
         st.divider()
         if r.ir_compensated:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
+        # Analysis frame = E_meas + e_ref_val, so only the pH term is left for RHE
+        # (patch39, B7: the reference offset used to be added twice).
+        _rhe_shift = 0.0 if e_ref_type == "RHE" else 0.059 * ph_value
+        _lsv_onset_ok = bool(np.isfinite(r.e_onset))
+        if not getattr(r, "onset_found", True):
+            st.warning(f"No sustained anodic current ≥ {onset_jmin_lsv:g} mA/cm²: there is no "
+                       "faradaic wave in this scan, so E_onset is not reported and the Tafel "
+                       "slope is not meaningful. Subtract a blank and/or check the window.")
+        elif _lsv_onset_ok and r.e_onset + _rhe_shift > 1.23:
+            st.warning(f"E_onset = {r.e_onset + _rhe_shift:.3f} V vs RHE is above 1.23 V "
+                       "(water oxidation). The rising current may be OER or carbon "
+                       "corrosion, not alcohol oxidation: compare with a blank scan.")
         c1, c2, c3 = st.columns(3)
-        c1.metric("E_onset", f"{r.e_onset:.4f} V")
+        c1.metric("E_onset", f"{r.e_onset:.4f} V" if _lsv_onset_ok else "—",
+                  help=(f"= {r.e_onset + _rhe_shift:.3f} V vs RHE | {r.e_onset_method}"
+                        if _lsv_onset_ok else r.e_onset_method))
         c2.metric("Apparent Tafel slope", f"{r.tafel_slope:.1f} mV/dec",
                   help="LSV-derived apparent slope — intermediate coverage varies with E; confirm with steady-state data.")
         c3.metric("j₀", f"{r.exchange_current_density:.3e} mA/cm²")
@@ -1047,7 +1069,7 @@ with tab2:
         _ot = getattr(r, "e_onset_threshold", float("nan"))
         _oz = getattr(r, "e_onset_zerocross", float("nan"))
         if not (math.isnan(_ot) and math.isnan(_oz)):
-            _rhe_add = e_ref_val + 0.059 * ph_value
+            _rhe_add = _rhe_shift
             co1, co2 = st.columns(2)
             co1.metric(
                 "E_onset (j-threshold)",

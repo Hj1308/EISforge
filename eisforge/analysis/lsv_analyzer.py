@@ -56,6 +56,7 @@ class LSVAnalysisResult:
     e_onset_method : str   = ""
     e_onset_threshold : float = float("nan")   # E at fixed j threshold (mA/cm2)
     e_onset_zerocross : float = float("nan")   # E where (net) current turns sustained-positive
+    onset_found       : bool  = True           # patch39: False -> no sustained anodic current
 
     # Tafel
     tafel_slope           : float = 0.0   # mV/dec
@@ -268,6 +269,9 @@ class LSVAnalyzer:
         blank_subtracted         : bool  = False,
         onset_search_min_E       : Optional[float] = None,
         activity_potential       : Optional[float] = None,
+        onset_min_j              : float = 0.01,
+        onset_min_points         : int   = 5,
+        current_convention       : str   = "iupac",
     ) -> None:
         self.scan_rate        = scan_rate
         self.electrode_area   = max(electrode_area, 1e-10)
@@ -278,6 +282,12 @@ class LSVAnalyzer:
         self.current_unit     = current_unit
         self._unit_factor     = self._UNIT_TO_MA.get(current_unit, 1.0)
         self.onset_method     = (str(onset_method) or "tangent").lower()
+        # patch39 (B6): E_onset is reported only when the anodic current density
+        # reaches onset_min_j (mA/cm2) for onset_min_points consecutive points.
+        # current_convention: "iupac" (anodic positive) or "polarographic".
+        self.onset_min_j        = float(onset_min_j)
+        self.onset_min_points   = int(onset_min_points)
+        self.current_convention = str(current_convention).lower()
 
         # Tafel configuration
         # equilibrium_potential is interpreted in the SAME frame as the analysed
@@ -441,12 +451,26 @@ class LSVAnalyzer:
             j[potential <= e_aor_limit],
         )
         e_onset_thr, e_onset_zc = self._dual_onset(potential, j, search_above=_onset_lo)
+        # patch39 (B6): no sustained anodic current -> no E_onset. The candidate is
+        # still passed to the Tafel search so a manual Tafel window keeps working.
+        _sgn = -1.0 if self.current_convention == "polarographic" else 1.0
+        onset_found = bool(np.isfinite(self._sustained_rise(
+            potential, _sgn * j, self.onset_min_j, self.onset_min_points)))
+        e_onset_candidate = e_onset
+        if not onset_found:
+            e_onset = float("nan")
+            onset_method = (f"not reached (anodic j < {self.onset_min_j:g} mA/cm2 "
+                            f"for {self.onset_min_points} points)")
         tafel = self._tafel_analysis(
             potential[potential <= e_aor_limit],
             j[potential <= e_aor_limit],
-            e_onset,
+            e_onset_candidate,
         )
         tafel["warnings"].extend(frame_warnings)
+        if not onset_found:
+            tafel["warnings"].append(
+                f"No sustained anodic current >= {self.onset_min_j:g} mA/cm2: no faradaic "
+                "wave, so the Tafel slope is not meaningful.")
         self._capacitance_check(tafel)
 
         # Potentials at fixed current densities — rising branch only
@@ -505,6 +529,7 @@ class LSVAnalyzer:
             e_onset_method           = onset_method + (" (iR-corrected)" if ir_compensated else ""),
             e_onset_threshold        = e_onset_thr,
             e_onset_zerocross        = e_onset_zc,
+            onset_found              = onset_found,
             tafel_slope              = tafel["slope"],
             tafel_slope_std          = tafel["slope_std"],
             exchange_current_density = tafel["j0"],
@@ -688,6 +713,21 @@ class LSVAnalyzer:
         cross = cross[cross >= bl_end]
         idx   = int(cross[0]) if len(cross) else n // 2
         return float(E[idx]), "fallback-5%"
+
+    @staticmethod
+    def _sustained_rise(potential, j, j_min, n_points=5) -> float:
+        """First potential where j >= j_min for n_points consecutive points (patch39).
+
+        potential must be increasing; j is the anodic-positive current density
+        (mA/cm2). Returns NaN when the threshold is never sustained.
+        """
+        jj = np.asarray(j, dtype=float)
+        ok = jj >= j_min
+        n = max(int(n_points), 1)
+        for k in range(len(jj) - n + 1):
+            if ok[k:k + n].all():
+                return float(potential[k])
+        return float("nan")
 
     # ── Dual E_onset (reported alongside the primary onset) ────────────────────
 
@@ -1169,6 +1209,8 @@ class LSVAnalyzer:
         Coarse literature-range comparison — NOT a publishability or
         quality judgement.
         """
+        if not np.isfinite(e_onset):   # patch39: no sustained anodic current
+            return "Not rated: no sustained anodic current (E_onset not reached)."
         el    = self.electrolyte_info
         ctype = self.catalyst_type
         score = 0
