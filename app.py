@@ -701,12 +701,16 @@ with tab1:
                       if np.isfinite(r.net_faradaic_current_mA) else "—")
             c4.metric("C_dl", f"{r.cdl_mF_cm2:.4f} mF/cm²")
         else:
-            c3.metric("I_b", f"{r.i_backward_peak:.4f} mA")
-            c4.metric("I_f/I_b", f"{r.if_ib_ratio:.3f}" if not np.isnan(r.if_ib_ratio) else "N/A")
+            c3.metric("I_b", f"{r.i_backward_peak:.4f} mA" if np.isfinite(r.i_backward_peak) else "—",
+                      help="Anodic peak on the backward scan (re-oxidation).")
+            c4.metric("I_f/I_b", f"{r.if_ib_ratio:.3f}" if not np.isnan(r.if_ib_ratio) else "—",
+                      help="Reported only: not a CO-tolerance metric "
+                           "(Hofstead-Duffy 2012, Chung 2016).")
         c5, c6, c7, c8 = st.columns(4)
         c5.metric("j_f (geometric)", f"{r.j_forward_peak:.4f} mA cm⁻²")
         if not _is_mf:
-            c6.metric("j_b (geometric)", f"{r.j_backward_peak:.4f} mA cm⁻²")
+            c6.metric("j_b (geometric)", f"{r.j_backward_peak:.4f} mA cm⁻²"
+                      if np.isfinite(r.j_backward_peak) else "—")
         _ecsa_unit = "cm²_BET" if _is_mf else "cm²_Pt"
         if r.ecsa > 0:
             c7.metric("j_f (ECSA)", f"{r.j_specific_forward:.4f} mA/{_ecsa_unit}")
@@ -778,7 +782,8 @@ with tab1:
                 name=f"j_f = {r.i_forward_peak / area:.3f} mA cm⁻²",
                 marker=dict(color="#16a34a", size=12, symbol="star"),
             ))
-        if r.e_backward_peak is not None and not _is_mf:
+        if (not _is_mf and getattr(r, "backward_peak_found", False)
+                and np.isfinite(r.i_backward_peak)):
             fig.add_trace(go.Scatter(
                 x=[r.e_backward_peak], y=[r.i_backward_peak / area],
                 mode="markers",

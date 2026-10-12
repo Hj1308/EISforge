@@ -1,5 +1,15 @@
 # EISForge — Patch Log
 
+## patch44 — B5: backward-scan peak is the anodic re-oxidation peak; I_f/I_b reported, not graded
+**Date:** 2026-10-12
+**Files changed:** eisforge/analysis/cv_analyzer.py, app.py, tests/test_backward_peak.py (new)
+**What it does:** the backward "peak" was argmin of the backward scan (cathodic), so I_f/I_b was always NaN.
+The backward peak now uses the same prominence peak search as the forward scan and must be anodic; otherwise
+NaN and backward_peak_found=False. I_f/I_b only when both peaks exist. The "CO tolerance" grading of I_f/I_b is
+removed (Hofstead-Duffy 2012, Chung 2016); the ratio is reported with a note. App shows "—" when undefined.
+**Tested on:** textbook Pt CV (I_f 0.52 mA @ 0.6 V, I_b 0.28 mA @ 0.4 V): I_f/I_b = 1.86 (was NaN). New tests
+3 failed / 1 passed before, 4 passed after; full suite 281 passed; ruff clean; AppTest 0 exceptions.
+
 ## patch43 — B11: band edges vs NHE (4.44 V double offset), RHE sign, Mott-Schottky V_fb with kT/e
 **Date:** 2026-10-12
 **Files changed:** eisforge/analysis/band_edge_calculator.py, pages/band_edge.py, tests/test_band_edge.py (updated),

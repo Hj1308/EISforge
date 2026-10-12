@@ -120,6 +120,7 @@ class CVAnalysisResult:
     i_forward_peak   : float = 0.0
     i_backward_peak  : float = 0.0
     if_ib_ratio      : float = float("nan")
+    backward_peak_found : bool = False   # patch44: anodic re-oxidation peak on the backward scan
     baseline_current : float = 0.0
 
     # Current density — geometric (mA/cm²)
@@ -420,9 +421,13 @@ class CVAnalyzer:
         peak_found, _k_f = self._find_forward_peak(e_fwd, i_fwd, noise_mA)
         i_f = float(i_fwd[_k_f])
         e_f = float(e_fwd[_k_f])
-        # Backward scan is cathodic -> peak is a minimum
-        i_b = float(i_bwd[np.argmin(i_bwd)])
-        e_b = float(e_bwd[np.argmin(i_bwd)])
+        # patch44 (B5): in alcohol oxidation the backward-scan peak is ANODIC (re-oxidation
+        # of the freshly reduced surface), not the cathodic minimum. Same peak test as the
+        # forward scan (prominence + noise, away from the vertices).
+        b_found, _k_b = self._find_forward_peak(e_bwd, i_bwd, noise_mA)
+        b_found = bool(b_found and float(i_bwd[_k_b]) > 0.0)
+        i_b = float(i_bwd[_k_b]) if b_found else float("nan")
+        e_b = float(e_bwd[_k_b]) if b_found else float("nan")
 
         # E_onset (higher derivative sensitivity for metal-free)
         onset_method = (
@@ -441,7 +446,7 @@ class CVAnalyzer:
 
         # I_f/I_b — only for metal/alloy catalysts
         if self.catalyst_type in (CATALYST_NOBLE_METAL, CATALYST_ALLOY):
-            ratio = i_f / i_b if i_b > 1e-10 else float("nan")
+            ratio = i_f / i_b if (peak_found and b_found) else float("nan")
         else:
             ratio = float("nan")   # not meaningful for oxide/metal-free
 
@@ -478,6 +483,7 @@ class CVAnalyzer:
             i_forward_peak          = i_f,
             i_backward_peak         = i_b,
             if_ib_ratio             = ratio,
+            backward_peak_found     = b_found,
             baseline_current        = baseline,
             j_forward_peak          = j_f,
             j_backward_peak         = j_b,
@@ -797,25 +803,13 @@ class CVAnalyzer:
             if not np.isnan(ratio):
                 parts.append(f"I_f/I_b = {ratio:.2f}")
 
-        elif ctype == CATALYST_ALLOY:
+        else:   # noble metal / alloy
+            # patch44: the old text graded I_f/I_b as CO tolerance ("Excellent ... Severe CO
+            # poisoning"). The ratio is not such a metric (Hofstead-Duffy 2012, Chung 2016).
             if not np.isnan(ratio):
-                if ratio > 2.0:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance (bifunctional mechanism active)")
-                elif ratio > 1.0:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
-                else:
-                    parts.append(f"I_f/I_b={ratio:.2f} — CO poisoning detected — check alloy composition")
-
-        else:   # noble_metal
-            if not np.isnan(ratio):
-                if ratio > 2.0:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Excellent CO tolerance")
-                elif ratio > 1.0:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Good CO tolerance")
-                elif ratio > 0.5:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Moderate CO poisoning")
-                else:
-                    parts.append(f"I_f/I_b={ratio:.2f} — Severe CO poisoning")
+                parts.append(f"I_f/I_b = {ratio:.2f} (reported only; it is not a CO-tolerance or poisoning metric: Hofstead-Duffy et al. 2012, Chung et al. 2016)")
+            else:
+                parts.append("No anodic backward-scan peak: I_f/I_b not reported.")
 
         # ── Electrolyte-specific note ───────────────────────────────────────
         if el.compound == BASE_Na2CO3:
