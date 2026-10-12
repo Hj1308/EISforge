@@ -105,7 +105,6 @@ class LSVAnalysisResult:
     catalyst_loading : float = 0.0
 
     mechanism_interpretation : str = ""
-    performance_rating       : str = ""
 
     def summary(self) -> str:
         el            = self.electrolyte
@@ -193,7 +192,6 @@ class LSVAnalysisResult:
         lines += [
             "-" * 68,
             f"  Mechanism : {self.mechanism_interpretation}",
-            f"  Rating    : {self.performance_rating}",
             "=" * 68,
         ]
         return "\n".join(lines)
@@ -563,10 +561,6 @@ class LSVAnalyzer:
             ecsa                     = self.ecsa,
             catalyst_loading         = self.catalyst_loading,
             mechanism_interpretation = self._interpret_tafel(tafel["slope"]),
-            performance_rating       = self._rate_performance(
-                e_onset, tafel["slope"],
-                (e_j10 - e_onset) if not np.isnan(e_j10) else float("nan"),
-            ),
         )
 
     # ── Wave segmentation ────────────────────────────────────────────────────
@@ -1201,86 +1195,8 @@ class LSVAnalyzer:
                 f"assignment.{conc_warning}"
             )
 
-    def _rate_performance(self, e_onset, tafel_slope, rise_to_10) -> str:
-        """
-        Relative activity tier vs compiled literature ranges, per catalyst
-        type and electrolyte. `rise_to_10` = E@10 mA/cm2 - E_onset (V), the
-        wave-steepness proxy these thresholds were tuned on.
-
-        Coarse literature-range comparison — NOT a publishability or
-        quality judgement.
-        """
-        if not np.isfinite(e_onset):   # patch39: no sustained anodic current
-            return "Not rated: no sustained anodic current (E_onset not reached)."
-        el    = self.electrolyte_info
-        ctype = self.catalyst_type
-        score = 0
-
-        # E_onset thresholds per catalyst type and electrolyte
-        onset_thresholds = {
-            CATALYST_NOBLE_METAL : (0.20, 0.40) if el.is_alkaline() else (0.40, 0.60),
-            CATALYST_ALLOY       : (0.10, 0.30) if el.is_alkaline() else (0.30, 0.50),
-            CATALYST_METAL_OXIDE : (1.30, 1.50) if el.is_alkaline() else (1.50, 1.70),
-            CATALYST_METAL_FREE  : (0.40, 0.70) if el.is_alkaline() else (0.55, 0.85),
-        }
-        lo, hi = onset_thresholds.get(ctype, (0.40, 0.60))
-
-        if e_onset < lo:   score += 3
-        elif e_onset < hi: score += 1
-
-        # Tafel slope thresholds — metal-free has different scale
-        if not np.isnan(tafel_slope):
-            if ctype == CATALYST_METAL_FREE:
-                if abs(tafel_slope) < 120:   score += 3
-                elif abs(tafel_slope) < 200: score += 2
-                elif abs(tafel_slope) < 300: score += 1
-            elif ctype == CATALYST_METAL_OXIDE:
-                if abs(tafel_slope) < 60:   score += 3
-                elif abs(tafel_slope) < 100: score += 2
-                elif abs(tafel_slope) < 130: score += 1
-            else:
-                if abs(tafel_slope) < 60:   score += 3
-                elif abs(tafel_slope) < 90:  score += 2
-                elif abs(tafel_slope) < 120: score += 1
-
-        # Rise to 10 mA/cm2 (E@10 - E_onset): wave steepness
-        if not np.isnan(rise_to_10):
-            if ctype == CATALYST_METAL_FREE:
-                if rise_to_10 < 0.3:   score += 3
-                elif rise_to_10 < 0.5: score += 2
-                elif rise_to_10 < 0.7: score += 1
-            else:
-                if rise_to_10 < 0.1:   score += 3
-                elif rise_to_10 < 0.2: score += 2
-                elif rise_to_10 < 0.3: score += 1
-
-        # Electrolyte-specific bonus/penalty
-        if el.compound == BASE_Na2CO3:
-            score = max(0, score - 1)  # Na2CO3 inherently slower
-        if el.is_alkaline() and el.concentration >= 1.0 and ctype == CATALYST_METAL_FREE:
-            score += 1  # high OH- helps metal-free
-
-        catalyst_label = {
-            CATALYST_NOBLE_METAL : "noble metal",
-            CATALYST_ALLOY       : "alloy",
-            CATALYST_METAL_OXIDE : "metal oxide",
-            CATALYST_METAL_FREE  : "metal-free",
-        }.get(ctype, "catalyst")
-
-        el_label = f"{el.concentration} M {el.compound}"
-
-        if score >= 8:
-            return (f"Upper activity tier for a {catalyst_label} in {el_label} "
-                    f"relative to compiled literature ranges")
-        elif score >= 5:
-            return (f"Mid activity tier for a {catalyst_label} in {el_label} "
-                    f"relative to compiled literature ranges")
-        elif score >= 3:
-            return (f"Below typical literature ranges for a {catalyst_label} "
-                    f"in {el_label} — optimization suggested")
-        else:
-            return (f"Low activity relative to literature ranges for a "
-                    f"{catalyst_label} in {el_label}")
+    # patch41 (B9): the activity-tier rating was removed. It compared E_onset in the
+    # analysis frame (E_meas + e_ref, not RHE) with RHE-scale literature ranges.
 
     # ── Smoothing ─────────────────────────────────────────────────────────────
 

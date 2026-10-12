@@ -85,7 +85,7 @@ def _cv_with_peak():
     return e, i * 1e-3                                   # mA -> A for the .idf file
 
 
-@pytest.mark.parametrize("ref, shift", [("RHE", 0.0), ("Ag/AgCl (3M KCl)", 0.210 + 0.059 * 13.0)])
+@pytest.mark.parametrize("ref, shift", [("RHE", 0.0), ("Ag/AgCl (3M KCl)", 0.210 + 0.059159 * 13.0)])
 def test_cv_tab_e_onset_vs_rhe(ref, shift):
     at = _apptest().from_file(str(APP), default_timeout=120).run()
     _sidebar(at, ref, ph=13.0)

@@ -1,5 +1,19 @@
 # EISForge — Patch Log
 
+## patch41 — B9: remove literature "activity tier" ratings; one temperature-dependent Nernst slope
+**Date:** 2026-10-12
+**Files changed:** eisforge/analysis/lsv_analyzer.py, eisforge/analysis/cv_analyzer.py, app.py,
+tests/test_lsv_fixes.py, tests/test_lsv_onset_gate.py, tests/test_rhe_shift.py (updated),
+tests/test_rating_removed_nernst.py (new)
+**What it does:** removes LSVAnalyzer.performance_rating, _rate_performance() and the LSV "Performance" line,
+and the "Excellent/Moderate activity / High overpotential" grade in the CV interpretation (now "E_onset = x V
+vs reference electrode"). The ratings compared E_onset in the wrong frame (vs reference or E_meas + e_ref)
+with RHE-scale literature ranges (~0.83 V off at pH 14). Human decision: remove, not repair. New
+_nernst_slope(T) = RT ln10/F; _to_rhe_shift(..., temperature) uses it at every RHE site (was 0.059 in some
+places, RT ln10/F in others).
+**Tested on:** new tests 5 failed / 1 passed before, 6 passed after. Full suite 268 passed; ruff All
+checks passed!; AppTest 0 exceptions.
+
 ## patch40 — B8 + B10: one RHE-shift helper; LSV E_onset line in the display frame; zero-cross gated
 **Date:** 2026-10-12
 **Files changed:** app.py, eisforge/analysis/lsv_analyzer.py, tests/test_rhe_shift.py (new)

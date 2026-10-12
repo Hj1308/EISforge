@@ -47,7 +47,6 @@ def test_real_wave_still_has_onset():
     assert r.onset_found
     assert np.isfinite(r.e_onset)
     assert "not reached" not in r.e_onset_method
-    assert not r.performance_rating.startswith("Not rated")
 
 
 def test_no_wave_gives_no_onset():
@@ -55,7 +54,6 @@ def test_no_wave_gives_no_onset():
     assert not r.onset_found
     assert np.isnan(r.e_onset)
     assert "not reached" in r.e_onset_method
-    assert r.performance_rating.startswith("Not rated")
     assert any("No sustained anodic current" in w for w in r.tafel_warnings)
 
 

@@ -793,42 +793,10 @@ class CVAnalyzer:
         ctype  = self.catalyst_type
         conc   = el.concentration
 
-        # ── Onset potential assessment ──────────────────────────────────────
-        ranges = self._ONSET_RANGES.get(
-            el.compound,
-            self._ONSET_RANGES[ACID_H2SO4 if el.is_acidic() else BASE_KOH]
-        ).get(ctype, (0.45, 0.65))
-
-        lo, hi = ranges
-
-        # Concentration correction: higher concentration → slightly lower onset
-        conc_note = ""
-        if conc != 0.5 and el.is_acidic():
-            conc_note = f" [{conc} M {el.compound}]"
-        elif conc != 1.0 and el.is_alkaline():
-            conc_note = f" [{conc} M {el.compound}]"
-
-        # ── RHE conversion for interpretation ──────────────────────────────
-        # If pH is known from alkaline electrolyte, include Nernst term
-        if e_ref_vs_rhe != 0.0:
-            if el.is_alkaline():
-                _conc_koh = max(el.concentration, 1e-6)
-                _ph = 14 + np.log10(_conc_koh)  # approx for KOH/NaOH
-                _ph = min(_ph, 14.0)
-            else:
-                _ph = 0.0
-            e_onset_rhe = e_onset + e_ref_vs_rhe + 0.059 * _ph
-            rhe_note = f" (= {e_onset_rhe:.3f} V vs RHE)"
-        else:
-            e_onset_rhe = e_onset
-            rhe_note = ""
-
-        if e_onset_rhe < lo:
-            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — Excellent activity{conc_note}")
-        elif e_onset_rhe < hi:
-            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — Moderate activity{conc_note}")
-        else:
-            parts.append(f"E_onset={e_onset:.3f} V{rhe_note} — High overpotential{conc_note}")
+        # ── Onset potential (patch41, B9): reported, not graded. The old tier
+        # ("Excellent/Moderate activity", "High overpotential") compared E vs the
+        # reference electrode with RHE-scale literature ranges.
+        parts.append(f"E_onset = {e_onset:.3f} V vs reference electrode")
 
         # ── Catalyst-specific assessment ────────────────────────────────────
         if ctype == CATALYST_METAL_FREE:

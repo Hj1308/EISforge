@@ -181,7 +181,7 @@ class TestNeutralLanguage:
     def test_no_publishability_claims(self):
         E, j = make_aor_lsv()
         r = analyzer().analyze(E, j)
-        text = (r.performance_rating + r.mechanism_interpretation).lower()
+        text = r.mechanism_interpretation.lower()          # rating removed in patch41
         for banned in ("publishable", "high-if", "journal"):
             assert banned not in text
 
