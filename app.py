@@ -791,7 +791,7 @@ with tab1:
         fig.update_layout(**PLOTLY_LAYOUT, title=title,
                           xaxis_title=f"E (V vs {e_ref_type})",
                           yaxis_title="j (mA cm⁻²)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         # ── Blank subtraction: net = alcohol - blank (patch38) ──────────────
         if "cv_net" in st.session_state:
@@ -829,7 +829,7 @@ with tab1:
             fig_net.update_layout(**PLOTLY_LAYOUT, title="Net current (alcohol − blank)",
                                   xaxis_title=f"E (V vs {e_ref_type})",
                                   yaxis_title="j_net (mA cm⁻²)")
-            st.plotly_chart(fig_net, use_container_width=True)
+            st.plotly_chart(fig_net, width="stretch")
             _cur_s = np.asarray(st.session_state["cv_cur"], dtype=float)
             _csv_net = pd.DataFrame({
                 "E_V_vs_ref": np.asarray(st.session_state["cv_pot"], dtype=float),
@@ -919,9 +919,9 @@ with tab1:
                                 title=f"Averaged CV — {n_str} | {catalyst or 'Catalyst'}",
                                 xaxis_title=f"Potential (V vs {e_ref_type})",
                                 yaxis_title="Current (mA)")
-            st.plotly_chart(fig_b, use_container_width=True)
+            st.plotly_chart(fig_b, width="stretch")
         st.markdown("#### Publication-Ready Table")
-        st.dataframe(br.to_dataframe(), use_container_width=True, hide_index=True)
+        st.dataframe(br.to_dataframe(), width="stretch", hide_index=True)
         col_md, col_tex = st.columns(2)
         with col_md:
             st.markdown("**Markdown** (for README / GitHub)")
@@ -1210,7 +1210,7 @@ with tab2:
         fig.update_yaxes(title_text="j (mA/cm²)", row=1, col=1)
         fig.update_xaxes(title_text="log(j) [mA/cm²]", row=1, col=2)
         fig.update_yaxes(title_text="E (V)", row=1, col=2)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # ── Batch LSV ────────────────────────────────────────────────────────────
     st.divider()
@@ -1303,9 +1303,9 @@ with tab2:
                                    title=f"Averaged LSV — {n_str} | {catalyst or 'Catalyst'}",
                                    xaxis_title=f"Potential (V vs {e_ref_type})",
                                    yaxis_title="j (mA/cm²)")
-            st.plotly_chart(fig_blsv, use_container_width=True)
+            st.plotly_chart(fig_blsv, width="stretch")
         st.markdown("#### Publication-Ready Table")
-        st.dataframe(blr.to_dataframe(), use_container_width=True, hide_index=True)
+        st.dataframe(blr.to_dataframe(), width="stretch", hide_index=True)
         col_md, col_tex = st.columns(2)
         with col_md:
             st.markdown("**Markdown**")
@@ -1374,7 +1374,7 @@ with tab3:
             ))
         fig_eis.update_layout(**PLOTLY_LAYOUT, title="Nyquist Plot",
                               xaxis_title="Z' (Ω)", yaxis_title="-Z'' (Ω)")
-        st.plotly_chart(fig_eis, use_container_width=True)
+        st.plotly_chart(fig_eis, width="stretch")
 
         if st.button("🔍 Suggest equivalent circuits", type="primary"):
             try:
@@ -1406,7 +1406,7 @@ with tab3:
                 "ΔAICc": [f"{s.delta_aicc:.2f}" if s.converged else "—" for s in suggestions],
                 "Support": [s.support_label() for s in suggestions],
             })
-            st.dataframe(sugg_df, use_container_width=True, hide_index=True)
+            st.dataframe(sugg_df, width="stretch", hide_index=True)
 
             converged_labels = [str(s) for s in suggestions if s.converged]
             if converged_labels:
@@ -1547,7 +1547,7 @@ with tab3:
                 **PLOTLY_LAYOUT, title="DRT spectrum",
                 xaxis_title="τ (s)", yaxis_title="γ(ln τ) (Ω)",
                 xaxis_type="log")
-            st.plotly_chart(_fig_drt, use_container_width=True)
+            st.plotly_chart(_fig_drt, width="stretch")
             st.text(_drt.summary())
 
             with st.expander("L-curve (debug)"):
@@ -1563,7 +1563,7 @@ with tab3:
                 _fig_lc.update_layout(
                     **PLOTLY_LAYOUT, title="L-curve curvature",
                     xaxis_title="λ", yaxis_title="κ(λ)", xaxis_type="log")
-                st.plotly_chart(_fig_lc, use_container_width=True)
+                st.plotly_chart(_fig_lc, width="stretch")
 
         if "eis_fit" in st.session_state:
             fit_r = st.session_state["eis_fit"]
@@ -1574,7 +1574,7 @@ with tab3:
                 "Std Error": [fit_r.parameter_errors.get(k, float("nan"))
                              for k in fit_r.parameters.keys()],
             })
-            st.dataframe(param_df, use_container_width=True, hide_index=True)
+            st.dataframe(param_df, width="stretch", hide_index=True)
 
             # ── Kramers-Kronig verdict (diagnostic; does not block fitting) ──
             _kk = st.session_state.get("kk_result")
@@ -1623,7 +1623,7 @@ with tab3:
                         xaxis_title="Frequency (Hz)",
                         yaxis_title="Residual (rel.)", xaxis_type="log",
                     )
-                    st.plotly_chart(_fig_kk, use_container_width=True)
+                    st.plotly_chart(_fig_kk, width="stretch")
 
             # ── Physical interpretation (rule-based, deterministic) ─────────
             st.markdown("#### Physical Interpretation")
@@ -1768,7 +1768,7 @@ with tab5:
             "E_onset (V)": [cv_r.e_onset],
             "j_f (mA/cm²)": [cv_r.j_forward_peak],
         }
-        st.dataframe(pd.DataFrame(corr_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(corr_data), width="stretch", hide_index=True)
     else:
         st.info("Complete both EIS fit (tab 3) and CV analysis (tab 1) to see correlations.")
 
@@ -1973,7 +1973,7 @@ with tab6:
             "Key": list(res_ecsa.keys()),
             "Value": [str(v) for v in res_ecsa.values()],
         })
-        st.dataframe(_dict_df, use_container_width=True, hide_index=True)
+        st.dataframe(_dict_df, width="stretch", hide_index=True)
 
         _kka_vals = {
             "H-UPD": ("charge_uC", "µC"),
@@ -2117,7 +2117,7 @@ with tab7:
         fig_kl.update_layout(**PLOTLY_LAYOUT, title="K-L Plot (best E)",
                              xaxis_title="ω⁻¹/² (rad/s)⁻¹/²",
                              yaxis_title="j⁻¹ (cm²/mA)")
-        st.plotly_chart(fig_kl, use_container_width=True)
+        st.plotly_chart(fig_kl, width="stretch")
         c1, c2 = st.columns(2)
         c1.metric("Electron transfer number (n)", f"{klr.mean_n_electrons:.2f}")
         c2.metric("Kinetic current density (j_k)", f"{best.j_kinetic:.4f} mA/cm²")
@@ -2207,7 +2207,7 @@ with tab8:
                                                 line=series_style(i)["line"]))
                 fig_ov.update_layout(**PLOTLY_LAYOUT, title="CV overlay",
                                      xaxis_title="E (V)", yaxis_title="I")
-                st.plotly_chart(fig_ov, use_container_width=True)
+                st.plotly_chart(fig_ov, width="stretch")
 
                 # (b) log-log
                 nu = res.rates_mV / 1000.0
@@ -2226,7 +2226,7 @@ with tab8:
                                     title="log(Ipa) vs log(ν)",
                                     xaxis_title="log ν (V/s)",
                                     yaxis_title="log Ipa")
-                st.plotly_chart(fig_b, use_container_width=True)
+                st.plotly_chart(fig_b, width="stretch")
 
                 # (c) Randles-Sevcik
                 fig_rs = go.Figure()
@@ -2243,7 +2243,7 @@ with tab8:
                                      title="Randles–Ševčík: Ipa vs √ν",
                                      xaxis_title="√ν (V/s)^½",
                                      yaxis_title="Ipa")
-                st.plotly_chart(fig_rs, use_container_width=True)
+                st.plotly_chart(fig_rs, width="stretch")
 
                 # findings + warnings
                 st.markdown("#### Interpretation")
@@ -2262,7 +2262,7 @@ with tab8:
                     "Ipa": res.ipa,
                     "E at peak (V)": res.ipa_potential,
                 })
-                st.dataframe(table, use_container_width=True, hide_index=True)
+                st.dataframe(table, width="stretch", hide_index=True)
 
                 # Excel export
                 try:
@@ -2357,7 +2357,7 @@ with tab9:
             fig.update_layout(**PLOTLY_LAYOUT, title="Chronoamperometry",
                               xaxis_title="Time (s)",
                               yaxis_title=f"|Current| ({res.unit_label})")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             st.markdown("#### Stability Metrics")
             st.markdown(res.as_markdown())

@@ -165,7 +165,7 @@ with tab_be:
                 margin=dict(l=60, r=140, t=60, b=40),
                 showlegend=False,
             )
-            st.plotly_chart(fig_bd, use_container_width=True)
+            st.plotly_chart(fig_bd, width="stretch")
             st.code(r.summary(), language=None)
 
 
@@ -353,7 +353,7 @@ with tab_ms:
                 yaxis_title="1/C² (F⁻²)",
                 margin=dict(l=70, r=20, t=60, b=50),
             )
-            st.plotly_chart(fig_ms, use_container_width=True)
+            st.plotly_chart(fig_ms, width="stretch")
             st.code(ms.summary(), language=None)
         elif V_ms is not None and len(V_ms) < 3:
             st.info("Upload at least 3 EIS files (or 3 V,C pairs) to run Mott-Schottky.")

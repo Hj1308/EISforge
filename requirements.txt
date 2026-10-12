@@ -34,7 +34,7 @@ matplotlib>=3.8.0         # رسم static
 kaleido>=0.2.1            # export تصویر از plotly
 
 # ── Web UI ────────────────────────────────────────────────────────
-streamlit>=1.30.0         # رابط کاربری وب
+streamlit>=1.49.0         # رابط کاربری وب
 
 # ── Instrument Parsers ────────────────────────────────────────────
 galvani>=0.4.0            # BioLogic .mpr/.mpt

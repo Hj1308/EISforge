@@ -189,7 +189,7 @@
   بدون onset هیچ خطی رسم نمی‌شود.
 
 ### B9 — رتبه‌بندی «activity tier» onset را در چارچوب اشتباه با بازهٔ مقالات مقایسه می‌کرد
-- [ ] **حذف در patch41 (در انتظار اعمال). تصمیم انسان، 2026-10-12: حذف، نه اصلاح.** این بخش‌ها حذف شدند: فیلد
+- [x] **در patch41 حذف شد (commit 3f6e700، CI سبز). تصمیم انسان، 2026-10-12: حذف، نه اصلاح.** این بخش‌ها حذف شدند: فیلد
   `performance_rating`، تابع `_rate_performance()` و خط «Performance» در تب LSV. درجهٔ «Excellent/Moderate activity»
   و «High overpotential» هم از متن Interpretation تب CV حذف شد، چون همان مشکل را داشت (`e_ref_vs_rhe` هیچ‌وقت به
   آن پاس داده نمی‌شد). حالا فقط «E_onset = x V vs reference electrode» نوشته می‌شود.
@@ -199,11 +199,18 @@
     یک patch پاک‌سازی موکول کردیم.
 
 ### Nernst — یک شیب وابسته به دما برای همهٔ تبدیل‌های RHE
-- [ ] **patch41 (در انتظار اعمال):** تابع `_nernst_slope(T) = RT·ln10/F` (0.05916 V در 25 °C) اضافه شد و
+- [x] **patch41 ✅ (commit 3f6e700):** تابع `_nernst_slope(T) = RT·ln10/F` (0.05916 V در 25 °C) اضافه شد و
   `_to_rhe_shift(e_ref_type, ph, temperature_c)` حالا در همهٔ جاها از دمای sidebar استفاده می‌کند. قبلاً بعضی جاها
   0.059 ثابت بود و بعضی جاها RT·ln10/F (اختلاف 2 mV در pH 14).
   - **هنوز جدا:** `pages/band_edge.py` (صفحهٔ Mott–Schottky) از 0.0592 ثابت استفاده می‌کند و حالت «مرجع = RHE»
     را هم بررسی نکرده‌ایم. این را در یک patch جدا ببینیم.
+
+### پاک‌سازی — `use_container_width` و `_ONSET_RANGES`
+- [ ] **patch42 (در انتظار اعمال):** هر 29 مورد `use_container_width=True` به `width="stretch"` تبدیل شد: app.py
+  (21 مورد) و سه صفحهٔ `pages/` (8 مورد). Streamlit اعلام کرده بود این پارامتر بعد از 2025-12-31 حذف می‌شود.
+  - **آزمایش نسخه‌ها:** `width="stretch"` روی 1.45 تا 1.48 خطا می‌دهد و روی 1.49.1، 1.50.0 و 1.65.0 کار می‌کند. برای
+    همین حداقل نسخه در `requirements.txt` و `pyproject.toml` به **streamlit>=1.49.0** رسید.
+  - ثابت `_ONSET_RANGES` در `cv_analyzer.py` حذف شد. بعد از patch41 هیچ‌جا استفاده نمی‌شد.
 
 ### B5 — I_b (پیک برگشت) برای Pt و آلیاژ اشتباه محاسبه می‌شود، پس I_f/I_b همیشه NaN است
 - **نکتهٔ علمی برای رفع B5:** متن Interpretation تب CV نسبت I_f/I_b را «CO tolerance» تفسیر می‌کند (مثلاً «> 2.0

@@ -247,7 +247,7 @@ st.markdown("### 📊 Fit Results")
 df_res = br.to_dataframe()
 st.dataframe(df_res.style.format(
     {c: "{:.4e}" for c in df_res.select_dtypes(include=float).columns}
-), use_container_width=True)
+), width="stretch")
 
 # CSV download
 csv_buf = io.StringIO()
@@ -289,7 +289,7 @@ fig_ny.update_layout(
     xaxis_title="Z' (Ω)",
     yaxis_title="Z'' (Ω)",
 )
-st.plotly_chart(fig_ny, use_container_width=True)
+st.plotly_chart(fig_ny, width="stretch")
 
 st.divider()
 
@@ -322,7 +322,7 @@ if param_plot:
         xaxis_title="Condition (M or other)",
         yaxis_title=param_plot,
     )
-    st.plotly_chart(fig_tr, use_container_width=True)
+    st.plotly_chart(fig_tr, width="stretch")
 
 st.caption(
     "Warm-start fitting by EISForge · patch19 · "

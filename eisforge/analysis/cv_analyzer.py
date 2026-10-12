@@ -270,28 +270,7 @@ class CVAnalyzer:
 
     _UNIT_TO_MA = {"A": 1000.0, "mA": 1.0, "uA": 1e-3, "μA": 1e-3, "nA": 1e-6}
 
-    # E_onset reference ranges per electrolyte compound (V vs RHE)
-    # Format: {compound: (excellent_max, moderate_max)}
-    _ONSET_RANGES = {
-        # Acids
-        ACID_H2SO4 : {"noble_metal": (0.45, 0.65), "alloy": (0.35, 0.55),
-                       "metal_oxide": (1.30, 1.55), "carbon_material": (0.60, 0.90)},
-        ACID_HClO4 : {"noble_metal": (0.40, 0.60), "alloy": (0.30, 0.50),
-                       "metal_oxide": (1.25, 1.50), "carbon_material": (0.55, 0.85)},
-        ACID_HCl   : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
-                       "metal_oxide": (1.35, 1.60), "carbon_material": (0.65, 0.95)},
-        ACID_HNO3  : {"noble_metal": (0.50, 0.70), "alloy": (0.40, 0.60),
-                       "metal_oxide": (1.35, 1.60), "carbon_material": (0.65, 0.95)},
-        # Bases
-        BASE_KOH   : {"noble_metal": (0.20, 0.40), "alloy": (0.10, 0.30),
-                       "metal_oxide": (1.30, 1.50), "carbon_material": (0.40, 0.70)},
-        BASE_NaOH  : {"noble_metal": (0.22, 0.42), "alloy": (0.12, 0.32),
-                       "metal_oxide": (1.32, 1.52), "carbon_material": (0.42, 0.72)},
-        BASE_Na2CO3: {"noble_metal": (0.30, 0.55), "alloy": (0.20, 0.45),
-                       "metal_oxide": (1.40, 1.65), "carbon_material": (0.50, 0.80)},
-        BASE_NH3   : {"noble_metal": (0.35, 0.60), "alloy": (0.25, 0.50),
-                       "metal_oxide": (1.45, 1.70), "carbon_material": (0.55, 0.85)},
-    }
+    # patch42: _ONSET_RANGES removed (unused since patch41 removed the onset grade).
 
     def __init__(
         self,

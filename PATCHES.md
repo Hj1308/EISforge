@@ -1,5 +1,15 @@
 # EISForge — Patch Log
 
+## patch42 — cleanup: width="stretch" instead of deprecated use_container_width; _ONSET_RANGES removed
+**Date:** 2026-10-12
+**Files changed:** app.py, pages/band_edge.py, pages/batch_eis.py, pages/litbase_review.py,
+eisforge/analysis/cv_analyzer.py, requirements.txt, pyproject.toml, tests/test_cleanup_width.py (new)
+**What it does:** 29x use_container_width=True -> width="stretch" (Streamlit deprecation, removal announced
+after 2025-12-31); minimum streamlit raised to 1.49.0 (width="stretch" fails on 1.45-1.48, works on 1.49.1,
+1.50.0, 1.65.0); unused CVAnalyzer._ONSET_RANGES removed.
+**Tested on:** new tests 3 failed before / 3 passed after; full suite 271 passed; ruff clean; AppTest 0
+exceptions and no deprecation messages.
+
 ## patch41 — B9: remove literature "activity tier" ratings; one temperature-dependent Nernst slope
 **Date:** 2026-10-12
 **Files changed:** eisforge/analysis/lsv_analyzer.py, eisforge/analysis/cv_analyzer.py, app.py,

@@ -229,7 +229,7 @@ for i, row in enumerate(rows):
             # Actions
             ac1, ac2, ac3 = st.columns(3)
             with ac1:
-                if st.button("\u2705 Accept", key=f"accept_{i}", type="primary", use_container_width=True):
+                if st.button("\u2705 Accept", key=f"accept_{i}", type="primary", width="stretch"):
                     # Merge edits back into row
                     for col_name, new_val in edits.items():
                         if new_val != str(row.get(col_name, "")):
@@ -246,7 +246,7 @@ for i, row in enumerate(rows):
             with ac2:
                 reason_key = f"reject_reason_{i}"
                 reason = st.text_input("Reason (optional):", key=reason_key, placeholder="e.g. duplicate, wrong unit")
-                if st.button("\u274c Reject", key=f"reject_{i}", use_container_width=True):
+                if st.button("\u274c Reject", key=f"reject_{i}", width="stretch"):
                     _log_rejection(row, reason, row.get("_source_file", "unknown"))
                     _remove_row_from_draft(Path(row["_source_path"]), i)
                     st.session_state.rejected_count += 1
@@ -254,6 +254,6 @@ for i, row in enumerate(rows):
                     st.rerun()
 
             with ac3:
-                if st.button("\u23ed\ufe0f Skip", key=f"skip_{i}", use_container_width=True):
+                if st.button("\u23ed\ufe0f Skip", key=f"skip_{i}", width="stretch"):
                     st.session_state.skipped_count += 1
                     st.info(f"Skipped: {key_label} — stays in drafts")
