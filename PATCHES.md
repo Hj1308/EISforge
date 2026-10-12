@@ -1,5 +1,18 @@
 # EISForge — Patch Log
 
+## patch43 — B11: band edges vs NHE (4.44 V double offset), RHE sign, Mott-Schottky V_fb with kT/e
+**Date:** 2026-10-12
+**Files changed:** eisforge/analysis/band_edge_calculator.py, pages/band_edge.py, tests/test_band_edge.py (updated),
+tests/test_band_edge_b11.py (new)
+**What it does:** Butler-Ginley chi - 4.50 - Eg/2 is reported as E_CB vs NHE (was labelled "vacuum" and 4.44 V
+was subtracted again: TiO2 -4.73 instead of -0.29 V vs NHE); E_VB = E_CB + Eg; vacuum energies -(E_NHE + 4.50)
+eV; E_RHE = E_NHE + (RT ln10/F) pH (sign was negative). Mott-Schottky V_fb = intercept - kT/e (n) / + kT/e (p),
+raw intercept kept as V_intercept. Page: "Reference electrode is RHE" checkbox, one Nernst slope.
+**Inspired by:** BioLogic AN24 and Metrohm AN-EIS-009 (Mott-Schottky), Hankin et al. 2019 (flat-band pitfalls).
+No Python package with a Mott-Schottky implementation was found.
+**Tested on:** literature values TiO2 -0.29/+2.91, WO3 +0.74/+3.44, g-C3N4 -1.12/+1.58 V vs NHE. New tests
+6 failed before / 6 passed after; full suite 277 passed; ruff clean; AppTest 0 exceptions.
+
 ## patch42 — cleanup: width="stretch" instead of deprecated use_container_width; _ONSET_RANGES removed
 **Date:** 2026-10-12
 **Files changed:** app.py, pages/band_edge.py, pages/batch_eis.py, pages/litbase_review.py,

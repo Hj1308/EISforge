@@ -13,35 +13,32 @@ from eisforge.analysis.band_edge_calculator import (
 
 class TestBandEdgeBasic:
 
-    def test_tio2_ecb_vacuum(self):
-        calc = BandEdgeCalculator("TiO2", pH=0.0)
-        r = calc.calculate()
-        expected = 5.81 - 4.5 - 0.5 * 3.20
-        assert abs(r.Ecb_vacuum - expected) < 1e-6
+    # patch43 (B11): Butler-Ginley gives the potential vs NHE directly.
+    def test_tio2_ecb_nhe(self):
+        r = BandEdgeCalculator("TiO2", pH=0.0).calculate()
+        assert abs(r.Ecb_NHE - (5.81 - 4.5 - 0.5 * 3.20)) < 1e-6      # -0.29 V vs NHE
 
     def test_gcn_evb_vacuum(self):
-        calc = BandEdgeCalculator("g-C3N4", pH=0.0)
-        r = calc.calculate()
-        assert abs(r.Evb_vacuum - (r.Ecb_vacuum + r.Eg)) < 1e-6
+        r = BandEdgeCalculator("g-C3N4", pH=0.0).calculate()
+        assert abs(r.Evb_NHE - (r.Ecb_NHE + r.Eg)) < 1e-6
+        assert abs(r.Evb_vacuum - (r.Ecb_vacuum - r.Eg)) < 1e-6
 
     def test_nhe_conversion(self):
-        calc = BandEdgeCalculator("TiO2", pH=0.0)
-        r = calc.calculate()
-        assert abs(r.Ecb_NHE - (r.Ecb_vacuum - E_NHE_OFFSET)) < 1e-6
+        r = BandEdgeCalculator("TiO2", pH=0.0).calculate()
+        assert abs(r.Ecb_vacuum - (-(r.Ecb_NHE + 4.5))) < 1e-6          # -4.21 eV
+        assert E_NHE_OFFSET == 4.44                                     # kept, not subtracted
 
 
 class TestRHEConversion:
 
     def test_rhe_pH7(self):
-        calc = BandEdgeCalculator("TiO2", pH=7.0)
-        r = calc.calculate()
-        expected_rhe = r.Ecb_NHE - NERNST_SLOPE * 7.0
-        assert abs(r.Ecb_RHE - expected_rhe) < 1e-6
+        r = BandEdgeCalculator("TiO2", pH=7.0).calculate()
+        assert abs(r.Ecb_RHE - (r.Ecb_NHE + NERNST_SLOPE * 7.0)) < 1e-4
 
     def test_rhe_pH14(self):
         c0  = BandEdgeCalculator("ZnO", pH=0.0).calculate()
         c14 = BandEdgeCalculator("ZnO", pH=14.0).calculate()
-        assert abs((c0.Ecb_RHE - c14.Ecb_RHE) - NERNST_SLOPE * 14.0) < 1e-4
+        assert abs((c14.Ecb_RHE - c0.Ecb_RHE) - NERNST_SLOPE * 14.0) < 1e-4
 
 
 class TestMottSchottky:
@@ -90,5 +87,5 @@ class TestCustomMaterial:
         calc = BandEdgeCalculator("custom", X=4.85, Eg=2.15, pH=7.0)
         r    = calc.calculate()
         expected_ecb = 4.85 - 4.5 - 0.5 * 2.15
-        assert abs(r.Ecb_vacuum - expected_ecb) < 1e-6
+        assert abs(r.Ecb_NHE - expected_ecb) < 1e-6        # patch43: Butler-Ginley is vs NHE
         assert r.Eg == 2.15

@@ -2,12 +2,16 @@
 Band Edge & Mott-Schottky Calculator
 =====================================
 Computes semiconductor band edge positions (Ecb, Evb) from:
-  1. Butler-Ginley empirical formula:  Ecb_vacuum = χ - EC_REF_VAC - 0.5·Eg
+  1. Butler-Ginley empirical formula:  Ecb_NHE = χ - EC_REF_VAC - 0.5·Eg  (V vs NHE)
   2. Mott-Schottky analysis:  1/C² vs V → Vfb, Nd, semiconductor type
 
 All energies are in eV.  Potentials are in V.
-Vacuum reference: EC_REF_VAC = 4.50 eV (empirical formula); NHE conversion: E_NHE_OFFSET = 4.44 eV (Trasatti/IUPAC).
-Nernst slope: NERNST_SLOPE = 0.05916 V/pH (at 25 °C)
+EC_REF_VAC = 4.50 eV is the NHE level on the vacuum scale used by the Butler-Ginley formula, so
+χ - 4.50 - Eg/2 is already a potential vs NHE; vacuum energies are E_vac = -(E_NHE + 4.50) eV.
+(E_NHE_OFFSET = 4.44 eV, Trasatti/IUPAC, is kept for reference and is NOT subtracted again.)
+RHE: E_RHE = E_NHE + (RT ln10 / F)·pH  (0.05916 V/pH at 25 °C).
+patch43 (B11): the old code subtracted 4.44 V a second time (TiO2 Ecb = -4.73 V vs NHE instead of
+-0.29 V) and used the wrong sign for RHE.
 
 Reference
 ---------
@@ -41,6 +45,11 @@ EC_REF_VAC: float = 4.50     # eV, vacuum reference of the empirical band-edge f
 
 #: Nernst slope at 25 °C: 2.303·RT/F (V/pH)
 NERNST_SLOPE: float = 0.05916
+
+def _nernst_slope(T_celsius: float = 25.0) -> float:
+    """RT ln10 / F in V per pH unit (0.05916 V at 25 °C)."""
+    return 8.314462618 * (273.15 + float(T_celsius)) / 96485.33212 * np.log(10.0)
+
 
 # Internal physical constants
 _E_CHARGE = 1.602176634e-19   # C
@@ -102,11 +111,11 @@ class BandEdgeResult:
     material: str
     chi: float
     Eg: float
-    Ecb_vacuum: float    # conduction band vs vacuum (eV)  [= \u03c7 - EC_REF_VAC - 0.5\u00b7Eg]
-    Evb_vacuum: float    # valence band vs vacuum (eV)
-    Ecb_NHE: float       # vs NHE (V)  [= Ecb_vacuum - E_NHE_OFFSET]
-    Evb_NHE: float       # vs NHE (V)
-    Ecb_RHE: float       # vs RHE (V)  [= Ecb_NHE - NERNST_SLOPE\u00b7pH]
+    Ecb_vacuum: float    # conduction-band energy vs vacuum (eV)  [= -(Ecb_NHE + EC_REF_VAC) = -chi + Eg/2]
+    Evb_vacuum: float    # valence-band energy vs vacuum (eV)     [= Ecb_vacuum - Eg]
+    Ecb_NHE: float       # vs NHE (V)  [= chi - EC_REF_VAC - 0.5*Eg, Butler-Ginley]
+    Evb_NHE: float       # vs NHE (V)  [= Ecb_NHE + Eg]
+    Ecb_RHE: float       # vs RHE (V)  [= Ecb_NHE + (RT ln10/F)*pH]
     Evb_RHE: float       # vs RHE (V)
     pH: float
 
@@ -142,6 +151,7 @@ class MottSchottkyResult:
     invC2_fit: np.ndarray
     epsilon_r: float
     electrode_area_cm2: float
+    V_intercept: float = float("nan")   # raw V-axis intercept of 1/C^2 (patch43)
 
     # Legacy aliases
     @property
@@ -258,20 +268,20 @@ class BandEdgeCalculator:
                 "Pass Eg=... to the constructor or as Eg_override."
             )
 
-        # Core Butler-Ginley
-        Ecb_vac = chi - EC_REF_VAC - 0.5 * Eg
-        Evb_vac = Ecb_vac + Eg
+        # Butler-Ginley: chi - E^e - Eg/2 with E^e = EC_REF_VAC (4.50 eV, the NHE level vs vacuum)
+        # is already a potential vs NHE (TiO2: -0.29 V). patch43 (B11): it used to be labelled
+        # "vacuum" and E_NHE_OFFSET (4.44) was subtracted a second time (TiO2: -4.73 V).
+        Ecb_NHE = chi - EC_REF_VAC - 0.5 * Eg
+        Evb_NHE = Ecb_NHE + Eg
 
-        # NHE: E_CB(NHE) = E_CB(vacuum) - E_NHE_OFFSET
-        # (EC_REF_VAC already applied above in vacuum step;
-        #  NHE reference: E_NHE = -E_NHE_OFFSET on the vacuum scale,
-        #  so E_CB(NHE) = E_CB(vacuum) - E_NHE_OFFSET)
-        Ecb_NHE = Ecb_vac - E_NHE_OFFSET
-        Evb_NHE = Evb_vac - E_NHE_OFFSET
+        # Absolute (vacuum) energy scale in eV: E_vac = -(E_NHE + EC_REF_VAC)
+        Ecb_vac = -(Ecb_NHE + EC_REF_VAC)
+        Evb_vac = -(Evb_NHE + EC_REF_VAC)
 
-        # RHE: E_RHE = E_NHE - NERNST_SLOPE * pH
-        Ecb_RHE = Ecb_NHE - NERNST_SLOPE * self.pH
-        Evb_RHE = Evb_NHE - NERNST_SLOPE * self.pH
+        # RHE: E_RHE = E_NHE + (RT ln10 / F) * pH   (patch43: the sign was negative)
+        _s = _nernst_slope(self.T_celsius)
+        Ecb_RHE = Ecb_NHE + _s * self.pH
+        Evb_RHE = Evb_NHE + _s * self.pH
 
         return BandEdgeResult(
             material=self.material,
@@ -345,7 +355,12 @@ class BandEdgeCalculator:
 
         slope, intercept, r_val, _, _ = _stats.linregress(V_fit, inv_C2_fit)
         R2   = r_val ** 2
-        Vfb  = -intercept / slope if abs(slope) > 1e-40 else float("nan")
+        V_int = -intercept / slope if abs(slope) > 1e-40 else float("nan")
+        # Full Mott-Schottky equation: 1/C^2 = 2/(e eps eps0 A^2 N) (V - Vfb - kT/e) for n-type
+        # (V - Vfb + kT/e for p-type), so the V-axis intercept is Vfb + kT/e (n) or Vfb - kT/e (p).
+        # patch43: Vfb used to be the raw intercept (26 mV off at 25 C).
+        _kT_e = 8.617333262e-5 * (273.15 + float(self.T_celsius))
+        Vfb = V_int - _kT_e if slope > 0 else V_int + _kT_e
 
         Nd_m3  = 2.0 / (abs(slope) * _E_CHARGE * _EPS0 * eps_r * (A_m2 ** 2))
         Nd_cm3 = Nd_m3 * 1e-6
@@ -363,6 +378,7 @@ class BandEdgeCalculator:
             invC2_fit=inv_C2_fit,
             epsilon_r=eps_r,
             electrode_area_cm2=float(area_cm2),
+            V_intercept=V_int,
         )
 
     # ── EIS-based capacitance ─────────────────────────────────────────────────
@@ -406,7 +422,7 @@ class BandEdgeCalculator:
         Legacy method: compute band edges directly from chi and Eg.
         Prefer using calculate() on an instance constructed with material name.
         """
-        tmp = BandEdgeCalculator("custom", pH=self.pH, X=chi, Eg=Eg)
+        tmp = BandEdgeCalculator("custom", pH=self.pH, X=chi, Eg=Eg, T_celsius=self.T_celsius)
         r   = tmp.calculate()
         return dataclasses.replace(r, material=material)
 
@@ -414,5 +430,6 @@ class BandEdgeCalculator:
         self, material_key: str, Eg_override: Optional[float] = None
     ) -> BandEdgeResult:
         """Legacy helper: compute from built-in DB entry."""
-        tmp = BandEdgeCalculator(material_key, pH=self.pH, Eg=Eg_override)
+        tmp = BandEdgeCalculator(material_key, pH=self.pH, Eg=Eg_override,
+                                 T_celsius=self.T_celsius)
         return tmp.calculate()

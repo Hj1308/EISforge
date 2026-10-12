@@ -15,6 +15,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from eisforge.analysis.band_edge_calculator import _nernst_slope  # patch43
 from eisforge.analysis.band_edge_calculator import (
     MATERIALS_DB,
     BandEdgeCalculator,
@@ -211,8 +212,11 @@ with tab_ms:
         e_ref_ms = st.number_input(
             "Reference electrode offset vs NHE (V)",
             value=0.197, step=0.001, format="%.3f",
-            help="Ag/AgCl sat. = 0.197 V, SCE = 0.241 V, RHE = 0.0",
+            help="Ag/AgCl sat. = 0.197 V, SCE = 0.241 V. For an RHE reference tick the box below.",
         )
+        ms_ref_is_rhe = st.checkbox(
+            "Reference electrode is RHE (no pH shift)", value=False, key="ms_ref_is_rhe",
+            help="Data recorded vs RHE are already on the RHE scale: no offset and no pH term.")
         use_potential_window = st.checkbox("Restrict fit to potential window")
         if use_potential_window:
             v_low  = st.number_input("V_low  (V vs ref)", value=-0.5, step=0.05, format="%.3f")
@@ -310,10 +314,16 @@ with tab_ms:
             V_data = st.session_state["ms_V"]
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("V_fb (vs ref)", f"{ms.V_fb:+.4f} V")
-            _vfb_rhe = ms.V_fb + e_ref_ms + 0.0592 * ph_ms
+            c1.metric("V_fb (vs ref)", f"{ms.V_fb:+.4f} V",
+                      help=(f"V-axis intercept {ms.V_intercept:+.4f} V corrected by kT/e "
+                            "(n-type: minus, p-type: plus). Under illumination or with redox "
+                            "couples the intercept may not be the flat-band potential "
+                            "(Hankin et al. 2019)."))
+            _s = _nernst_slope(25.0)
+            _vfb_rhe = ms.V_fb if ms_ref_is_rhe else ms.V_fb + e_ref_ms + _s * ph_ms
             c2.metric("V_fb (vs RHE)", f"{_vfb_rhe:+.4f} V",
-                      help="V_fb + E_ref_offset + 0.0592·pH")
+                      help=("Reference is RHE: no shift" if ms_ref_is_rhe
+                            else f"V_fb + E_ref_offset + {_s:.4f}·pH (25 °C)"))
             c3.metric("Nd", f"{ms.Nd:.3e} cm⁻³")
             c4.metric("Type", ms.semiconductor_type)
 
