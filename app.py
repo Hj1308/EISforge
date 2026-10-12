@@ -69,6 +69,19 @@ E_REF_MAP = {
 }
 UNIT_MAP = {"A": 1000.0, "mA": 1.0, "μA": 1e-3, "nA": 1e-6}
 
+
+def _to_rhe_shift(e_ref_type: str, ph: float, slope: float = 0.059) -> float:
+    """Shift (V) from the measured reference scale to RHE: E_RHE = E_meas + shift.
+
+    Every reference has a fixed value vs SHE and RHE sits at -slope*pH vs SHE (the
+    reference-electrode model of unitpackage/echemdb), so the shift is
+    E_ref(vs SHE) + slope*pH, and exactly 0 when the data are already vs RHE
+    (patch40, B8). slope: 0.059 V/pH, or RT ln10 / F at the cell temperature.
+    """
+    if e_ref_type == "RHE":
+        return 0.0
+    return E_REF_MAP[e_ref_type] + slope * ph
+
 # ── E_onset auto-select map ───────────────────────────────────────────────────
 _ONSET_METHOD_MAP = {
     "noble_metal": "tangent",
@@ -457,7 +470,7 @@ with st.sidebar:
     unit_factor = UNIT_MAP.get(current_unit, 1.0)
 
     if e_ref_type != "RHE":
-        _total_offset = e_ref_val + 0.059 * ph_value
+        _total_offset = _to_rhe_shift(e_ref_type, ph_value)
         st.info(
             f"RHE conversion: E_RHE = E_meas + {e_ref_val:.3f} V (ref) + "
             f"0.059×pH (pH={ph_value:.1f}) → total offset = {_total_offset:.3f} V"
@@ -670,11 +683,12 @@ with tab1:
             st.warning("No anodic peak within the scan window: the forward-scan maximum is "
                        "at the anodic vertex. Peak current, E_onset and net faradaic current "
                        "are not reported. Subtract a blank CV and/or extend the anodic limit.")
-        _e_onset_rhe = r.e_onset + e_ref_val + 0.059 * ph_value
+        _e_onset_rhe = r.e_onset + _to_rhe_shift(e_ref_type, ph_value)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("E_onset (vs ref)", f"{r.e_onset:.4f} V" if _onset_ok else "—")
         c2.metric("E_onset (vs RHE)", f"{_e_onset_rhe:.4f} V" if _onset_ok else "—",
-                  help=f"= {r.e_onset:.4f} + {e_ref_val:.3f}(ref) + 0.059×{ph_value:.2f}(pH)")
+                  help=(f"= {r.e_onset:.4f} + {e_ref_val:.3f}(ref) + 0.059×{ph_value:.2f}(pH)"
+                        if e_ref_type != "RHE" else "Data recorded vs RHE: no shift."))
         if _is_mf:
             c3.metric("Net faradaic I", f"{r.net_faradaic_current_mA:.4f} mA"
                       if np.isfinite(r.net_faradaic_current_mA) else "—")
@@ -1018,7 +1032,8 @@ with tab2:
                     _nernst_w = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
                     if te_frame_rhe:
                         la.tafel_potential_range = (
-                            te_low - _nernst_w * ph_value, te_high - _nernst_w * ph_value,
+                            te_low - _to_rhe_shift(e_ref_type, ph_value, _nernst_w) + e_ref_val,
+                            te_high - _to_rhe_shift(e_ref_type, ph_value, _nernst_w) + e_ref_val,
                         )
                     else:
                         la.tafel_potential_range = (te_low + e_ref_val, te_high + e_ref_val)
@@ -1048,7 +1063,7 @@ with tab2:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
         # Analysis frame = E_meas + e_ref_val, so only the pH term is left for RHE
         # (patch39, B7: the reference offset used to be added twice).
-        _rhe_shift = 0.0 if e_ref_type == "RHE" else 0.059 * ph_value
+        _rhe_shift = _to_rhe_shift(e_ref_type, ph_value) - e_ref_val
         _lsv_onset_ok = bool(np.isfinite(r.e_onset))
         if not getattr(r, "onset_found", True):
             st.warning(f"No sustained anodic current ≥ {onset_jmin_lsv:g} mA/cm²: there is no "
@@ -1126,7 +1141,7 @@ with tab2:
             j_lsv = st.session_state["lsv_cur"].copy()
             st.warning("Electrode area = 0 — showing raw current (mA) instead of current density.")
         _nernst = (8.314 * (273.15 + temperature) / 96485.0) * math.log(10)
-        _rhe_offset = e_ref_val + _nernst * ph_value
+        _rhe_offset = _to_rhe_shift(e_ref_type, ph_value, _nernst)
         _scale = st.radio("Potential scale", [f"vs {e_ref_type}", "vs RHE"],
                           horizontal=True, key="lsv_scale")
         _use_rhe = (_scale == "vs RHE")
@@ -1161,9 +1176,13 @@ with tab2:
                                      name="LSV" + ("+iR-corr." if actual_rs > 0 else ""),
                                      line=dict(color=ACCENT, width=2)), row=1, col=1)
         # Semantic boundary marker (E_onset) — keep amber.
-        fig.add_vline(x=r.e_onset + _off, line_dash="dash", line_color="#d97706",
-                      annotation_text=f"E_onset={r.e_onset + _off:.3f}V",
-                      annotation_font=dict(color="#d97706"), row=1, col=1)
+        # r.e_onset is in the analyzer frame (raw + e_ref_val), like r.tafel_region below:
+        # display = internal - e_ref_val + _off (patch40, B10). No line without an onset.
+        if np.isfinite(r.e_onset):
+            _e_on_disp = r.e_onset - e_ref_val + _off
+            fig.add_vline(x=_e_on_disp, line_dash="dash", line_color="#d97706",
+                          annotation_text=f"E_onset={_e_on_disp:.3f}V",
+                          annotation_font=dict(color="#d97706"), row=1, col=1)
         if tafel_mode_lsv == "Current window (mA/cm²)":
             mask = (j_lsv > 0) & (j_lsv >= tj_min) & (j_lsv <= tj_max)
         else:
@@ -1876,7 +1895,7 @@ with tab6:
                             _hl2.md5(_b).hexdigest(), _b, cycle_idx=-1)
                     else:
                         _p, _c, _m = load_cv_lsv(_f, unit_factor=unit_factor)
-                    _load_ecsa.append((_p + e_ref_val + 0.059 * ph_value,
+                    _load_ecsa.append((_p + _to_rhe_shift(e_ref_type, ph_value),
                                        _c / 1000.0))
                 _sr_Vs = [r / 1000.0 for r in rates]
                 if _is_auto and not _auto_blocked:
@@ -1906,7 +1925,7 @@ with tab6:
                         _hl2.md5(_b).hexdigest(), _b, cycle_idx=-1)
                 else:
                     _p, _c, _m = load_cv_lsv(ecsa_file, unit_factor=unit_factor)
-                _p_rhe = _p + e_ref_val + 0.059 * ph_value
+                _p_rhe = _p + _to_rhe_shift(e_ref_type, ph_value)
                 _c_a = _c / 1000.0
                 _sr_Vs = float(sr_ecsa) / 1000.0
                 if _is_auto:
@@ -2060,7 +2079,7 @@ with tab7:
             pots_kl, curs_kl = [], []
             for f in kl_files:
                 p, c, _ = load_cv_lsv(f, unit_factor=unit_factor)
-                pots_kl.append(p + e_ref_val + _nernst * ph_value)
+                pots_kl.append(p + _to_rhe_shift(e_ref_type, ph_value, _nernst))
                 curs_kl.append(c)
             if diff_species == "O2 (ORR)":
                 kla = KLAnalyzer(D_cm2_s=D_O2, nu_cm2_s=nu_kl, C_mol_cm3=C_O2,

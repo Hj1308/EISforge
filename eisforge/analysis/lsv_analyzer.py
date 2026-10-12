@@ -459,6 +459,7 @@ class LSVAnalyzer:
         e_onset_candidate = e_onset
         if not onset_found:
             e_onset = float("nan")
+            e_onset_zc = float("nan")   # patch40: zero-cross needs a wave too
             onset_method = (f"not reached (anodic j < {self.onset_min_j:g} mA/cm2 "
                             f"for {self.onset_min_points} points)")
         tafel = self._tafel_analysis(

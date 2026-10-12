@@ -1,5 +1,19 @@
 # EISForge — Patch Log
 
+## patch40 — B8 + B10: one RHE-shift helper; LSV E_onset line in the display frame; zero-cross gated
+**Date:** 2026-10-12
+**Files changed:** app.py, eisforge/analysis/lsv_analyzer.py, tests/test_rhe_shift.py (new)
+**What it does:** new `_to_rhe_shift(e_ref_type, ph, slope)` used by all six RHE conversions (CV tab, LSV Tafel
+window vs RHE, LSV plot vs RHE, ECSA x2, K-L); it returns 0 for an RHE reference (B8: data already vs RHE were
+shifted by 0.059·pH). Each site keeps its slope (0.059 or RT ln10/F). The LSV E_onset line is converted from the
+analysis frame like the Tafel markers (B10: it sat 0.210 V too high) and drawn only when finite. E_onset
+(zero-cross) is NaN without a sustained anodic current. A static test blocks hand-written RHE shifts.
+**Inspired by:** unitpackage/echemdb reference-electrode model (value vs SHE per reference, RHE = −0.0591·pH vs SHE).
+Idea only; that code is GPL.
+**Tested on:** 2nd-catalyst LSV (comparison only): E_onset line 0.860 V vs Ag/AgCl (was 1.070), 1.898 V vs RHE;
+private koh_ipa_lsv_5mVs: zero-cross NaN (was 0.769 V_RHE). New tests: 6 failed / 2 passed before, 8 passed
+after. Full suite 262 passed; ruff All checks passed!; AppTest 0 exceptions.
+
 ## patch39 — B6 + B7: LSV E_onset only with a sustained anodic current; vs-RHE conversion fixed
 **Date:** 2026-10-11
 **Files changed:** eisforge/analysis/lsv_analyzer.py, app.py (LSV tab), tests/test_lsv_onset_gate.py (new)
