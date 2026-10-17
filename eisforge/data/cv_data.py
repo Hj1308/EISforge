@@ -48,6 +48,20 @@ class BlankSubtraction:
 
 
 @dataclass
+class BlankComparison:
+    """Result of :meth:`CVData.compare_to_blank` (currents in mA, potentials in V vs ref)."""
+    verdict: str = "undefined"         # increase | decrease | no significant difference | undefined
+    text: str = ""
+    i_max_sample_mA: float = float("nan")   # max current on the shared anodic sweep
+    i_max_blank_mA: float = float("nan")
+    ratio_max: float = float("nan")         # i_max_sample / i_max_blank (blank max > 0 only)
+    max_net_mA: float = float("nan")
+    e_at_max_net_V: float = float("nan")
+    e_significant_V: float = float("nan")   # first potential of a significant increase
+    noise_mA: float = float("nan")
+
+
+@dataclass
 class CVData:
     """A voltammogram with explicit units (potential in V vs reference, current in mA)."""
     potential_V: np.ndarray
@@ -189,6 +203,71 @@ class CVData:
                     f"{res.blank_dominant_fraction:.0%} of the shared window: the two scans are "
                     "probably not comparable (different electrode, contact or day?)")
         return res
+
+    # ── activity vs blank (metal-free catalysts) ──────────────────────────────
+    def compare_to_blank(self, blank: "CVData", res: Optional[BlankSubtraction] = None,
+                         k_noise: float = 3.0, rel_min: float = 0.10,
+                         n_points: int = 5) -> "BlankComparison":
+        """Judge oxidation activity against a blank, without needing a peak (patch48).
+
+        Metal-free catalysts usually show no anodic peak; activity appears as extra
+        anodic current over the blank. On the anodic sweep(s) the net current
+        (``subtract``) is significant only where it exceeds BOTH ``k_noise`` x the noise
+        of the net current and ``rel_min`` x |I_blank| for ``n_points`` consecutive
+        points. Noise = std(diff(net)) / sqrt(2) (point-to-point scatter). The relative
+        floor guards against run-to-run differences that the noise cannot see; replicate
+        scans remain the better test.
+        """
+        res = res if res is not None else self.subtract(blank)
+        net = res.net_mA
+        an = np.zeros(len(net), dtype=bool)
+        for br in self.branches():
+            if br.kind == "anodic":
+                an[br.index] = True
+        ok = an & np.isfinite(net)
+        out = BlankComparison()
+        if not ok.any():
+            out.verdict = "undefined"
+            out.text = "The alcohol and blank anodic sweeps do not overlap: no comparison."
+            return out
+        idx = np.flatnonzero(ok)
+        i_s = self.current_mA[idx]
+        d = net[idx]
+        i_b = i_s - d
+        out.i_max_sample_mA = float(i_s.max())
+        out.i_max_blank_mA = float(i_b.max())
+        if out.i_max_blank_mA > 0:
+            out.ratio_max = out.i_max_sample_mA / out.i_max_blank_mA
+        k = int(np.argmax(d))
+        out.max_net_mA, out.e_at_max_net_V = float(d[k]), float(self.potential_V[idx[k]])
+        out.noise_mA = float(np.std(np.diff(d)) / np.sqrt(2.0)) if len(d) > 2 else 0.0
+        thr = np.maximum(k_noise * out.noise_mA, rel_min * np.abs(i_b))
+
+        def _first_run(mask):
+            run = 0
+            for j, m in enumerate(mask):
+                run = run + 1 if m else 0
+                if run >= n_points:
+                    return j - n_points + 1
+            return None
+
+        up, down = _first_run(d > thr), _first_run(d < -thr)
+        if up is not None:
+            out.verdict = "increase"
+            out.e_significant_V = float(self.potential_V[idx[up]])
+            out.text = (f"Anodic current above the blank from E = {out.e_significant_V:.3f} V "
+                        "(vs ref): oxidation activity over the blank. No distinct peak is "
+                        "expected for metal-free catalysts.")
+        elif down is not None:
+            out.verdict = "decrease"
+            out.text = ("The anodic current is BELOW the blank: no oxidation activity over the "
+                        "blank (alcohol adsorption blocking sites, or the two scans are not "
+                        "comparable).")
+        else:
+            out.verdict = "no significant difference"
+            out.text = (f"No significant difference from the blank (threshold: "
+                        f"{k_noise:g}x noise and {rel_min:.0%} of the blank current).")
+        return out
 
     # ── export ────────────────────────────────────────────────────────────────
     def to_dataframe(self):

@@ -604,7 +604,13 @@ with tab1:
             st.success(f"✅ iR-corrected | R_s = {r.r_s_used:.3f} Ω")
         _is_mf = catalyst_type == "carbon_material"
         _onset_ok = bool(np.isfinite(r.e_onset))
-        if not getattr(r, "peak_found", True):
+        if not getattr(r, "peak_found", True) and _is_mf:
+            # patch48: metal-free catalysts usually show no anodic peak; activity is judged
+            # against a blank (extra anodic current), not by a peak.
+            st.info("No distinct anodic peak, as is usual for metal-free catalysts. Peak "
+                    "current and E_onset are not reported. Upload a blank CV (electrolyte "
+                    "without alcohol) to judge oxidation activity against the blank.")
+        elif not getattr(r, "peak_found", True):
             st.warning("No anodic peak within the scan window: the forward-scan maximum is "
                        "at the anodic vertex. Peak current, E_onset and net faradaic current "
                        "are not reported. Subtract a blank CV and/or extend the anodic limit.")
@@ -739,9 +745,32 @@ with tab1:
                 cn1.metric("Max net j (anodic sweep)", f"{_net_j[_kn]:.4g} mA cm⁻²")
                 cn2.metric("at E (vs ref)", f"{_x_net[_kn]:.3f} V")
                 cn3.metric("Shared window", f"{_bres.overlap_fraction:.0%}")
-                if _net_j[_kn] <= 0:
+                if _net_j[_kn] <= 0 and not _is_mf:
                     st.warning("The net current is not positive anywhere on the anodic sweep: "
                                "no oxidation current above the blank.")
+            if _is_mf:
+                # patch48: activity vs blank without a peak (CVData.compare_to_blank)
+                _cmp = CVData(st.session_state["cv_pot"], st.session_state["cv_cur"]).compare_to_blank(
+                    CVData(st.session_state["cv_blank_pot"], st.session_state["cv_blank_cur"]),
+                    res=_bres)
+                if _cmp.verdict != "undefined":
+                    cm1, cm2, cm3 = st.columns(3)
+                    cm1.metric("j_max alcohol", f"{_cmp.i_max_sample_mA / area:.4g} mA cm⁻²",
+                               help="Maximum current on the shared anodic sweep.")
+                    cm2.metric("j_max blank", f"{_cmp.i_max_blank_mA / area:.4g} mA cm⁻²")
+                    cm3.metric("j_max ratio", f"{_cmp.ratio_max:.3f}"
+                               if np.isfinite(_cmp.ratio_max) else "—",
+                               help="alcohol / blank; > 1 means more anodic current with alcohol.")
+                _show = {"increase": st.success, "decrease": st.warning}.get(_cmp.verdict, st.info)
+                _show(f"**Activity vs blank:** {_cmp.text}")
+                if np.isfinite(_cmp.e_significant_V):
+                    _e_sig_rhe = _cmp.e_significant_V + _to_rhe_shift(e_ref_type, ph_value,
+                                                                      temperature)
+                    if _e_sig_rhe > 1.23:
+                        st.warning(f"The extra current starts at {_e_sig_rhe:.3f} V vs RHE "
+                                   "(> 1.23 V): on carbon it can overlap with OER or carbon "
+                                   "corrosion. Confirm alcohol oxidation by product analysis "
+                                   "(NMR/HPLC) or chronoamperometry.")
             else:
                 st.warning("The alcohol and blank anodic sweeps do not overlap: "
                            "the net current is undefined.")

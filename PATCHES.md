@@ -1,5 +1,23 @@
 # EISForge — Patch Log
 
+## patch48 — metal-free catalysts: oxidation activity judged against the blank, not by a peak
+**Date:** 2026-10-17
+**Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_peak_double_layer.py,
+tests/test_cv_metal_free_blank.py (new)
+**What it does:** new `CVData.compare_to_blank()` -> `BlankComparison` (verdict increase /
+decrease / no significant difference / undefined, j_max of sample and blank on the shared
+anodic sweep, their ratio, max net current, first potential of a significant increase,
+noise). Significant = net current above both 3x the point-to-point noise and 10% of the
+blank current for 5 consecutive anodic points. CV tab, Carbon Material + blank: j_max
+alcohol / blank / ratio and a verdict line; warning when the extra current starts above
+1.23 V_RHE (OER / carbon corrosion overlap). Without a peak the carbon message is now
+"No distinct anodic peak, as is usual for metal-free catalysts" (info, not a warning).
+Motivation: metal-free catalysts give no metal-like peak; activity is the extra anodic
+current over the blank (literature reports carbon controls vs blank the same way).
+**Tested on:** synthetic carbon-like CVs (µA scale, no peak): increase / 3% rerun /
+decrease / noise-only / no overlap; AppTest for increase and decrease. Real pairs:
+checked locally by the author, qualitative result only (data unpublished).
+
 ## patch46 — ROADMAP 1.1: torch-free AOR tests run in CI
 **Date:** 2026-10-17
 **Files changed:** tests/test_inductive_aor.py

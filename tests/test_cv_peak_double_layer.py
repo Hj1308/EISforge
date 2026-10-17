@@ -113,6 +113,6 @@ def test_app_cv_tab_no_peak_carbon():
     sb.select("Carbon Material (N-doped C, CNT, Graphene)").run()
     at.file_uploader(key="cv_up").upload("rising.idf", _idf_bytes(*_cv("carbon_rising"))).run()
     assert len(at.exception) == 0, f"app crashed: {at.exception}"
-    assert any("No anodic peak" in w.value for w in at.warning)
+    assert any("No distinct anodic peak" in i.value for i in at.info)   # patch48: metal-free
     onset = [m for m in at.metric if m.label == "E_onset (vs ref)"]
     assert onset and onset[0].value == "—"
