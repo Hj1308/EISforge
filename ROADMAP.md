@@ -219,7 +219,7 @@
   پکیج هستند دو مسیر جدا است. هر اصلاح (B1 و B2) دو بار نوشته شد. پیشنهاد این است که اپ از `CVData.from_ivium` استفاده
   کند و انتخاب چرخه به `CVData` منتقل شود. اول طرح کوتاه به کاربر داده شود، بعد پچ. الگو: ixdat `READER_CLASSES` و
   cellpy `BaseLoader`.
-- [ ] ROADMAP 1.1: `importorskip("torch")` در سطح ماژول در `tests/test_inductive_aor.py` به داخل تست‌ها منتقل شود.
+- [x] **patch46:** ROADMAP 1.1: `importorskip("torch")` در سطح ماژول در `tests/test_inductive_aor.py` به داخل تست‌ها منتقل شود.
 
 ### B11 — صفحهٔ band edge / Mott–Schottky: لبه‌های نوار 4.44 V جابه‌جا، علامت RHE برعکس، V_fb بدون kT/e
 - [x] **patch43 ✅ (commit 698e0fe، CI سبز).**

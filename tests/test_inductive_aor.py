@@ -29,8 +29,14 @@ from eisforge.ml.eis_gpt.aor_dataset_generator import (
     AOR_CIRCUIT_LIBRARY,
 )
 
-torch = pytest.importorskip("torch")
-from eisforge.ml.eis_gpt.physics_loss import PhysicsInformedLoss  # noqa: E402
+# patch46 (ROADMAP 1.1): only section C needs torch. A module-level importorskip
+# skipped all 20 tests in CI (no torch there); now only TestPhysicsLossModes skips.
+try:
+    import torch
+    from eisforge.ml.eis_gpt.physics_loss import PhysicsInformedLoss
+except ImportError:
+    torch = PhysicsInformedLoss = None
+needs_torch = pytest.mark.skipif(torch is None, reason="torch not installed")
 
 
 FREQ = np.logspace(-2, 5, 60)  # ascending, 10 mHz -> 100 kHz
@@ -155,6 +161,7 @@ def _to_batch(Z):
     return zr, zi, f
 
 
+@needs_torch
 class TestPhysicsLossModes:
     def test_general_mode_penalises_valid_ndr(self):
         """Documents the OLD behaviour: a physically valid NDR spectrum is

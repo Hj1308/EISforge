@@ -1,5 +1,13 @@
 # EISForge — Patch Log
 
+## patch46 — ROADMAP 1.1: torch-free AOR tests run in CI
+**Date:** 2026-10-17
+**Files changed:** tests/test_inductive_aor.py
+**What it does:** the module-level `pytest.importorskip("torch")` skipped all 20 tests of
+the file in CI (torch is not installed there). torch is now imported in try/except and
+only `TestPhysicsLossModes` (5 tests, PhysicsInformedLoss) is marked skipif-no-torch.
+**Tested on:** without torch: 15 passed, 5 skipped (was 20 skipped). With torch: all 20 run.
+
 ## patch45 — one .idf loader: app uses CVData.from_ivium (+ CVData.select_cycle)
 **Date:** 2026-10-17
 **Files changed:** app.py, eisforge/data/cv_data.py, eisforge/parsers/ivium_parser.py,
