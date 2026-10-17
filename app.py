@@ -183,98 +183,17 @@ def load_eis(f):
 
 
 def _load_ivium_cv(path: str, cycle_idx: int = -1):
-    """Load Ivium .idf CV. Returns (E_arr, I_mA, meta).
-    Current column is always amperes in .idf (converted to mA here);
-    supports cycle selection (-1 = last complete)."""
-    text = open(path, "rb").read().decode("latin-1")
-    meta = {}
-    for key in ["Scanrate", "N scans", "E start", "Vertex 1", "Vertex 2"]:
-        mm = re.search(re.escape(key) + r"=([^\r\n]+)", text)
-        if mm:
-            try:
-                meta[key] = float(mm.group(1).strip())
-            except Exception:
-                meta[key] = mm.group(1).strip()
-
-    # Ivium .idf stores current in amperes regardless of the hardware
-    # "Current Range" setting (patch32). The range is kept for reference only;
-    # it must never be used as a unit multiplier.
-    unit_mult = 1000.0   # A -> mA
-    meta["_unit_mult"] = unit_mult
-    meta["_unit_label"] = "mA"
-    _cr = re.search(r"Current Range\s*=\s*([^\r\n]+)", text)
-    meta["_current_range"] = _cr.group(1).strip() if _cr else None
-
-    # Extract ONLY the primary_data block (anchored to the section header)
-    _lines = text.splitlines()
-    E_list, I_list, E3_list = [], [], []
-    for _i, _ln in enumerate(_lines):
-        if _ln.strip().lower() == "primary_data":
-            try:
-                _npts = int(_lines[_i + 2].strip())
-            except (ValueError, IndexError):
-                _npts = len(_lines) - (_i + 3)
-            for _ln2 in _lines[_i + 3:_i + 3 + _npts]:
-                _parts = _ln2.split()
-                if len(_parts) >= 2:
-                    try:
-                        E_list.append(float(_parts[0])); I_list.append(float(_parts[1]))
-                        E3_list.append(float(_parts[2]) if len(_parts) >= 3 else np.nan)
-                    except ValueError:
-                        continue
-            break
-    if not E_list:
-        raise ValueError("No primary_data block found in .idf file")
-    E_arr = np.array(E_list, dtype=float)
-    I_mA = np.array(I_list, dtype=float) * unit_mult   # apply the parsed unit multiplier
-
-    # patch34 (B2): with "Apply wrt OCP=true", column 1 is the potential applied
-    # relative to the open-circuit potential; column 3 is the absolute potential
-    # vs the reference electrode (= column 1 + OCP). Use column 3 so that E_onset,
-    # E vs RHE and blank-vs-alcohol comparisons are on the reference scale.
-    meta["_ocp_V"] = None
-    meta["_potential_source"] = "column 1 (vs reference)"
-    if re.search(r"^Apply wrt OCP=true", text, re.M):
-        E3_arr = np.array(E3_list, dtype=float)
-        if len(E3_arr) == len(E_arr) and np.all(np.isfinite(E3_arr)):
-            meta["_ocp_V"] = float(np.mean(E3_arr - E_arr))
-            meta["_potential_source"] = "column 3 (vs reference; scan applied wrt OCP)"
-            E_arr = E3_arr
-        else:
-            meta["_potential_source"] = "column 1 (RELATIVE TO OCP; OCP not stored)"
-            meta["_potential_warning"] = (
-                "This scan was applied relative to OCP and the file has no absolute-"
-                "potential column: potentials are relative to OCP, NOT to the reference "
-                "electrode. E_onset and E vs RHE are shifted by the (unknown) OCP.")
-
-    sign_ch = np.diff(np.sign(np.diff(E_arr)))
-    vertices = np.where(sign_ch != 0)[0] + 1
-    if len(vertices) < 2:
-        meta["_n_cycles"] = 1
-        meta["_cycle_used"] = 1
-        return E_arr, I_mA, meta
-
-    # Detect scan direction to split at correct turning points
-    dE = np.diff(E_arr[:min(50, len(E_arr))])
-    first_dir = "up" if np.median(dE) > 0 else "down"
-    if first_dir == "up":
-        cycle_boundaries = vertices[1::2]
-    else:
-        cycle_boundaries = vertices[0::2]
-    if len(cycle_boundaries) == 0:
-        cycle_boundaries = vertices[:1]
-    cycle_starts = [0] + list(cycle_boundaries + 1)
-    cycle_ends = list(cycle_boundaries + 1) + [len(E_arr)]
-
-    n_cycles = len(cycle_starts) - 1
-    meta["_n_cycles"] = n_cycles
-    if cycle_idx == -1:
-        chosen = max(0, n_cycles - 2) if n_cycles >= 2 else 0
-    else:
-        chosen = max(0, min(cycle_idx, n_cycles - 1))
-    meta["_cycle_used"] = chosen + 1
-    s, e_ = cycle_starts[chosen], cycle_ends[chosen]
-    return E_arr[s:e_], I_mA[s:e_], meta
+    """Load Ivium .idf CV/LSV via the package (CVData.from_ivium, patch45).
+    Returns (E_V, I_mA, meta) with the meta keys the tabs use."""
+    from eisforge.data.cv_data import CVData
+    cv = CVData.from_ivium(path).select_cycle(cycle_idx)
+    meta = {"_unit_label": "mA", "_ocp_V": cv.meta.get("ocp_V"),
+            "_n_cycles": cv.meta["n_cycles"], "_cycle_used": cv.meta["cycle_used"]}
+    if np.isfinite(cv.scan_rate_mV_s):
+        meta["Scanrate"] = cv.scan_rate_mV_s / 1000.0
+    if cv.meta.get("potential_warning"):
+        meta["_potential_warning"] = cv.meta["potential_warning"]
+    return cv.potential_V, cv.current_mA, meta
 
 
 def _compute_charge(E, I_mA, scan_rate_mV_s):

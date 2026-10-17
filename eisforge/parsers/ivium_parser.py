@@ -118,10 +118,15 @@ class IviumIDFParser(BaseEISParser):
         # patch34 (B2): scan applied wrt OCP -> column 3 is the absolute potential
         # vs the reference electrode (column 1 is relative to OCP).
         metadata["ocp_V"] = None
-        if (str(metadata.get("apply_wrt_ocp", "")).lower() == "true"
-                and raw_data.shape[1] >= 3 and np.all(np.isfinite(raw_data[:, 2]))):
-            metadata["ocp_V"] = float(np.mean(raw_data[:, 2] - raw_data[:, 0]))
-            potential = raw_data[:, 2]
+        if str(metadata.get("apply_wrt_ocp", "")).lower() == "true":
+            if raw_data.shape[1] >= 3 and np.all(np.isfinite(raw_data[:, 2])):
+                metadata["ocp_V"] = float(np.mean(raw_data[:, 2] - raw_data[:, 0]))
+                potential = raw_data[:, 2]
+            else:
+                metadata["potential_warning"] = (
+                    "This scan was applied relative to OCP and the file has no absolute-"
+                    "potential column: potentials are relative to OCP, NOT to the reference "
+                    "electrode. E_onset and E vs RHE are shifted by the (unknown) OCP.")
         current_ma = current_a * 1000.0   # A → mA
 
         # Tag data type for downstream code

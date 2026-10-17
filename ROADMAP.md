@@ -213,7 +213,9 @@
   - ثابت `_ONSET_RANGES` در `cv_analyzer.py` حذف شد. بعد از patch41 هیچ‌جا استفاده نمی‌شد.
 
 ### کار بعدی (جلسهٔ بعد) — معماری: یکی کردن لودر اپ با پارسر پکیج
-- [ ] لودر `.idf` در `app.py` (`_load_ivium_cv` و `_parse_idf_cached`) با `IviumIDFParser` و `CVData.from_ivium` که در
+- [x] **patch45:** اپ حالا از `CVData.from_ivium` و `CVData.select_cycle` استفاده می‌کند؛ روی 173 فایل واقعی خروجی یکسان بود.
+- [ ] **B12 (تأییدنشده روی دادهٔ واقعی چندچرخه‌ای):** قاعدهٔ قدیمی انتخاب چرخه در اسکن چندچرخه‌ای یکی کم می‌شمارد (۳ چرخه ← ۲) و اگر اسکن رو به پایین شروع شود، «چرخهٔ ۱» فقط نیم‌چرخه است. در patch45 عمداً دست نخورد. تست: `tests/test_cv_select_cycle.py`.
+- [ ] (قبلی) لودر `.idf` در `app.py` (`_load_ivium_cv` و `_parse_idf_cached`) با `IviumIDFParser` و `CVData.from_ivium` که در
   پکیج هستند دو مسیر جدا است. هر اصلاح (B1 و B2) دو بار نوشته شد. پیشنهاد این است که اپ از `CVData.from_ivium` استفاده
   کند و انتخاب چرخه به `CVData` منتقل شود. اول طرح کوتاه به کاربر داده شود، بعد پچ. الگو: ixdat `READER_CLASSES` و
   cellpy `BaseLoader`.

@@ -83,6 +83,31 @@ class CVData:
         return cls(potential_V=ds.z_real, current_mA=ds.z_imag, scan_rate_mV_s=sr,
                    label=label or Path(path).stem, meta=md)
 
+    # ── cycles ────────────────────────────────────────────────────────────────
+    def select_cycle(self, idx: int = -1) -> "CVData":
+        """Return one cycle (ixdat ``select_cycle`` idea); ``idx=-1`` = last complete cycle.
+
+        Cycles are cut at every second potential vertex, starting from the first scan
+        direction (the rule of the former app loader, kept unchanged in patch45). The
+        result's meta gets ``n_cycles`` and ``cycle_used`` (1-based).
+        """
+        E = self.potential_V
+        v = np.where(np.diff(np.sign(np.diff(E))) != 0)[0] + 1
+        if len(v) < 2:
+            start, end, n, k = 0, len(E), 1, 0
+        else:
+            up = np.median(np.diff(E[:min(50, len(E))])) > 0
+            b = v[1::2] if up else v[0::2]
+            if len(b) == 0:
+                b = v[:1]
+            starts, ends = [0] + list(b + 1), list(b + 1) + [len(E)]
+            n = len(starts) - 1
+            k = (max(0, n - 2) if n >= 2 else 0) if idx == -1 else max(0, min(idx, n - 1))
+            start, end = starts[k], ends[k]
+        return CVData(potential_V=E[start:end], current_mA=self.current_mA[start:end],
+                      scan_rate_mV_s=self.scan_rate_mV_s, label=self.label,
+                      meta={**self.meta, "n_cycles": n, "cycle_used": k + 1})
+
     # ── sweeps ────────────────────────────────────────────────────────────────
     def branches(self, min_points: int = 3) -> List[Branch]:
         """Split into monotonic sweeps by the sign of dE (ixdat find_signed_sections idea).

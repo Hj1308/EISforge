@@ -1,5 +1,23 @@
 # EISForge — Patch Log
 
+## patch45 — one .idf loader: app uses CVData.from_ivium (+ CVData.select_cycle)
+**Date:** 2026-10-17
+**Files changed:** app.py, eisforge/data/cv_data.py, eisforge/parsers/ivium_parser.py,
+tests/test_cv_select_cycle.py (new)
+**What it does:** `_load_ivium_cv` in app.py no longer parses the file itself; it calls
+`CVData.from_ivium(path).select_cycle(idx)` and maps the meta to the keys the tabs use.
+New `CVData.select_cycle` (ixdat `select_cycle` idea) holds the former app cycle rule
+unchanged. `IviumIDFParser` now sets `potential_warning` when the scan was applied wrt
+OCP but the file has no absolute-potential column (previously only the app warned).
+Pattern: one reader per format (ixdat READER_CLASSES, cellpy BaseLoader).
+**Tested on:** 173 real CV/LSV .idf files (EISforg_localdata) — old loader vs new path
+IDENTICAL for E, I, OCP, scan rate, cycle count and cycle used (idx -1/0/1); all
+real files are single-cycle. Full suite + ruff clean.
+**Behaviour change:** files the package classifies as EIS (e.g. long CA files) are now
+rejected by the CV/LSV/ECSA tabs with "not a CV/LSV file" instead of being read as CV.
+**Known, not fixed (B12):** the legacy cycle rule is off by one for multi-cycle scans
+(pinned in tests/test_cv_select_cycle.py).
+
 ## patch44 — B5: backward-scan peak is the anodic re-oxidation peak; I_f/I_b reported, not graded
 **Date:** 2026-10-12
 **Files changed:** eisforge/analysis/cv_analyzer.py, app.py, tests/test_backward_peak.py (new)
