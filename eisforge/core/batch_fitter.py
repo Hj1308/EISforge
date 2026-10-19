@@ -323,6 +323,7 @@ class BatchFitter:
                 bounds=self._bounds,
                 method=self.method,
                 loss=self.loss,
+                x_scale="jac",   # patch49: parameters span ~1e-5 (Q) to ~1e4 (R)
                 ftol=1e-10,
                 xtol=1e-10,
                 gtol=1e-10,

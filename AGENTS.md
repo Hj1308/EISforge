@@ -136,6 +136,44 @@ themselves.
 
 ---
 
+## Workflow lessons (verified in past sessions — carry them into every task)
+
+Lessons that cost us a patch cycle once. Add a line here whenever a new one is
+confirmed; a lesson that lives only in a chat is lost.
+
+- **Deliver patches as files, not as code pasted into a prompt.** The patch
+  script is generated from a tested copy of `main` and handed over as a file;
+  DeepSeek only saves and runs it. Retyping a long exact `OLD` string changes a
+  character sooner or later, and the anchor check then fails (or worse, passes on
+  code nobody tested).
+- **Name the absolute repo path in every prompt**
+  (`cd /d C:\Users\hoda\Desktop\EISforg && ...`); never rely on the current
+  directory.
+- **Run it locally before writing the prompt.** Every patch is applied to a clean
+  copy of `main` and the tests run there first; the prompt only goes out after
+  that. A patch script must also stop (`STOP`, nothing written) when run twice.
+- **Verify a push by hash, not by eye.** After the human pushes, compare the
+  pushed files byte for byte (CRLF stripped) with the tested copy, then check CI.
+- **Private data stays private.** The author's measurement files are unpublished.
+  Diagnostic scripts run on the author's machine and print only qualitative
+  results (yes/no, verdicts); real numbers from those files are never written
+  into tracked files (`ROADMAP.md`, `PATCHES.md`, tests).
+- **A synthetic reproduction is not a real-data bug.** When a bug shows on
+  synthetic data only, re-run on a real file (or a real file plus a known added
+  signal) before patching; if it does not reproduce, log it as unverified
+  instead of patching (B14).
+- **Metal-free catalysts have no metal-like peak.** Judge their oxidation
+  activity against a blank (extra anodic current, `CVData.compare_to_blank`),
+  never by "peak found / not found".
+- **Scale-dependent optimizer settings.** `least_squares` tolerances are relative
+  to the parameter scale; EIS parameters span ~1e-5 (Q) to ~1e4 (R). Use
+  `x_scale="jac"` and check that a nested model never fits worse than its
+  special case (patch49: a 2-RC fit stopped at 25x the reachable SSE).
+- **Rank with the objective you minimised.** AICc must use the same weighted RSS
+  as the fit, and count the error variance (k = p + 1).
+
+---
+
 ## Style
 
 - Code comments and docstrings: English.

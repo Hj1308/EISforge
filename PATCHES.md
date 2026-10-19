@@ -1,5 +1,20 @@
 # EISForge — Patch Log
 
+## patch49 — CNLS fit with Jacobian scaling; AICc on the fit objective (k = p + 1); AGENTS workflow lessons
+**Date:** 2026-10-19
+**Files changed:** eisforge/core/fitter.py, eisforge/core/batch_fitter.py, eisforge/core/batch_eis_fitter.py,
+eisforge/catalogs/suggestion_engine.py, AGENTS.md, tests/test_fit_scaling_aicc.py (new)
+**What it does:** `least_squares(..., x_scale="jac")` in all CNLS fits. EIS parameters span ~1e-5 (Q) to
+~1e4 (R); with the relative xtol, TRF stopped after 28 evaluations far from the minimum. AICc in the
+circuit suggestion engine now uses the |Z|-weighted RSS that the fit minimises (was unweighted Ω²) and
+k = p + 1 (error variance). AGENTS.md gets a "Workflow lessons" section.
+**Tested on:** tests/data/sample_eis.idf (real): 2-RC weighted SSE was 25x the reachable value; after the
+patch it equals the tight multistart minimum. Ranking before: 1-RC best (2-RC dAICc 468); after: 2-RC and
+2-RC+W essentially equivalent, 1-RC dAICc > 100. New tests: 2 failed before, 2 passed after; full suite
+276 passed, 20 skipped (no torch / private data); ruff clean.
+**Known, not fixed:** R0-R1-p(R2,CPE1)-p(R3,CPE2) still lands in a local minimum from the default p0
+(multistart 628x better) — needs multistart, separate patch.
+
 ## patch48 — metal-free catalysts: oxidation activity judged against the blank, not by a peak
 **Date:** 2026-10-17
 **Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_peak_double_layer.py,

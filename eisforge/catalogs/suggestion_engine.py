@@ -21,7 +21,10 @@ penalises extra free parameters, with a small-sample correction so a
 because it has fewer degrees of freedom to overfit with.
 
     AIC  = 2k + n*ln(RSS/n)
-    AICc = AIC + 2k(k+1)/(n-k-1)          (n = 2 * n_frequencies, k = n_params)
+    AICc = AIC + 2k(k+1)/(n-k-1)          (n = 2 * n_frequencies, k = n_params + 1)
+
+RSS is the modulus-weighted RSS that CNLSFitter minimises, and k also counts the
+error variance (patch49).
 
 Lower AICc = better trade-off between fit quality and complexity. Models are
 reported with ΔAICc relative to the best one; ΔAICc < 2 is "essentially
@@ -261,9 +264,12 @@ def _fit_one(model: CircuitModel, dataset: EISDataset,
 
     n_data = 2 * len(dataset.frequency)
     k = len(p0)
-    resid = dataset.z_complex - res.z_fit
+    # patch49: rank with the objective the fit minimised (|Z|-weighted residuals, as in
+    # CNLSFitter weight_by_modulus) and count the error variance as a parameter (k + 1).
+    z = dataset.z_complex
+    resid = (z - res.z_fit) / np.maximum(np.abs(z), 1e-10)
     rss = float(np.sum(resid.real ** 2 + resid.imag ** 2))
-    aicc = _aicc(rss, n_data, k)
+    aicc = _aicc(rss, n_data, k + 1)
     return CircuitSuggestion(model=model, fit_result=res, aicc=aicc,
                              n_params=k, converged=True)
 

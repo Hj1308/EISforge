@@ -242,6 +242,10 @@ class CNLSFitter:
                 x0=p0,
                 bounds=(lb, ub),
                 method=method,
+                # patch49: parameters span ~1e-5 (Q) to ~1e4 (R); without Jacobian
+                # scaling the relative xtol stopped TRF far from the minimum (real
+                # sample_eis.idf, 2-RC model: SSE 25x the reachable value).
+                x_scale="jac",
                 ftol=1e-12,
                 xtol=1e-12,
                 gtol=1e-12,
@@ -262,6 +266,7 @@ class CNLSFitter:
                     residuals,
                     x0=p0,
                     method="lm",    # No bounds, most robust
+                    x_scale="jac",
                     ftol=1e-10,
                     xtol=1e-10,
                     gtol=1e-10,
@@ -294,7 +299,7 @@ class CNLSFitter:
                     irls_w[:] = new_w
                     result_r = least_squares(
                         residuals, x0=fitted, bounds=(lb, ub),
-                        method="trf", ftol=1e-12, xtol=1e-12, gtol=1e-12,
+                        method="trf", x_scale="jac", ftol=1e-12, xtol=1e-12, gtol=1e-12,
                         max_nfev=10000,
                     )
                     if np.all(np.isfinite(result_r.x)):

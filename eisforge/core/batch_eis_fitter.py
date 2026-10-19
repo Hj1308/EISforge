@@ -314,6 +314,7 @@ class WarmStartBatchFitter:
                 args=(self.evaluator, freq, Z_exp),
                 method=self.method,
                 loss=self.loss,
+                x_scale="jac",   # patch49: parameters span ~1e-5 (Q) to ~1e4 (R)
                 max_nfev=self.max_nfev,
                 ftol=self.ftol,
                 xtol=self.xtol,
