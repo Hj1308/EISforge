@@ -791,8 +791,22 @@ with tab1:
                         cq2.metric(f"Q {_rlab}", f"{_cmp.q_reference:.4g} {_cmp.q_unit}")
                         cq3.metric("Q ratio", f"{_cmp.ratio_charge:.3f}"
                                    if np.isfinite(_cmp.ratio_charge) else "—")
+                if np.isfinite(_cmp.cap_ratio) or np.isfinite(_cmp.far_ratio):
+                    cf1, cf2, cf3 = st.columns(3)
+                    cf1.metric("Double-layer current ratio", f"{_cmp.cap_ratio:.2f}"
+                               if np.isfinite(_cmp.cap_ratio) else "—",
+                               help=f"Half loop width in the middle of the window, sample / "
+                                    f"{_rlab} (ixdat calc_capacitance). Tracks electroactive area.")
+                    cf2.metric("Faradaic estimate, sample",
+                               f"{_cmp.i_far_max_sample_mA / area:.4g} mA cm⁻²",
+                               help="max of (I_forward + I_backward)/2: capacitive part cancelled.")
+                    cf3.metric("Faradaic estimate ratio", f"{_cmp.far_ratio:.2f}"
+                               if np.isfinite(_cmp.far_ratio) else "—")
                 _show = {"increase": st.success, "decrease": st.warning}.get(_cmp.verdict, st.info)
                 _show(f"**Activity vs {_rlab}:** {_cmp.text}")
+                if _cmp.capacitive_note:
+                    (st.warning if "may be larger electroactive area" in _cmp.capacitive_note
+                     else st.info)(_cmp.capacitive_note)
                 if np.isfinite(_cmp.e_significant_V):
                     _e_sig_rhe = _cmp.e_significant_V + _to_rhe_shift(e_ref_type, ph_value,
                                                                       temperature)

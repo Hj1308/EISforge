@@ -1,5 +1,22 @@
 # EISForge — Patch Log
 
+## patch51 — CV comparison: separate the double-layer (area) part from the faradaic part
+**Date:** 2026-10-19
+**Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_metal_free_blank.py
+**Survey:** ixdat (MIT) `calc_capacitance`: C = 1/2 (I_fwd/v - I_bwd/v) over the two sweeps through a
+window. The same decomposition gives the net current with the capacitive part cancelled,
+(I_fwd + I_bwd)/2. The Dunn method (i = k1 v + k2 v^1/2) needs several scan rates: left for later.
+**What it does:** new `CVData.split_capacitive()` -> i_cap = (I_fwd - I_bwd)/2 and i_far = (I_fwd + I_bwd)/2 on
+the potentials shared by the first anodic and cathodic sweep (3% away from the vertices), plus C_dl from
+the middle 50%. `compare_to_blank` adds cap_ratio (double-layer current, sample / reference), the
+faradaic-estimate maxima and their ratio, per_area_ratio = far_ratio / cap_ratio, and a note: faradaic
+and area both higher -> per-area activity reported; only faradaic higher -> "not only double-layer";
+only j_max and area higher -> "may be larger electroactive area, not higher activity". CV tab shows
+the three metrics and the note. Assumes a roughly potential-independent capacitance; reversible
+surface redox largely cancels in i_far.
+**Tested on:** synthetic loops: pure capacitive (i_far = 0, C exact), 5x area only, faradaic excess only,
+5x area with the same chemistry (per-area ratio 1.00). Full suite 285 passed, 20 skipped; ruff clean.
+
 ## patch50 — CV tab: reference type (blank or reference catalyst) and charge in a potential window
 **Date:** 2026-10-19
 **Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_metal_free_blank.py, AGENTS.md, ROADMAP.md

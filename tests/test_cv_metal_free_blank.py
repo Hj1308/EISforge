@@ -150,3 +150,35 @@ def test_app_reference_catalyst_with_window():
     assert "j_max reference" in labels and "Q ratio" in labels
     assert any("Activity vs reference" in x.value for x in list(at.success) + list(at.warning)
                + list(at.info))
+
+
+# ── patch51: capacitive vs faradaic part of the difference ───────────────────
+def test_split_capacitive_pure_loop():
+    sp = CVData(E, np.where(UP, 1.0e-3, -1.0e-3), scan_rate_mV_s=50.0).split_capacitive()
+    assert np.allclose(sp["i_far_mA"], 0.0, atol=1e-12)
+    assert sp["i_cap_mid_mA"] == pytest.approx(1.0e-3)
+    assert sp["cdl_mF"] == pytest.approx(1.0e-3 / 0.05)
+
+
+def test_larger_area_only_is_flagged_capacitive():
+    loop = np.where(UP, 1.0e-3, -1.0e-3) + 0.4e-3 * E          # tilted, purely capacitive
+    r = _cmp(5.0 * loop, loop, reference="catalyst")           # 5x area, same chemistry
+    assert r.cap_ratio == pytest.approx(5.0, rel=0.02)
+    assert "larger electroactive area" in r.capacitive_note
+
+
+def test_faradaic_excess_is_not_only_double_layer():
+    far = 1.0e-3 * np.exp((E - 0.5) / 0.10)                    # anodic in BOTH sweeps
+    r = _cmp(_blank(1) + far, _blank(2), reference="catalyst")
+    assert r.far_ratio > 1.2 and r.cap_ratio == pytest.approx(1.0, abs=0.1)
+    assert "not only double-layer" in r.capacitive_note
+
+
+def test_more_area_and_more_faradaic_reports_per_area_ratio():
+    loop = np.where(UP, 1.0e-3, -1.0e-3) + 0.4e-3 * E
+    far = 1.0e-3 * np.exp((E - 0.5) / 0.10)
+    r = _cmp(5.0 * (loop + far), loop + far, reference="catalyst")   # 5x area, same chemistry
+    assert r.cap_ratio == pytest.approx(5.0, rel=0.05)
+    assert r.far_ratio == pytest.approx(5.0, rel=0.05)
+    assert r.per_area_ratio == pytest.approx(1.0, rel=0.05)
+    assert "per unit electroactive area" in r.capacitive_note

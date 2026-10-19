@@ -63,6 +63,12 @@ class BlankComparison:
     q_reference: float = float("nan")
     q_unit: str = ""
     ratio_charge: float = float("nan")      # q_sample / q_reference (reference > 0 only)
+    cap_ratio: float = float("nan")         # double-layer current sample / reference (patch51)
+    i_far_max_sample_mA: float = float("nan")   # max of (I_fwd + I_bwd)/2
+    i_far_max_ref_mA: float = float("nan")
+    far_ratio: float = float("nan")         # faradaic-estimate ratio (reference > 0 only)
+    per_area_ratio: float = float("nan")    # far_ratio / cap_ratio: activity per C_dl area
+    capacitive_note: str = ""
 
 
 @dataclass
@@ -210,6 +216,41 @@ class CVData:
                     "probably not comparable (different electrode, contact or day?)")
         return res
 
+    # ── capacitive / faradaic split (patch51) ───────────────────────────────────
+    def split_capacitive(self, n_grid: int = 200) -> Optional[dict]:
+        """Split one cycle into capacitive and faradaic-estimate parts on a common grid.
+
+        Same decomposition as ixdat ``calc_capacitance`` (C = 1/2 (I_fwd/v - I_bwd/v)):
+        on the potentials shared by the first anodic and first cathodic sweep,
+        ``i_cap = (I_fwd - I_bwd)/2`` (half loop width) and ``i_far = (I_fwd + I_bwd)/2``
+        (net current, capacitive part cancelled). Valid when the capacitance is roughly
+        potential-independent; reversible surface redox pairs largely cancel in
+        ``i_far``, irreversible oxidation remains. Returns None without both sweeps.
+        """
+        brs = self.branches()
+        a = next((b for b in brs if b.kind == "anodic"), None)
+        c = next((b for b in brs if b.kind == "cathodic"), None)
+        if a is None or c is None:
+            return None
+        ea, ia = self.potential_V[a.index], self.current_mA[a.index]
+        ec, ic = self.potential_V[c.index], self.current_mA[c.index]
+        oc = np.argsort(ec)
+        ec, ic = ec[oc], ic[oc]
+        lo, hi = max(ea.min(), ec.min()), min(ea.max(), ec.max())
+        if hi - lo <= 0:
+            return None
+        # 3% away from both vertices (the vertex point belongs to both sweeps; patch36 rule)
+        lo, hi = lo + 0.03 * (hi - lo), hi - 0.03 * (hi - lo)
+        e = np.linspace(lo, hi, n_grid)
+        i_f, i_b = np.interp(e, ea, ia), np.interp(e, ec, ic)
+        out = {"E_V": e, "i_cap_mA": (i_f - i_b) / 2.0, "i_far_mA": (i_f + i_b) / 2.0}
+        mid = (e >= lo + 0.25 * (hi - lo)) & (e <= hi - 0.25 * (hi - lo))
+        nu = self.scan_rate_mV_s / 1000.0
+        out["cdl_mF"] = (float(np.mean(out["i_cap_mA"][mid])) / nu
+                         if np.isfinite(nu) and nu > 0 else float("nan"))
+        out["i_cap_mid_mA"] = float(np.mean(out["i_cap_mA"][mid]))
+        return out
+
     # ── activity vs blank (metal-free catalysts) ──────────────────────────────
     def compare_to_blank(self, blank: "CVData", res: Optional[BlankSubtraction] = None,
                          k_noise: float = 3.0, rel_min: float = 0.10,
@@ -257,6 +298,37 @@ class CVData:
         k = int(np.argmax(d))
         out.max_net_mA, out.e_at_max_net_V = float(d[k]), float(self.potential_V[idx[k]])
         out.noise_mA = float(np.std(np.diff(d)) / np.sqrt(2.0)) if len(d) > 2 else 0.0
+        # patch51: is the difference faradaic or just more double layer (larger area)?
+        sp_s, sp_r = self.split_capacitive(), blank.split_capacitive()
+        if sp_s is not None and sp_r is not None:
+            if sp_r["i_cap_mid_mA"] > 0:
+                out.cap_ratio = sp_s["i_cap_mid_mA"] / sp_r["i_cap_mid_mA"]
+            out.i_far_max_sample_mA = float(np.max(sp_s["i_far_mA"]))
+            out.i_far_max_ref_mA = float(np.max(sp_r["i_far_mA"]))
+            if out.i_far_max_ref_mA > 0:
+                out.far_ratio = out.i_far_max_sample_mA / out.i_far_max_ref_mA
+            far_up = np.isfinite(out.far_ratio) and out.far_ratio > 1.2
+            cap_up = np.isfinite(out.cap_ratio) and out.cap_ratio > 1.2
+            if far_up and cap_up:
+                out.per_area_ratio = out.far_ratio / out.cap_ratio
+                out.capacitive_note = (
+                    f"Faradaic estimate (mean of forward and backward sweeps) is "
+                    f"{out.far_ratio:.1f}x {ref}'s and the double-layer current "
+                    f"{out.cap_ratio:.1f}x: per unit electroactive area the faradaic activity "
+                    f"is {out.per_area_ratio:.2f}x. Part of the higher current comes from a "
+                    "larger electroactive area.")
+            elif far_up:
+                out.capacitive_note = (
+                    f"Faradaic estimate (mean of forward and backward sweeps, capacitive part "
+                    f"cancelled): {out.far_ratio:.1f}x {ref}'s. The difference is not only "
+                    "double-layer current.")
+            elif (cap_up and np.isfinite(out.ratio_max) and out.ratio_max > 1
+                    and out.cap_ratio >= 0.8 * out.ratio_max):
+                out.capacitive_note = (
+                    f"The double-layer (capacitive) current is {out.cap_ratio:.1f}x {ref}'s, "
+                    f"close to the j_max ratio ({out.ratio_max:.1f}x), and the faradaic "
+                    "estimate is not higher: the difference may be larger electroactive "
+                    "area, not higher activity.")
         if e_window is not None:
             lo, hi = sorted(float(v) for v in e_window)
             nu = self.scan_rate_mV_s / 1000.0 if np.isfinite(self.scan_rate_mV_s) else 1.0
