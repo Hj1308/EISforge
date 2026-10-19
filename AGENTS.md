@@ -141,6 +141,13 @@ themselves.
 Lessons that cost us a patch cycle once. Add a line here whenever a new one is
 confirmed; a lesson that lives only in a chat is lost.
 
+- **Survey existing software before writing any patch.** Before designing a
+  change, look at how mature open-source tools solve the same problem (ixdat,
+  impedance.py, pyimpspec, cellpy, PyVoltammetry, SoftPotato, voltcycle, ...):
+  read their code and architecture, then reuse the design (respecting the
+  licence: MIT/Apache code may be adapted with credit, GPL only as an idea),
+  improve it, or design our own with a stated reason. Name the source in the
+  patch comment and in `PATCHES.md`. No trial-and-error coding.
 - **Deliver patches as files, not as code pasted into a prompt.** The patch
   script is generated from a tested copy of `main` and handed over as a file;
   DeepSeek only saves and runs it. Retyping a long exact `OLD` string changes a

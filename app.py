@@ -498,11 +498,29 @@ with tab1:
     with col1:
         cv_file = st.file_uploader("Upload CV file", type=CV_FORMATS, key="cv_up")
         cv_blank_file = st.file_uploader(
-            "Blank CV (electrolyte only, optional)", type=CV_FORMATS, key="cv_blank_up",
-            help="Same electrode, scan rate and window, recorded without alcohol. It is "
-                 "subtracted branch by branch (net = alcohol - blank). E_onset, peak search "
-                 "and C_dl still use the alcohol CV itself.",
+            "Reference CV (blank or reference catalyst, optional)", type=CV_FORMATS,
+            key="cv_blank_up",
+            help="Blank: same electrode, scan rate and window, recorded without alcohol. "
+                 "Reference catalyst: e.g. carbon black, with alcohol. It is subtracted "
+                 "branch by branch (net = sample - reference). E_onset, peak search and C_dl "
+                 "still use the sample CV itself.",
         )
+        # patch50: what the reference CV is (ixdat diff_with is generic; the meaning is ours)
+        cv_ref_kind = st.radio(
+            "Reference type", ["Blank (same electrode, no alcohol)",
+                               "Reference catalyst (e.g. carbon black, with alcohol)"],
+            key="cv_ref_kind", horizontal=True)
+        _ref_is_blank = cv_ref_kind.startswith("Blank")
+        cv_ref_qwin = st.checkbox("Also compare the anodic charge in a potential window",
+                                  key="cv_ref_qwin",
+                                  help="Charge of the anodic sweep(s) between E1 and E2 "
+                                       "(vs ref), as ixdat integrate(vspan=...).")
+        if cv_ref_qwin:
+            _qc1, _qc2 = st.columns(2)
+            cv_ref_e1 = _qc1.number_input("E1 (V vs ref)", value=0.0, step=0.05,
+                                          format="%.3f", key="cv_ref_e1")
+            cv_ref_e2 = _qc2.number_input("E2 (V vs ref)", value=0.5, step=0.05,
+                                          format="%.3f", key="cv_ref_e2")
         sr_cv = st.number_input("Scan rate (mV/s)", value=50, min_value=1)
         cycle_idx = st.number_input(
             "Cycle to analyse (0=first, -1=last complete)", value=-1, min_value=-1, step=1,
@@ -584,7 +602,8 @@ with tab1:
                     _bres = CVData(pot, cur, scan_rate_mV_s=float(sr_cv),
                                    meta={"ocp_V": _meta.get("_ocp_V")}).subtract(
                         CVData(bpot, bcur, scan_rate_mV_s=_bsr,
-                               meta={"ocp_V": _bmeta.get("_ocp_V")}))
+                               meta={"ocp_V": _bmeta.get("_ocp_V")}),
+                        same_electrode=_ref_is_blank)
                     st.session_state.update({
                         "cv_blank_pot": np.asarray(bpot, dtype=float),
                         "cv_blank_cur": np.asarray(bcur, dtype=float),
@@ -726,7 +745,8 @@ with tab1:
         # ── Blank subtraction: net = alcohol - blank (patch38) ──────────────
         if "cv_net" in st.session_state:
             from eisforge.data.cv_data import CVData
-            st.markdown("#### 🧪 Blank subtraction (net = alcohol − blank)")
+            st.markdown("#### 🧪 Blank subtraction (net = alcohol − blank)" if _ref_is_blank
+                        else "#### 🧪 Reference catalyst (net = sample − reference)")
             _bres = st.session_state["cv_blank_res"]
             for _wmsg in _bres.warnings:
                 st.warning(f"Blank: {_wmsg}")
@@ -750,19 +770,29 @@ with tab1:
                                "no oxidation current above the blank.")
             if _is_mf:
                 # patch48: activity vs blank without a peak (CVData.compare_to_blank)
-                _cmp = CVData(st.session_state["cv_pot"], st.session_state["cv_cur"]).compare_to_blank(
+                _cmp = CVData(st.session_state["cv_pot"], st.session_state["cv_cur"],
+                              scan_rate_mV_s=float(sr_cv)).compare_to_blank(
                     CVData(st.session_state["cv_blank_pot"], st.session_state["cv_blank_cur"]),
-                    res=_bres)
+                    res=_bres, reference="blank" if _ref_is_blank else "catalyst",
+                    e_window=(cv_ref_e1, cv_ref_e2) if cv_ref_qwin else None)
+                _rlab = "blank" if _ref_is_blank else "reference"
                 if _cmp.verdict != "undefined":
                     cm1, cm2, cm3 = st.columns(3)
-                    cm1.metric("j_max alcohol", f"{_cmp.i_max_sample_mA / area:.4g} mA cm⁻²",
+                    cm1.metric("j_max sample", f"{_cmp.i_max_sample_mA / area:.4g} mA cm⁻²",
                                help="Maximum current on the shared anodic sweep.")
-                    cm2.metric("j_max blank", f"{_cmp.i_max_blank_mA / area:.4g} mA cm⁻²")
+                    cm2.metric(f"j_max {_rlab}", f"{_cmp.i_max_blank_mA / area:.4g} mA cm⁻²")
                     cm3.metric("j_max ratio", f"{_cmp.ratio_max:.3f}"
                                if np.isfinite(_cmp.ratio_max) else "—",
-                               help="alcohol / blank; > 1 means more anodic current with alcohol.")
+                               help=f"sample / {_rlab}; > 1 means more anodic current.")
+                    if cv_ref_qwin:
+                        cq1, cq2, cq3 = st.columns(3)
+                        cq1.metric(f"Q sample [{cv_ref_e1:.2f}, {cv_ref_e2:.2f}] V",
+                                   f"{_cmp.q_sample:.4g} {_cmp.q_unit}")
+                        cq2.metric(f"Q {_rlab}", f"{_cmp.q_reference:.4g} {_cmp.q_unit}")
+                        cq3.metric("Q ratio", f"{_cmp.ratio_charge:.3f}"
+                                   if np.isfinite(_cmp.ratio_charge) else "—")
                 _show = {"increase": st.success, "decrease": st.warning}.get(_cmp.verdict, st.info)
-                _show(f"**Activity vs blank:** {_cmp.text}")
+                _show(f"**Activity vs {_rlab}:** {_cmp.text}")
                 if np.isfinite(_cmp.e_significant_V):
                     _e_sig_rhe = _cmp.e_significant_V + _to_rhe_shift(e_ref_type, ph_value,
                                                                       temperature)

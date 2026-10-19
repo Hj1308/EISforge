@@ -99,3 +99,54 @@ def test_app_carbon_decrease_shown():
     at = _app(_blank(1) - 0.6 * _extra(), _blank(2))
     assert any("Activity vs blank" in w.value and "BELOW the blank" in w.value
                for w in at.warning)
+
+
+# ── patch50: reference catalyst (e.g. carbon black) and charge in a window ───
+def test_reference_catalyst_wording():
+    r = _cmp(_blank(1) + _extra(), _blank(2), reference="catalyst")
+    assert r.verdict == "increase" and "reference catalyst" in r.text
+    assert "blank" not in r.text
+    r = _cmp(_blank(1) - 0.6 * _extra(), _blank(2), reference="catalyst")
+    assert "BELOW the reference catalyst" in r.text
+
+
+def test_bad_reference_kind_rejected():
+    with pytest.raises(ValueError):
+        _cmp(_blank(1), _blank(2), reference="carbon")
+
+
+def test_reference_catalyst_skips_same_electrode_warnings():
+    s = CVData(E, _blank(1), meta={"ocp_V": -0.10})
+    b = CVData(E, 10 * _blank(2), meta={"ocp_V": -0.30})     # other electrode: 10x, other OCP
+    assert len(s.subtract(b).warnings) == 2                   # OCP + blank dominance
+    assert s.subtract(b, same_electrode=False).warnings == []
+
+
+def test_window_charge_matches_trapezoid():
+    s_mA, b_mA = _blank(1) + _extra(), _blank(2)
+    r = CVData(E, s_mA, scan_rate_mV_s=50.0).compare_to_blank(CVData(E, b_mA),
+                                                              e_window=(0.5, 0.2))
+    m = UP & (E >= 0.2) & (E <= 0.5)
+    assert r.q_sample == pytest.approx(np.trapezoid(s_mA[m], E[m]) / 0.05, rel=1e-6)
+    assert r.q_reference == pytest.approx(np.trapezoid(b_mA[m], E[m]) / 0.05, rel=1e-6)
+    assert r.q_unit == "mC" and r.ratio_charge > 1
+
+
+def test_app_reference_catalyst_with_window():
+    AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
+    at = AppTest.from_file(str(APP), default_timeout=120).run()
+    next(s for s in at.selectbox if s.label == "Catalyst type").select(CARBON)
+    at.radio(key="cv_ref_kind").set_value(
+        "Reference catalyst (e.g. carbon black, with alcohol)")
+    at.checkbox(key="cv_ref_qwin").check().run()
+    at.number_input(key="cv_ref_e1").set_value(0.2)
+    at.number_input(key="cv_ref_e2").set_value(0.5)
+    at.file_uploader(key="cv_up").upload("sample.idf", _idf(_blank(1) + _extra()))
+    at.file_uploader(key="cv_blank_up").upload("carbon_black.idf",
+                                               _idf(10 * _blank(2))).run()
+    assert len(at.exception) == 0, f"app crashed: {at.exception}"
+    assert not any("more than twice" in w.value for w in at.warning)
+    labels = [m.label for m in at.metric]
+    assert "j_max reference" in labels and "Q ratio" in labels
+    assert any("Activity vs reference" in x.value for x in list(at.success) + list(at.warning)
+               + list(at.info))

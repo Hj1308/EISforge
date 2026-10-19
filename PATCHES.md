@@ -1,5 +1,21 @@
 # EISForge — Patch Log
 
+## patch50 — CV tab: reference type (blank or reference catalyst) and charge in a potential window
+**Date:** 2026-10-19
+**Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_metal_free_blank.py, AGENTS.md, ROADMAP.md
+**Survey:** ixdat (MIT) `CyclicVoltammogram.diff_with` is a generic two-CV comparison (no notion of
+"blank"); its metric for a window is `integrate(item, vspan=...)`. Adopted both ideas.
+**What it does:** `compare_to_blank(reference="blank"|"catalyst", e_window=(E1, E2))`: wording for a
+reference catalyst (e.g. carbon black, with alcohol) vs a blank; anodic-sweep charge of sample and
+reference in the window and their ratio (mC when the scan rate is known). `subtract(same_electrode=False)`
+skips the OCP and blank-dominance warnings, which only apply to a blank of the same electrode. CV tab:
+"Reference type" radio (`cv_ref_kind`), optional charge window (`cv_ref_qwin`, `cv_ref_e1`, `cv_ref_e2`),
+uploader relabelled "Reference CV (blank or reference catalyst, optional)". AGENTS.md: rule "survey
+existing software before writing any patch". ROADMAP: two stale ticks (patch45, patch46).
+**Tested on:** synthetic carbon-like CVs: reference-catalyst wording, invalid kind, warnings skipped for a
+10x reference with another OCP, window charge = trapezoid integral; AppTest (carbon, reference catalyst,
+window). Full suite 281 passed, 20 skipped; ruff clean. Real pairs: author checks qualitatively.
+
 ## patch49 — CNLS fit with Jacobian scaling; AICc on the fit objective (k = p + 1); AGENTS workflow lessons
 **Date:** 2026-10-19
 **Files changed:** eisforge/core/fitter.py, eisforge/core/batch_fitter.py, eisforge/core/batch_eis_fitter.py,

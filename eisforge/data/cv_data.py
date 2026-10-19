@@ -59,6 +59,10 @@ class BlankComparison:
     e_at_max_net_V: float = float("nan")
     e_significant_V: float = float("nan")   # first potential of a significant increase
     noise_mA: float = float("nan")
+    q_sample: float = float("nan")          # anodic-sweep charge in e_window (patch50)
+    q_reference: float = float("nan")
+    q_unit: str = ""
+    ratio_charge: float = float("nan")      # q_sample / q_reference (reference > 0 only)
 
 
 @dataclass
@@ -147,7 +151,7 @@ class CVData:
         return out
 
     # ── blank subtraction ────────────────────────────────────────────────────
-    def subtract(self, blank: "CVData") -> BlankSubtraction:
+    def subtract(self, blank: "CVData", same_electrode: bool = True) -> BlankSubtraction:
         """Subtract ``blank`` branch by branch (ixdat diff_with), NaN outside its range.
 
         Branches are paired in order of appearance within each kind (1st anodic with
@@ -186,14 +190,16 @@ class CVData:
         if np.isfinite(s1) and np.isfinite(s2) and abs(s1 - s2) > 0.01 * max(abs(s2), 1e-12):
             res.warnings.append(f"different scan rates ({s1:g} vs {s2:g} mV/s): the capacitive "
                                 "current does not cancel")
+        # patch50: the OCP and blank-dominance checks assume a blank of the SAME electrode;
+        # a reference catalyst (e.g. carbon black) legitimately differs in both.
         o1, o2 = self.meta.get("ocp_V"), blank.meta.get("ocp_V")
-        if o1 is not None and o2 is not None and abs(o1 - o2) > 0.05:
+        if same_electrode and o1 is not None and o2 is not None and abs(o1 - o2) > 0.05:
             res.warnings.append(f"OCP differs by {abs(o1 - o2) * 1e3:.0f} mV: the scans were applied "
                                 "relative to OCP, so their absolute windows differ")
         # patch38: a blank that is much larger than the sample over most of the window is not
         # a background of the same electrode (real pairs: valid 0.11 / 0.14, invalid 0.91).
         shared = np.isfinite(net)
-        if shared.any():
+        if same_electrode and shared.any():
             i_s = self.current_mA[shared]
             i_b = i_s - net[shared]
             res.blank_dominant_fraction = float(np.mean(np.abs(i_b) > 2.0 * np.abs(i_s)))
@@ -207,7 +213,8 @@ class CVData:
     # ── activity vs blank (metal-free catalysts) ──────────────────────────────
     def compare_to_blank(self, blank: "CVData", res: Optional[BlankSubtraction] = None,
                          k_noise: float = 3.0, rel_min: float = 0.10,
-                         n_points: int = 5) -> "BlankComparison":
+                         n_points: int = 5, reference: str = "blank",
+                         e_window: Optional[tuple] = None) -> "BlankComparison":
         """Judge oxidation activity against a blank, without needing a peak (patch48).
 
         Metal-free catalysts usually show no anodic peak; activity appears as extra
@@ -217,7 +224,16 @@ class CVData:
         points. Noise = std(diff(net)) / sqrt(2) (point-to-point scatter). The relative
         floor guards against run-to-run differences that the noise cannot see; replicate
         scans remain the better test.
+
+        ``reference``: "blank" (same electrode without alcohol -> is the alcohol oxidised?)
+        or "catalyst" (a reference catalyst such as carbon black, with alcohol -> is this
+        catalyst more active?). Only the wording differs. ``e_window`` (V vs ref): also
+        report the anodic-sweep charge of both inside that window and their ratio
+        (ixdat ``integrate(vspan=...)``); mC when the scan rate is known.
         """
+        if reference not in ("blank", "catalyst"):
+            raise ValueError(f"reference must be 'blank' or 'catalyst', got {reference!r}")
+        ref = "the blank" if reference == "blank" else "the reference catalyst"
         res = res if res is not None else self.subtract(blank)
         net = res.net_mA
         an = np.zeros(len(net), dtype=bool)
@@ -241,6 +257,23 @@ class CVData:
         k = int(np.argmax(d))
         out.max_net_mA, out.e_at_max_net_V = float(d[k]), float(self.potential_V[idx[k]])
         out.noise_mA = float(np.std(np.diff(d)) / np.sqrt(2.0)) if len(d) > 2 else 0.0
+        if e_window is not None:
+            lo, hi = sorted(float(v) for v in e_window)
+            nu = self.scan_rate_mV_s / 1000.0 if np.isfinite(self.scan_rate_mV_s) else 1.0
+            q_s = q_r = 0.0
+            for br in self.branches():
+                if br.kind != "anodic":
+                    continue
+                b = br.index[np.isfinite(net[br.index])]
+                e = self.potential_V[b]
+                m = (e >= lo) & (e <= hi)
+                if m.sum() >= 2:
+                    q_s += float(np.trapezoid(self.current_mA[b][m], e[m])) / nu
+                    q_r += float(np.trapezoid((self.current_mA - net)[b][m], e[m])) / nu
+            out.q_sample, out.q_reference = q_s, q_r
+            out.q_unit = "mC" if np.isfinite(self.scan_rate_mV_s) else "mA·V"
+            if q_r > 0:
+                out.ratio_charge = q_s / q_r
         thr = np.maximum(k_noise * out.noise_mA, rel_min * np.abs(i_b))
 
         def _first_run(mask):
@@ -255,17 +288,21 @@ class CVData:
         if up is not None:
             out.verdict = "increase"
             out.e_significant_V = float(self.potential_V[idx[up]])
-            out.text = (f"Anodic current above the blank from E = {out.e_significant_V:.3f} V "
-                        "(vs ref): oxidation activity over the blank. No distinct peak is "
-                        "expected for metal-free catalysts.")
+            out.text = (f"Anodic current above {ref} from E = {out.e_significant_V:.3f} V "
+                        + ("(vs ref): oxidation activity over the blank. "
+                           if reference == "blank" else
+                           "(vs ref): higher activity than the reference catalyst. ")
+                        + "No distinct peak is expected for metal-free catalysts.")
         elif down is not None:
             out.verdict = "decrease"
             out.text = ("The anodic current is BELOW the blank: no oxidation activity over the "
                         "blank (alcohol adsorption blocking sites, or the two scans are not "
-                        "comparable).")
+                        "comparable)." if reference == "blank" else
+                        "The anodic current is BELOW the reference catalyst: lower activity "
+                        "than the reference.")
         else:
             out.verdict = "no significant difference"
-            out.text = (f"No significant difference from the blank (threshold: "
+            out.text = (f"No significant difference from {ref} (threshold: "
                         f"{k_noise:g}x noise and {rel_min:.0%} of the blank current).")
         return out
 
