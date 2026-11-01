@@ -181,6 +181,41 @@ confirmed; a lesson that lives only in a chat is lost.
 
 ---
 
+## Adopted practices (from other agent toolkits, not yet proven here)
+
+Taken from mature agent-instruction projects (credits and licences in
+`.claude/skills/THIRD_PARTY_NOTICES.md`). Unlike the lessons above, these have
+not yet saved a patch cycle in this project; move a line up into "Workflow
+lessons" once one does.
+
+- **List the reach before you patch** (ponytail). Before writing a patch, list
+  every place the change must reach: callers (grep them), tests and
+  `tests/data` fixtures, every `app.py` / `pages/` tab that calls the
+  function, cache keys, and the `PATCHES.md` entry. That list is the scope;
+  extra features are not. Fix a bug once, in the shared code, not per caller.
+- **Smallest complete change** (ponytail). Take the first option that fully
+  works: (1) is it needed at all; (2) an existing helper in `eisforge/`;
+  (3) numpy/scipy/pandas/Streamlit; (4) an already-installed dependency; only
+  then (5) new code. Never add a dependency for a few lines. Never cut input
+  validation, error handling that prevents data loss, unit/sign/reference
+  checks, or anything the user asked for.
+- **Mark known shortcuts in the code** (ponytail), in this form:
+  `# shortcut: <the limit>, <when to upgrade>`, e.g.
+  `# shortcut: assumes one forward scan per cycle, upgrade when multi-segment .idf files appear`.
+- **Doubt non-trivial decisions** (agent-skills). For detection/fitting logic,
+  sign conventions, units, and model ranking, run the adversarial
+  fresh-context review in `.claude/skills/doubt-driven-development/`. It
+  checks the reasoning; it does not replace the real-data test in rule 1.
+- **Cite the source, or say UNVERIFIED** (agent-skills). Library calls are
+  checked against the official docs for the pinned version; formulas against
+  the primary paper/textbook with equation number. See
+  `.claude/skills/source-driven-development/`.
+
+Agents that do not load `.claude/skills/` (e.g. DeepSeek) read the two
+`SKILL.md` files as plain instructions.
+
+---
+
 ## Style
 
 - Code comments and docstrings: English.
