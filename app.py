@@ -284,10 +284,15 @@ with st.sidebar:
     catalyst = st.text_input("Catalyst", placeholder="e.g. Pt/C, carbon_material, PtRu/C")
 
     # ── Catalyst type ────────────────────────────────────────────────────────
+    # ROADMAP 0.7: no preselected family. A carbon user who forgot to change a
+    # "Noble Metal" default silently got I_f/I_b and CO-poisoning wording.
     catalyst_type_ui = st.selectbox(
         "Catalyst type",
         ["Noble Metal (Pt, Pd, Au, Rh)", "Alloy (PtRu, PtSn, PdAu, PtCu)",
          "Metal Oxide (NiO, Co₃O₄, MnO₂)", "Carbon Material (N-doped C, CNT, Graphene)"],
+        index=None, placeholder="Select catalyst family…", key="sb_catalyst_type",
+        help="Required for CV and LSV analysis: it sets the onset method, the "
+             "I_f/I_b report and the metal-free interpretation.",
     )
     _CTYPE_MAP = {
         "Noble Metal (Pt, Pd, Au, Rh)": "noble_metal",
@@ -295,7 +300,9 @@ with st.sidebar:
         "Metal Oxide (NiO, Co₃O₄, MnO₂)": "metal_oxide",
         "Carbon Material (N-doped C, CNT, Graphene)": "carbon_material",
     }
-    catalyst_type = _CTYPE_MAP[catalyst_type_ui]
+    catalyst_type = _CTYPE_MAP.get(catalyst_type_ui)   # None until the user picks one
+    if catalyst_type is None:
+        st.info("Select catalyst type first: CV and LSV analysis need it.")
 
     # ── Carbon subtype (only for carbon_material) ─────────────────────────
     carbon_subtype_key = "carbon_material"
@@ -537,7 +544,9 @@ with tab1:
         )
 
     with col2:
-        if cv_file:
+        if cv_file and catalyst_type is None:
+            st.info("Select catalyst type first (sidebar) to analyse this CV.")
+        elif cv_file:
             try:
                 if Path(cv_file.name).suffix.lower() == ".idf":
                     import hashlib as _hl
@@ -848,7 +857,9 @@ with tab1:
         "Upload multiple CV files (n≥3)", type=CV_FORMATS,
         accept_multiple_files=True, key="batch_cv_up"
     )
-    if batch_cv_files and len(batch_cv_files) >= 2:
+    if batch_cv_files and len(batch_cv_files) >= 2 and catalyst_type is None:
+        st.info("Select catalyst type first (sidebar) to run the batch CV analysis.")
+    elif batch_cv_files and len(batch_cv_files) >= 2:
         if st.button(f"▶ Run Batch CV Analysis ({len(batch_cv_files)} files)", type="primary"):
             with st.spinner(f"Analyzing {len(batch_cv_files)} CV files..."):
                 try:
@@ -989,7 +1000,9 @@ with tab2:
                  "you report E_onset.",
         )
     with col2:
-        if lsv_file:
+        if lsv_file and catalyst_type is None:
+            st.info("Select catalyst type first (sidebar) to analyse this LSV.")
+        elif lsv_file:
             try:
                 if Path(lsv_file.name).suffix.lower() == ".idf":
                     import hashlib as _hl
@@ -1217,7 +1230,9 @@ with tab2:
         "Upload multiple LSV files (n≥3)", type=CV_FORMATS,
         accept_multiple_files=True, key="batch_lsv_up"
     )
-    if batch_lsv_files and len(batch_lsv_files) >= 2:
+    if batch_lsv_files and len(batch_lsv_files) >= 2 and catalyst_type is None:
+        st.info("Select catalyst type first (sidebar) to run the batch LSV analysis.")
+    elif batch_lsv_files and len(batch_lsv_files) >= 2:
         if st.button(f"▶ Run Batch LSV Analysis ({len(batch_lsv_files)} files)", type="primary"):
             with st.spinner(f"Analyzing {len(batch_lsv_files)} LSV files..."):
                 try:
@@ -1834,6 +1849,10 @@ with tab6:
                 "result as a relative comparison only."
             )
             _auto_target = "Cdl"
+        if catalyst_type is None:
+            st.warning("No catalyst type selected in the sidebar: Auto falls back to "
+                       "H-UPD (noble metal). Select the catalyst type, or choose the "
+                       "method manually.")
         st.caption(f"Auto routing: **{_auto_target}** (catalyst_type={catalyst_type})")
         _is_cdl = _auto_target == "Cdl"
         _eff_method = _auto_target

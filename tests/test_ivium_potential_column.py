@@ -45,6 +45,8 @@ def _idf(wrt_ocp: bool, ncols: int = 3) -> bytes:
 def _app_upload(name: str, content: bytes):
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
     at = AppTest.from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.file_uploader(key="cv_up").upload(name, content).run()
     assert len(at.exception) == 0, f"app crashed: {at.exception}"
     assert "cv_pot" in at.session_state, "CV tab did not load the uploaded file"

@@ -230,11 +230,8 @@ eisforge/ml/eis_gpt/
 └── eis_cv_correlator.py      # EIS ↔ CV cross-modal correlation
 ```
 
-**Training:**
-
-```bash
-python train_eis_gpt.py
-```
+**Training:** no training script is shipped yet; the model is untrained and its predictions are
+not meaningful.
 
 > ⚠️ Requires optional ML dependencies: `pip install -e ".[ml]"`  
 > ⚠️ Pre-trained weights are in development — see Roadmap.
@@ -243,8 +240,7 @@ python train_eis_gpt.py
 
 ## 📚 Knowledge Base
 
-The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer encoding parameter priors for **28 electrochemical systems**, distilled
-from a survey of over 200 papers on alcohol oxidation and carbon supports. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
+The `eisforge/knowledge/` module contains a curated, literature-guided scientific layer encoding parameter priors for **21 electrochemical systems** (105 catalyst variants), compiled from 28 cited sources, with a companion table of 195 surveyed papers (151 with a DOI) in `eisforge/knowledge/data/reviews/review.html`. It supports catalyst-aware interpretation rules, electrochemical diagnostics, and context-aware analysis across all EISForge modules.
 
 > This knowledge layer is an original contribution of EISForge. If your research uses EISForge diagnostics, interpretation outputs, or any results derived from this knowledge base, please cite EISForge accordingly (see **Citation and Attribution** below).
 
@@ -282,34 +278,26 @@ CI runs automatically on every push via [GitHub Actions](https://github.com/Hj13
 
 ```
 EISforge/
-├── app.py                        # Streamlit web application
-├── train_eis_gpt.py              # EIS-GPT training script
+├── app.py                        # Streamlit web application (9 tabs)
+├── pages/                        # Extra Streamlit pages: band_edge, batch_eis, litbase_review
 ├── eisforge/
-│   ├── analysis/
-│   │   ├── cv_analyzer.py
-│   │   ├── lsv_analyzer.py
-│   │   ├── ecsa_calculator.py
-│   │   ├── koutecky_levich.py
-│   │   ├── eis_cv_correlator.py
-│   │   └── batch_analyzer.py
-│   ├── core/
-│   │   ├── analyzer.py
-│   │   ├── fitter.py
-│   │   ├── preprocessor.py
-│   │   └── validators.py
-│   ├── parsers/
-│   │   ├── gamry_parser.py
-│   │   ├── biologic_parser.py
-│   │   ├── ivium_parser.py
-│   │   └── generic_csv_parser.py
+│   ├── analysis/                 # cv, lsv, ecsa, koutecky_levich, scan_rate, ca, drt,
+│   │                             # kk_validator, eis_interpreter, eis_cv_correlator,
+│   │                             # band_edge_calculator, batch_analyzer, multi_technique
+│   ├── catalogs/                 # circuit_models, suggestion_engine (AICc ranking)
+│   ├── core/                     # analyzer, fitter (CNLS), preprocessor, validators,
+│   │                             # batch_fitter, batch_eis_fitter
+│   ├── data/                     # cv_data (CVData: sweeps, blank subtraction), physical properties
+│   ├── parsers/                  # ivium, gamry, biologic, generic_csv (+ base_parser)
 │   ├── ml/
-│   │   ├── eis_gpt/              # Physics-informed Transformer
-│   │   └── uncertainty/          # Uncertainty quantification
-│   ├── knowledge/                # Literature-guided knowledge base (28 systems)
-│   ├── standards/                # Electrochemical reference standards
+│   │   ├── eis_gpt/              # Physics-informed Transformer (untrained)
+│   │   └── uncertainty/          # Bootstrap, MC dropout, active learning
+│   ├── knowledge/                # Literature-guided knowledge base (21 systems)
+│   ├── litbase/                  # Literature comparison database (schema, extraction, data/)
+│   ├── standards/                # Carbon reference standards
 │   ├── utils/
-│   └── visualization/
-├── tests/
+│   └── visualization/            # Theme tokens
+├── tests/                        # pytest suite; tests/data holds a real sample .idf
 ├── examples/
 ├── paper.md                      # JOSS manuscript
 ├── paper.bib

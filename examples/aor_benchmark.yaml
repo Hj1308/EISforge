@@ -23,7 +23,7 @@ meta:
       year: 2023
   notes:
     - "Potentials converted from Ag/AgCl (3 M NaCl, E° = 0.197 V) to RHE scale"
-    - "pH = 13 assumed for 0.1 M NaOH and 1.0 M KOH electrolytes"
+    - "pH = 13 assumed for 0.1 M NaOH and pH = 14 for 1.0 M KOH electrolytes"
     - "Values marked approximate:true are read from graphical CV traces"
     - "current_normalized_by: geometric unless stated as mass"
 

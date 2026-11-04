@@ -284,7 +284,7 @@
 **هدف:** هر غریبه‌ای که ریپو را باز می‌کند به تناقض برنخورد. همهٔ کارها کوچک و کم‌خطرند.
 
 ### 0.1 — یکسان کردن شمارهٔ نسخه
-- [ ] **مشکل:** `setup.py` می‌گوید 0.1.0، `pyproject.toml` می‌گوید 0.2.0، و `README.md` و `CITATION.cff` می‌گویند 0.3.0.
+- [x] (patch52) **مشکل:** `setup.py` می‌گوید 0.1.0، `pyproject.toml` می‌گوید 0.2.0، و `README.md` و `CITATION.cff` می‌گویند 0.3.0.
 - **روش:**
   1. `__version__ = "0.3.0"` را در `eisforge/__init__.py` تعریف کنید.
   2. در `pyproject.toml` از `dynamic = ["version"]` و `[tool.setuptools.dynamic] version = {attr = "eisforge.__version__"}` استفاده کنید.
@@ -292,15 +292,15 @@
 - **تمام‌شده وقتی:** `python -c "import eisforge; print(eisforge.__version__)"` و `pip show eisforge` هر دو 0.3.0 چاپ کنند.
 
 ### 0.2 — حذف فایل‌های اضافه از ریپو
-- [ ] حذف `eisforge/analysis/band_edge_calculator.py.bak2`.
-- [ ] یکی از دو `review.html` یکسان (هر کدام 844KB) حذف شود: `eisforge/knowledge/data/review/` و `.../reviews/`.
+- [x] (patch52) حذف `eisforge/analysis/band_edge_calculator.py.bak2`.
+- [x] (patch52، `review/` حذف شد؛ کد و README به `reviews/` ارجاع می‌دهند) یکی از دو `review.html` یکسان (هر کدام 844KB) حذف شود: `eisforge/knowledge/data/review/` و `.../reviews/`.
   اول با `grep -rn "review/review.html\|reviews/review.html" eisforge` چک کنید کد به کدام مسیر ارجاع می‌دهد.
 - [x] به `.gitignore` اضافه شود: `*.bak`، `*.bak[0-9]`، `__pycache__/`، `htmlcov/`، `.coverage`. (هر پنج الگو در `.gitignore` هست؛
   ولی `band_edge_calculator.py.bak2` از قبل ردیابی می‌شود و باید با `git rm --cached` جدا شود، بند بالا.)
 - **تمام‌شده وقتی:** `git ls-files | grep -E "bak|pycache"` خروجی خالی بدهد.
 
 ### 0.3 — درست کردن زبان ریپو در GitHub
-- [ ] **مشکل:** GitHub ریپو را «HTML» نشان می‌دهد، به‌خاطر فایل‌های بزرگ `review.html`.
+- [x] (patch52؛ بعد از merge در صفحهٔ ریپو چک شود) **مشکل:** GitHub ریپو را «HTML» نشان می‌دهد، به‌خاطر فایل‌های بزرگ `review.html`.
 - **روش:** یک فایل `.gitattributes` با این محتوا بسازید:
   ```
   *.html linguist-vendored
@@ -309,21 +309,22 @@
 - **تمام‌شده وقتی:** بعد از push، صفحهٔ ریپو زبان اصلی را Python نشان دهد.
 
 ### 0.4 — اسناد کهنه
-- [ ] `README.md:236` و `:286` به `train_eis_gpt.py` ارجاع می‌دهند که وجود ندارد. یا اسکریپت را بسازید یا ارجاع را حذف کنید.
-- [ ] `CONTEXT.md` را به‌روز کنید:
+- [x] (patch52، ارجاع حذف شد) `README.md:236` و `:286` به `train_eis_gpt.py` ارجاع می‌دهند که وجود ندارد. یا اسکریپت را بسازید یا ارجاع را حذف کنید.
+- [x] (patch52) `CONTEXT.md` را به‌روز کنید:
   - فایل‌هایی که دیگر نیستند: `cv_app.py`، `analyze_cv.py`، `apply_v2_fixes.py`، `test_transformer.py`، `test_idf.py`، `test_ir.py`، `test_all.py`.
   - «7 tabs» را به ۹ تب اصلاح کنید.
   - فهرست «Next Modules» را با این نقشهٔ راه هماهنگ کنید.
-- [ ] جدول Repository Structure در README را با ساختار واقعی پوشه‌ها هماهنگ کنید (`catalogs/`، `litbase/`، `data/` و `pages/` را ندارد).
+- [x] (patch52) جدول Repository Structure در README را با ساختار واقعی پوشه‌ها هماهنگ کنید (`catalogs/`، `litbase/`، `data/` و `pages/` را ندارد).
 - **تمام‌شده وقتی:** هر مسیری که در README یا CONTEXT آمده، واقعاً وجود داشته باشد.
 
 ### 0.5 — ادعاهای غیرقابل‌شمارش
-- [ ] `README.md:247` و `paper.md:48` هنوز «over 200 papers» دارند. commit `8fe4026` همین ادعا را حذف کرده بود.
+- [x] (patch52) `README.md:247` و `paper.md:48` هنوز «over 200 papers» دارند. **شمارش واقعی:** 21 سیستم (105 variant) از 28 منبع
+  در `electrochemistry_knowledge.json`، و 195 مقاله (151 با DOI) در `reviews/review.html`. «28 systems» هم غلط بود و 21 شد. commit `8fe4026` همین ادعا را حذف کرده بود.
   **روش:** عدد واقعی و قابل‌شمارش را جایگزین کنید، مثلاً تعداد سطرهای `eisforge/litbase/data/litbase.csv` یا تعداد DOIهای یکتا.
 - [ ] جملهٔ «No existing open-source tool combines…» در `paper.md` را دقیق کنید و تفاوت با pyimpspec و ixdat را مشخص بنویسید (جزئیات در کار 4.6).
 
 ### 0.6 — اصلاحات علمی کوچک
-- [ ] `examples/aor_benchmark.yaml:26`: متن «pH = 13 assumed for … 1.0 M KOH» را اصلاح کنید. مقدار برای 1.0 M KOH باید pH ≈ 14 باشد (خط 139 درست است و فقط یادداشت غلط است).
+- [x] (patch52) `examples/aor_benchmark.yaml:26`: متن «pH = 13 assumed for … 1.0 M KOH» را اصلاح کنید. مقدار برای 1.0 M KOH باید pH ≈ 14 باشد (خط 139 درست است و فقط یادداشت غلط است).
 - [ ] `examples/aor_benchmark.yaml:7,25`: پتانسیل Ag/AgCl در 3 M NaCl حدود 0.209 V است. 0.197 مقدار KCl اشباع است. منبع مقاله را دوباره ببینید و مقدار درست را بنویسید.
 - [x] (رفع شد در patch44) متن I_f/I_b برای Pt و Pd (`eisforge/analysis/cv_analyzer.py:713-729`): عبارت‌هایی مثل «Excellent CO tolerance» حذف شوند. **پیشنهاد:**
   `"I_f/I_b = 2.31 (reported for comparison only; not a reliable CO-tolerance descriptor — see Chung et al. 2016)"`.
@@ -331,7 +332,7 @@
 - **تمام‌شده وقتی:** تست‌های موجود سبز بمانند و یک تست جدید چک کند که متن تفسیر برای `noble_metal` کلمهٔ «Excellent» ندارد.
 
 ### 0.7 — جلوگیری از انتخاب اشتباه نوع کاتالیست
-- [ ] **مشکل:** در `app.py:341-345` گزینهٔ پیش‌فرض selectbox «Catalyst type» برابر **Noble Metal** است و `key=` هم ندارد. کاربر کربنی اگر فراموش کند آن را عوض کند، I_f/I_b و تفسیر CO می‌گیرد.
+- [x] (patch52) **مشکل:** در `app.py:341-345` گزینهٔ پیش‌فرض selectbox «Catalyst type» برابر **Noble Metal** است و `key=` هم ندارد. کاربر کربنی اگر فراموش کند آن را عوض کند، I_f/I_b و تفسیر CO می‌گیرد.
 - **روش:** `index=None, placeholder="Select catalyst family…", key="sb_catalyst_type"`. تا انتخاب نشده، تحلیل CV و LSV اجرا نشود و `st.info("Select catalyst type first")` نمایش داده شود.
 - **تمام‌شده وقتی:** AppTest بدون exception اجرا شود (حالت پایه، و حالتی که carbon_material انتخاب شده).
 

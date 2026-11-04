@@ -1,8 +1,4 @@
-from setuptools import setup, find_packages
+"""Legacy shim: all metadata lives in pyproject.toml (version: eisforge/__init__.py)."""
+from setuptools import setup
 
-setup(
-    name="eisforge",
-    version="0.1.0",
-    author="Hoda Jafari",
-    packages=find_packages(),
-)
+setup()

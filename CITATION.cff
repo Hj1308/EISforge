@@ -32,8 +32,8 @@ abstract: >
   analysis, scan-rate kinetics (b-value, Randles-Sevcik linearity),
   chronoamperometry stability metrics, AICc multi-model circuit ranking,
   rule-based EIS interpretation, a literature-guided knowledge base
-  (parameter priors for 28 electrochemical systems, distilled from a
-  survey of over 200 papers), and a Physics-Informed Transformer architecture
+  (parameter priors for 21 electrochemical systems from 28 cited
+  sources, plus a survey table of 195 papers), and a Physics-Informed Transformer architecture
   (EIS-GPT). Supports Gamry (.dta), BioLogic (.mpt/.mpr), Ivium (.idf),
   and generic CSV file formats. Includes a live Streamlit web demo.
 
