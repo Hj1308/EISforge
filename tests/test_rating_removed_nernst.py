@@ -74,6 +74,8 @@ def _idf(E, i_amp, method="CyclicVoltammetry", sr="0.05"):
 
 def test_cv_tab_uses_temperature_dependent_slope():
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.selectbox[[s.label for s in at.selectbox].index("Reference electrode")].select(
         "Ag/AgCl (3M KCl)")
     at.run()
@@ -96,6 +98,8 @@ def test_lsv_tab_shows_no_performance_line():
     x = 10 ** ((E - 0.70) / 0.120)
     j = 25.0 * x / (1.0 + x)
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.file_uploader(key="lsv_up").upload("lsv.idf",
                                           _idf(E, j * 1e-3, "LinearSweep", "0.005")).run()
     assert len(at.exception) == 0, at.exception

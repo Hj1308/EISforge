@@ -11,53 +11,55 @@
 
 ```
 EISforge/
-├── app.py                          ← Streamlit UI (7 tabs, 64KB — main entry point)
-├── cv_app.py                       ← Standalone CV app
-├── analyze_cv.py                   ← CV batch analysis script
-├── train_eis_gpt.py                ← ML training script
-├── apply_v2_fixes.py               ← Migration/patch script
+├── app.py                          ← Streamlit UI (9 tabs: CV, LSV, EIS, EIS-GPT, Correlation,
+│                                     ECSA, K-L, Scan-rate, Chronoamperometry) — main entry point
+├── pages/                          ← band_edge.py, batch_eis.py, litbase_review.py
 │
-├── eisforge/                       ← Core Python package
+├── eisforge/                       ← Core Python package (__version__ in __init__.py)
 │   ├── core/
 │   │   ├── analyzer.py             ← EisAnalyzer: orchestration class
 │   │   ├── fitter.py               ← CNLSFitter: main fitting engine
 │   │   ├── preprocessor.py         ← Data preprocessing
-│   │   └── validators.py           ← Kramers-Kronig validator
+│   │   ├── validators.py           ← Kramers-Kronig validator (used by the app)
+│   │   └── batch_fitter.py, batch_eis_fitter.py
 │   │
 │   ├── parsers/
 │   │   ├── base_parser.py          ← Abstract base + EISDataset dataclass
-│   │   ├── ivium_parser.py        ← Ivium .idf (CV + EIS)
+│   │   ├── ivium_parser.py         ← Ivium .idf (CV + EIS)
 │   │   ├── gamry_parser.py         ← Gamry .DTA files
 │   │   ├── biologic_parser.py      ← BioLogic .mpt/.mpr (via galvani)
 │   │   └── generic_csv_parser.py   ← CSV/TXT auto-detection
 │   │
+│   ├── data/
+│   │   └── cv_data.py              ← CVData: one .idf reader, sweeps, cycle selection,
+│   │                                 blank subtraction and comparison (patch37–51)
+│   │
 │   ├── analysis/
 │   │   ├── cv_analyzer.py          ← CV: onset, peak, ECSA, AOR
 │   │   ├── lsv_analyzer.py         ← LSV: Tafel, j0, overpotential
-│   │   ├── eis_cv_correlator.py    ← Cross-technique correlation
-│   │   └── ecsa_calculator.py      ← ECSA: H-UPD, CO Stripping, Cdl
+│   │   ├── ecsa_calculator.py      ← ECSA: H-UPD, CO Stripping, Cdl
+│   │   ├── drt_analyzer.py, kk_validator.py, eis_interpreter.py
+│   │   ├── koutecky_levich.py, scan_rate_analyzer.py, ca_analyzer.py
+│   │   └── band_edge_calculator.py, eis_cv_correlator.py, batch_analyzer.py, multi_technique.py
+│   │
+│   ├── catalogs/                   ← circuit_models.py, suggestion_engine.py (AICc ranking)
 │   │
 │   ├── ml/
-│   │   ├── aor_dataset_generator.py
-│   │   └── eis_gpt/
-│   │       ├── tokenizer.py        ← EIS→Transformer tokens (5D features)
-│   │       ├── physics_loss.py     ← K-K penalty + Passivity + HF limit
-│   │       └── transformer.py      ← 6-layer encoder, classification+regression
+│   │   ├── eis_gpt/
+│   │   │   ├── tokenizer.py        ← EIS→Transformer tokens (5D features)
+│   │   │   ├── physics_loss.py     ← K-K penalty + Passivity + HF limit
+│   │   │   ├── transformer.py      ← 6-layer encoder, classification+regression
+│   │   │   └── aor_dataset_generator.py
+│   │   └── uncertainty/            ← bootstrap_eis.py, mc_dropout.py, active_learner.py
 │   │
 │   ├── knowledge/
 │   │   ├── literature_engine.py    ← Literature-driven initial parameter guessing
-│   │   └── electrochemistry_knowledge.json
+│   │   └── data/                   ← electrochemistry_knowledge.json, reviews/review.html
 │   │
-│   ├── standards/
-│   └── utils/
+│   ├── litbase/                    ← literature comparison database (schema, extraction, data/)
+│   ├── standards/, utils/, visualization/
 │
-└── tests/
-    ├── test_ecsa.py                ← 12 tests PASSING
-    ├── test_transformer.py
-    ├── test_tokenizer.py
-    ├── test_idf.py
-    ├── test_ir.py
-    └── test_all.py
+└── tests/                          ← pytest suite (test_*.py); tests/data holds a real sample .idf
 ```
 
 ---
@@ -147,7 +149,7 @@ EISforge/
 
 1. **EIS-GPT untrained** — `eisforge/ml/eis_gpt/` exists but returns random predictions
 2. **K-K on sparse data** — `validators.py` linKK may fail; Voigt fallback kicks in
-3. **CV multi-cycle splitting** — `_split_scans()` may fail on complex multi-cycle CVs
+3. **CV multi-cycle splitting** — the legacy cycle rule in `CVData.select_cycle` is off by one for multi-cycle scans (ROADMAP B12)
 4. **Real data not yet validated** — ECSA calculator only tested on synthetic data
 5. **impedance.py NaN bug** — `CNLSFitter` intentionally bypasses impedance.py optimizer; use `circuit.predict()` ONLY for Z evaluation, NEVER `circuit.fit()`
 
@@ -166,14 +168,10 @@ EISforge/
 
 ---
 
-## Next Modules to Build (Priority Order)
+## Next Modules to Build
 
-1. **`band_edge_calculator.py`** — Ecb/Evb for BCN/g-C3N4/TiO2/ZnO ← NEXT
-2. **DRT Analysis** — ✅ shipped — Distribution of Relaxation Times (Tikhonov regularization) via `eisforge/analysis/drt_analyzer.py`, surfaced as a DRT expander in the EIS tab
-3. **Statistical Reproducibility** — batch multi-file mean ± std
-4. **EIS-GPT Training** — 10,000+ synthetic spectra + physics-informed loss
-5. **CI/CD Pipeline** — GitHub Actions
-6. **Zenodo DOI** — for publication
+The priority list lives in `ROADMAP.md` (phases 0–5) and is not repeated here, so the two cannot
+drift apart. Shipped since the old list: band-edge calculator, DRT, batch statistics, CI, Zenodo DOI.
 
 ---
 

@@ -40,6 +40,8 @@ def _synthetic_idf(current_range: str = "100uA", i_peak_a: float = 2.31e-6) -> b
 
 def _run_cv_upload(name: str, content: bytes):
     at = AppTest.from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     assert len(at.exception) == 0, f"app crashed before upload: {at.exception}"
     at.file_uploader(key="cv_up").upload(name, content).run()
     assert len(at.exception) == 0, f"app crashed after upload: {at.exception}"

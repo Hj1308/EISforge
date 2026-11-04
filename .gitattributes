@@ -1,0 +1,4 @@
+# GitHub language statistics (ROADMAP 0.3): the 844 KB review.html made the repo
+# show as "HTML". Data and literature files are not source code.
+*.html linguist-vendored
+eisforge/knowledge/data/** linguist-vendored

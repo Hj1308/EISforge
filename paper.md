@@ -44,9 +44,10 @@ Complex Nonlinear Least Squares (CNLS) equivalent circuit fitting,
 Kramers-Kronig validation, CV/LSV analysis, electrochemically active
 surface area (ECSA) calculation via three independent methods, batch
 statistical reproducibility for replicate measurements, and a
-literature-guided knowledge layer providing parameter priors for 28
-electrochemical systems, distilled from a survey of over 200 papers on
-alcohol oxidation and carbon-supported catalysts.
+literature-guided knowledge layer providing parameter priors for 21
+electrochemical systems (105 catalyst variants) compiled from 28 cited
+sources, with a companion table of 195 surveyed papers on alcohol
+oxidation and carbon-supported catalysts.
 The framework additionally provides the architecture of a
 Physics-Informed Transformer model (EIS-GPT) for circuit classification
 and parameter regression. EISForge supports Ivium (.idf), Gamry (.dta),
@@ -129,7 +130,7 @@ reproducibility crisis in electrocatalysis benchmarking [@Morales2021].
 
 ### Literature Knowledge Base
 
-A curated knowledge layer covering 28 electrochemical systems provides
+A curated knowledge layer covering 21 electrochemical systems provides
 literature-guided initial parameter estimates for CNLS fitting,
 indexed by catalytic system (AOR, HER, ORR), catalyst composition,
 and electrolyte. This substantially reduces convergence failures

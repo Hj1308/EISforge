@@ -1,5 +1,32 @@
 # EISForge — Patch Log
 
+## patch52 — phase 0 cleanup: one version, no stale files/claims, no default catalyst type
+**Date:** 2026-11-04
+**Files changed:** app.py, eisforge/__init__.py, pyproject.toml, setup.py, .gitattributes (new),
+README.md, CONTEXT.md, paper.md, CITATION.cff, examples/aor_benchmark.yaml, ROADMAP.md,
+tests/test_catalyst_type_required.py (new), 7 AppTest files (explicit catalyst type);
+removed eisforge/analysis/band_edge_calculator.py.bak2 and eisforge/knowledge/data/review/review.html
+**What it does:** ROADMAP 0.1–0.7.
+- 0.1: `__version__ = "0.3.0"` in `eisforge/__init__.py`; pyproject reads it (`dynamic = ["version"]`);
+  setup.py is a bare shim.
+- 0.2/0.3: tracked `.bak2` and the duplicate `review/review.html` removed (code uses `reviews/`);
+  `.gitattributes` marks HTML and knowledge data as vendored for GitHub language stats.
+- 0.4/0.5: README no longer points at the missing `train_eis_gpt.py`; README tree and CONTEXT.md match
+  the real folders (9 tabs, `pages/`, `data/`, `catalogs/`, `litbase/`); CONTEXT "Next Modules" points
+  at ROADMAP. "28 systems, over 200 papers" replaced by counted figures: 21 systems (105 variants) from
+  28 cited sources, plus a survey table of 195 papers (151 with a DOI) — counted from the repo files.
+- 0.6: yaml note says pH 13 for 0.1 M NaOH and pH 14 for 1.0 M KOH (data rows were already right).
+- 0.7: sidebar "Catalyst type" has no default (`index=None`, key `sb_catalyst_type`); CV and LSV
+  (single and batch) show "Select catalyst type first" instead of analysing; ECSA Auto warns that it
+  falls back to H-UPD when no type is set. Tests that relied on the old Noble Metal default now select it.
+**Tested on:** synthetic .idf through AppTest — no type: 0 exceptions, CV not analysed, info shown;
+carbon selected: 0 exceptions, CV analysed, carbon subtype shown. `pip show eisforge` and
+`eisforge.__version__` both 0.3.0. Full suite 287 passed, 20 skipped (was 285; +2 new tests);
+ruff: no new findings (45 pre-existing in eisforge/ and 9 in app.py/tests stay; CI lint is continue-on-error). No detection/fitting logic changed, so no real-data run was needed.
+**Not done (needs the author):** 0.6 Ag/AgCl 0.197 vs 0.209 V (check the source paper), 0.5 "No existing
+tool combines…" sentence, 0.8 GitHub description/topics, 0.9 galvani (decision D1; it also does not
+build on Python 3.13).
+
 ## patch51 — CV comparison: separate the double-layer (area) part from the faradaic part
 **Date:** 2026-10-19
 **Files changed:** eisforge/data/cv_data.py, app.py, tests/test_cv_metal_free_blank.py

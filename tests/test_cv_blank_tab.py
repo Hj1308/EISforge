@@ -60,6 +60,8 @@ def _apptest():
 
 def _run(sample: bytes, blank: bytes):
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     assert len(at.exception) == 0, f"app crashed before upload: {at.exception}"
     at.file_uploader(key="cv_up").upload("alcohol.idf", sample)
     at.file_uploader(key="cv_blank_up").upload("blank.idf", blank).run()
@@ -85,6 +87,8 @@ def test_app_identical_blank_warns_no_oxidation():
 
 def test_app_without_blank_has_no_net_section():
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.file_uploader(key="cv_up").upload("alcohol.idf", _idf()).run()
     assert len(at.exception) == 0
     assert "cv_net" not in at.session_state

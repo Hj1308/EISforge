@@ -88,6 +88,8 @@ def _cv_with_peak():
 @pytest.mark.parametrize("ref, shift", [("RHE", 0.0), ("Ag/AgCl (3M KCl)", 0.210 + 0.059159 * 13.0)])
 def test_cv_tab_e_onset_vs_rhe(ref, shift):
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     _sidebar(at, ref, ph=13.0)
     at.file_uploader(key="cv_up").upload("pt.idf", _idf(*_cv_with_peak())).run()
     assert len(at.exception) == 0, at.exception
@@ -110,6 +112,8 @@ def test_lsv_onset_line_in_display_frame():
     E = np.round(np.arange(-0.8, 0.9001, 0.005), 4)              # vs Ag/AgCl
     j = 1e-4 * np.exp(E / 0.12)                                  # mA/cm2, area 1
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     _sidebar(at, "Ag/AgCl (3M KCl)")
     at.file_uploader(key="lsv_up").upload("lsv.idf",
                                           _idf(E, j * 1e-3, "LinearSweep", "0.005")).run()
@@ -126,6 +130,8 @@ def test_lsv_no_onset_line_without_onset():
     E = np.linspace(-0.8, 0.5, 200)
     j = -0.015 * np.exp(-(E + 0.8) / 0.25) + 0.002 * (E + 0.8)
     at = _apptest().from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.file_uploader(key="lsv_up").upload("lsv.idf",
                                           _idf(E, j * 1e-3, "LinearSweep", "0.005")).run()
     assert len(at.exception) == 0, at.exception

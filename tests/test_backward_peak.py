@@ -54,6 +54,8 @@ def test_app_shows_ratio():
     rows = "\n".join(f"{a:.5E} {b * 1e-3:.5E} {a:.5E}" for a, b in zip(e, i))
     head = "Method=CyclicVoltammetry\nScanrate=0.05\nCurrent Range=1mA\nApply wrt OCP=false\n"
     at = AppTest.from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     at.file_uploader(key="cv_up").upload(
         "pt.idf", (head + f"primary_data\n3\n{len(e)}\n{rows}\n").encode("latin-1")).run()
     assert len(at.exception) == 0, at.exception

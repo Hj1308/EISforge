@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eisforge"
-version = "0.2.0"
+dynamic = ["version"]   # single source: eisforge/__init__.py (__version__)
 description = "EIS data analysis and ML toolkit for electrochemical impedance spectroscopy"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -67,6 +67,9 @@ dev = [
 Homepage = "https://github.com/Hj1308/EISforge"
 Issues   = "https://github.com/Hj1308/EISforge/issues"
 DOI      = "https://doi.org/10.5281/zenodo.20649692"
+
+[tool.setuptools.dynamic]
+version = {attr = "eisforge.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]

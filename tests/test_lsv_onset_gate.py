@@ -95,6 +95,8 @@ def _idf(E, i_amp):
 def _run_lsv(content, ref=None):
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
     at = AppTest.from_file(str(APP), default_timeout=120).run()
+    # ROADMAP 0.7: no default catalyst type; these tests were written for Noble Metal
+    at.selectbox(key="sb_catalyst_type").select("Noble Metal (Pt, Pd, Au, Rh)").run()
     assert len(at.exception) == 0
     if ref is not None:
         at.selectbox[[s.label for s in at.selectbox].index("Reference electrode")].select(ref)
