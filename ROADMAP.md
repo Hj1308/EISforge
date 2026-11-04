@@ -548,6 +548,80 @@
 ### 2.14 — 🟡 DRT با انتخاب خودکار λ
 - [ ] به `eisforge/analysis/drt_analyzer.py` انتخاب λ به روش GCV یا L-curve اضافه شود، با الهام از pyDRTtools که لایسنس MIT دارد. اگر کد اقتباس شد، اطلاعیهٔ copyright حفظ شود.
 
+### 2.15 — 🟡 GROBID برای مرحلهٔ استخراج متن litbase (بررسی ریپو: 2026-11-04)
+**منبع:** [GROBID](https://github.com/grobidOrg/grobid) (Apache-2.0، Java، آخرین نسخه 0.9.1). یک سرویس یادگیری ماشینی است
+که PDF مقاله را به TEI XML ساخت‌یافته تبدیل می‌کند. کدش جاوا است، پس **هیچ کدی به ریپو کپی نمی‌شود**. فقط به‌عنوان سرویس جدا
+(Docker، پورت 8070) و **اختیاری** استفاده شود. اگر سرویس در دسترس نبود، مسیر فعلی pymupdf (`extract_text_from_pdf`) بماند.
+
+**مشکلی که حل می‌کند:** مرحلهٔ A در `eisforge/litbase/extract_and_judge.py` با `page.get_text("text")` متن خام می‌سازد.
+جدول‌ها به هم می‌ریزند و عنوان «Table 1» از ردیف‌هایش جدا می‌شود. این همان جایی است که `page_or_table_ref` و
+مقادیر onset و Tafel باید از آن خوانده شوند.
+
+بخش‌هایی که به کار ما می‌آید:
+- [ ] **`/api/processFulltextDocument`** با `teiCoordinates=figure,table` و `segmentSentences=1`: بخش‌بندی (Experimental،
+  Results)، جدول‌ها به‌صورت `<figure type="table">` همراه عنوان و شماره، و مختصات صفحه. با این خروجی `page_or_table_ref` از
+  خود ساختار ساخته می‌شود و لازم نیست LLM حدسش بزند. `extract_text_from_pdf` یک پارامتر `backend="pymupdf"|"grobid"`
+  بگیرد و خروجی TEI را به همان قالب متنی ساده (با نشانگر صفحه و جدول) تبدیل کند تا promptها تغییر نکنند.
+- [ ] **`/api/processHeaderDocument`** با `consolidateHeader=1` (CrossRef): مقدار `doi` و نام نویسندهٔ اول و سال برای
+  `ref_key` به‌صورت قطعی پر شود، نه با LLM. در `schema.validate_row` هم اگر DOI از هدر با DOI ردیف یکی نبود، هشدار بدهد.
+- [ ] **[grobid-quantities](https://github.com/lfoppiano/grobid-quantities)** (Apache-2.0، ماژول جدا): کمیت‌ها و واحدها را
+  پیدا و به SI نرمال می‌کند (`mV dec⁻¹`، `mA cm⁻²`، `V`). در مرحلهٔ judge یک **چک قطعی** باشد: هر عدد onset یا Tafel که
+  LLM استخراج کرده، باید در فهرست کمیت‌های متن همان مقاله پیدا شود، وگرنه `judge_verdict` برابر «not found in text» شود.
+  ⚠️ مدل CRF آن روی متن عمومی آموزش دیده است. اینکه «V vs RHE» یا «vs Ag/AgCl» را درست بگیرد **تأییدنشده** است.
+- [ ] **کلاینت:** فراخوانی با `requests` خالی (بدون وابستگی جدید)، یا [grobid-client-python](https://github.com/kermitt2/grobid_client_python)
+  به‌عنوان extra اختیاری (`pip install eisforge[litbase]`). لایسنس کلاینت قبل از استفاده چک شود.
+
+**قبل از پچ (طبق AGENTS.md):** روی PDFهای مقالاتی که draft تأییدشده دارند (`Habibi2013`، `Kormanyos2021`، `Liu2012`، `Ye2007`،
+`vanDrunen2014`) هر دو مسیر pymupdf و GROBID اجرا شوند. معیار: آیا `page_or_table_ref` و مقادیر ردیف‌های تأییدشده در خروجی
+GROBID بدون خطا پیدا می‌شوند؟ فقط نتیجهٔ کیفی (بهتر، مساوی، بدتر) ثبت شود. اگر بهتر نبود، این کار بسته شود.
+
+**به کار ما نمی‌آید:** citation و patent، آموزش مدل (`/api/modelTraining`)، و ماژول‌های NER حوزه‌های دیگر (astro، bio).
+grobid-superconductors فقط به‌عنوان **ایده** برای یک مدل حوزه‌ای الکتروکاتالیست در فاز ۵ دیده شود، نه الان.
+
+### 2.16 — 🟡 Semantic Scholar API برای پیدا کردن و ثبت مقالات litbase (بررسی ریپو: 2026-11-04)
+**منبع:** [s2-folks](https://github.com/allenai/s2-folks) (Apache-2.0، Allen Institute for AI). مثال‌ها، FAQ و release notes
+عمومی Semantic Scholar API. ⚠️ ریپو از 23 ژانویهٔ 2025 **آرشیو شده و نگهداری نمی‌شود**. پس قبل از نوشتن کد، مسیرها و فیلدها
+باید با مستندات فعلی API چک شوند. خود API در این جلسه تست نشد (شبکهٔ جلسه آن را مسدود کرده بود)، پس همهٔ موارد زیر **تأییدنشده**‌اند.
+
+بخش‌هایی که به کار ما می‌آید:
+- [ ] **پر کردن متادیتای litbase از DOI:** با `GET /graph/v1/paper/DOI:<doi>?fields=title,year,authors,externalIds` مقادیر
+  `ref_key` (نویسندهٔ اول + سال) و عنوان به‌صورت قطعی ساخته شوند. در `schema.validate_row` هم چک شود که DOI واقعاً وجود دارد.
+  این کار مکمل هدر GROBID (کار 2.15) است و Java هم لازم ندارد.
+- [ ] **پیدا کردن مقاله‌های نامزد:** `GET /graph/v1/paper/search/bulk` با query بولی روی عنوان و چکیده، مثلاً
+  `"ethanol oxidation" + ("metal-free" | "N-doped carbon")`، فیلتر `year=`، و صفحه‌بندی با `token` (الگوی
+  `examples/python/search_bulk/get_dataset.py`). خروجی یک فهرست JSONL از نامزدهاست. **انتخاب نهایی با انسان است.**
+- [ ] **دانلود PDF دسترسی‌آزاد:** فیلدهای `isOpenAccess` و `openAccessPdf.url` (الگوی
+  `examples/python/get_open_access_pdf/simple.py`)، تا PDF مستقیم وارد مرحلهٔ A در `extract_and_judge.py` شود.
+  ⚠️ کد نمونه `verify=False` دارد و هشدارهای TLS را خاموش می‌کند. **این الگو کپی نشود.** بررسی `content-type == application/pdf` نگه داشته شود.
+- [ ] **دستهٔ چندتایی:** `POST /graph/v1/paper/batch` برای گرفتن متادیتای همهٔ DOIهای `litbase.csv` با یک درخواست
+  (ترتیب خروجی همان ترتیب ورودی است).
+- [ ] **قواعد استفاده:** بدون کلید، همهٔ کاربران سهم مشترک 5000 درخواست در 5 دقیقه دارند. با کلید (هدر `X-API-KEY`، از متغیر
+  محیطی `S2_API_KEY`، و **هرگز داخل ریپو**) سقف 1 درخواست در ثانیه برای search و batch است. برای خطای 429 و 5xx از
+  backoff نمایی استفاده شود. فراخوانی با `requests`، بدون وابستگی جدید.
+
+**به کار ما نمی‌آید:** autocomplete جاوااسکریپت، self-citation، مقالات هم‌نویسنده، جستجو با PMID (حوزهٔ ما بیشتر در PubMed نیست)،
+و datasetهای حجیم S2AG (چند صد گیگابایت، برای litbase کوچک ما زیادی است). `contextsWithIntent` (جملهٔ ارجاع همراه نیت آن) شاید
+بعدها برای «چه کسی این مقدار را نقل کرده» به کار بیاید و فعلاً فقط ایده است.
+
+### 2.17 — ⚪ LlamaIndex: بررسی شد، به‌عنوان وابستگی **رد شد** (بررسی ریپو: 2026-11-04)
+**منبع:** [llama_index](https://github.com/run-llama/llama_index) (MIT). چارچوب RAG برای وصل کردن LLM به اسناد: خواندن،
+ایندکس برداری، و موتور پرسش. خود README می‌گوید تمرکز شرکت به سرویس پولی ابری LlamaParse رفته است.
+
+**چرا وابستگی نمی‌شود:**
+- `eisforge/litbase/schema.py` عمداً فقط به pandas و stdlib وابسته است تا در محدودیت Streamlit Cloud رایگان بماند. LlamaIndex حتی
+  با `llama-index-core` تنها، وابستگی سنگینی است و بدون LLM API و embedding کاری انجام نمی‌دهد. اما خط لولهٔ litbase عمداً
+  **بدون فراخوانی LLM API** است (`extract_and_judge.py`: استخراج گفت‌وگویی، و تأیید با انسان).
+- litbase یک CSV کوچک است. برای مقایسه با مقالات (کار 2.13) فیلتر pandas روی الکل و خانوادهٔ کاتالیست کافی است و جستجوی برداری لازم نیست.
+- `PyMuPDFReader` آن همان pymupdf است که الان مستقیم استفاده می‌کنیم.
+- LlamaParse و LlamaExtract ابری، پولی و نیازمند کلید هستند و PDFها را به سرور شخص ثالث می‌فرستند. رد شد.
+
+**تنها ایده‌ای که نگه می‌داریم (بدون وابستگی):**
+- [ ] **یک منبع واحد برای schema**، شبیه الگوی Pydantic program در LlamaIndex (همان کلاس هم prompt را می‌سازد و هم خروجی LLM
+  را اعتبارسنجی می‌کند). جدول «CSV Columns» و «Field Definitions» در `litbase_extraction_prompt.md` و `litbase_judge_prompt.md`
+  از تعریف ستون‌ها در `schema.py` **تولید شود**، نه اینکه جدا دستی نوشته شود. همین الان این دو از هم فاصله گرفته‌اند: هدر
+  `litbase.csv` ستون‌های `judge_verdict`، `verified_by` و `verified_date` را دارد، ولی فهرست ستون‌های prompt استخراج آن‌ها را
+  ندارد. باید بررسی شود که این تفاوت عمدی است یا نه (ستون‌های judge و انسان شاید عمداً از prompt استخراج حذف شده باشند).
+
 ---
 
 ## فاز ۳ — مستندات و آموزش با دادهٔ واقعی (هم‌زمان با فاز ۲)
@@ -574,6 +648,8 @@
 |---|---|---|
 | impedance.py، pyDRTtools، cellpy، ixdat | MIT | اقتباس متن و مثال با حفظ اطلاعیهٔ copyright («adapted from … (MIT)») |
 | PyEIS | Apache-2.0 | اقتباس با ذکر منبع و نوشتن تغییرات |
+| GROBID، grobid-quantities | Apache-2.0 | فقط به‌عنوان سرویس جدا (Java، Docker). کدی کپی نمی‌شود، فقط در مستندات ذکر شود |
+| s2-folks (Semantic Scholar) | Apache-2.0 | اقتباس الگوی مثال‌ها با ذکر منبع. ریپو آرشیو شده است |
 | pyimpspec، DearEIS، yadg، svgdigitizer، echemdb | GPL-3.0 | ❌ کپی متن یا کد ممنوع. فقط ایده، ساختار و لینک |
 
 - [ ] یک فایل `docs/ACKNOWLEDGEMENTS.md` ساخته شود و هر اقتباس در آن ثبت شود.
@@ -811,6 +887,9 @@
   - [ixdat](https://github.com/ixdat/ixdat) (MIT)
   - [yadg](https://github.com/dgbowl/yadg) (GPL-3.0)
   - [svgdigitizer](https://github.com/echemdb/svgdigitizer) (GPL-3.0)
+  - [GROBID](https://github.com/grobidOrg/grobid) و [grobid-quantities](https://github.com/lfoppiano/grobid-quantities) (Apache-2.0)، برای litbase (کار 2.15)
+  - [s2-folks](https://github.com/allenai/s2-folks) (Apache-2.0، آرشیو شده)، مثال‌های Semantic Scholar API برای litbase (کار 2.16)
+  - [llama_index](https://github.com/run-llama/llama_index) (MIT)، بررسی شد و فقط یک ایده گرفته شد (کار 2.17)
 - ساختار مستندات: [Diátaxis](https://diataxis.fr/) · [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) · [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_criteria.html)
 
 > **یادآوری:** مشخصات کتاب‌شناختی Jiang & Kucernak (مجله و سال) و فهرست نویسندگان و صفحهٔ مقالهٔ Hofstead-Duffy
