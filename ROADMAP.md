@@ -902,6 +902,8 @@ grobid-superconductors فقط به‌عنوان **ایده** برای یک مد�
   - [llama_index](https://github.com/run-llama/llama_index) (MIT)، بررسی شد و فقط یک ایده گرفته شد (کار 2.17)
   - [OpenMausBot](https://github.com/milind-soni/OpenMausBot) (Apache-2.0، TypeScript/Electron)، بررسی شد (2026-11-04): اپ دسکتاپ
     چت با agentها، **ربطی به EISForge ندارد**؛ چیزی برداشته نشد. اینجا ثبت شد تا دوباره بررسی نشود.
+  - [open-duet](https://github.com/Anil-matcha/open-duet) (Apache-2.0)، بررسی شد (2026-11-04): فضای کار self-hosted برای
+    agentهای هوش مصنوعی (تیم agent، routine، تأیید انسانی)، **ربطی به EISForge ندارد**؛ چیزی برداشته نشد.
 - ساختار مستندات: [Diátaxis](https://diataxis.fr/) · [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) · [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_criteria.html)
 
 > **یادآوری:** مشخصات کتاب‌شناختی Jiang & Kucernak (مجله و سال) و فهرست نویسندگان و صفحهٔ مقالهٔ Hofstead-Duffy
