@@ -26,20 +26,21 @@
 
 ## وضعیت فعلی (مبنای مقایسه)
 
-این اعداد در 2026-10-02 اندازه‌گیری شده‌اند. بعد از هر فاز دوباره اندازه بگیرید.
+این اعداد در 2026-10-02 اندازه‌گیری شده‌اند. بعد از هر فاز دوباره اندازه بگیرید. ستون «2026-11-04» فقط چیزهایی را دارد که
+آن روز واقعاً شمرده شدند؛ «—» یعنی دوباره اندازه‌گیری نشد.
 
-| شاخص | مقدار فعلی | هدف v1.0 |
-|---|---|---|
-| تست‌ها | 177 passed، 1 skipped (`PATCHES.md` می‌گوید 197) | ≥ 250، همه سبز |
-| پوشش کل (coverage) | 33% | ≥ 70% |
-| پوشش `cv_analyzer.py` | 26% | ≥ 80% |
-| پوشش پارسرهای Gamry / BioLogic / CSV | 0% | ≥ 70% |
-| `ruff check .` | تمیز | تمیز و **اجباری** در CI |
-| حجم `app.py` | 2243 خط، 22 مورد `except Exception` | < 400 خط (فقط مسیریابی تب‌ها) |
-| ستاره / fork / issue در GitHub | 0 / 0 / 0 | — |
-| زبان تشخیص‌داده‌شده توسط GitHub | HTML (اشتباه) | Python |
-| PyPI | ندارد | `pip install eisforge` |
-| مستندات آنلاین | ندارد | سایت MkDocs + ۵ آموزش |
+| شاخص | 2026-10-02 | 2026-11-04 | هدف v1.0 |
+|---|---|---|---|
+| تست‌ها | 177 passed، 1 skipped (`PATCHES.md` می‌گوید 197) | 285 passed، 20 skipped (طبق patch51؛ اینجا اجرا نشد) | ≥ 250، همه سبز |
+| پوشش کل (coverage) | 33% | — (CI هنوز `--cov` ندارد) | ≥ 70% |
+| پوشش `cv_analyzer.py` | 26% | — | ≥ 80% |
+| پوشش پارسرهای Gamry / BioLogic / CSV | 0% | — (فقط `sample_eis.idf` در `tests/data`) | ≥ 70% |
+| `ruff check .` | تمیز | تمیز طبق patch51، ولی CI هنوز `continue-on-error` | تمیز و **اجباری** در CI |
+| حجم `app.py` | 2243 خط، 22 مورد `except Exception` | **2402 خط**، 21 مورد `except Exception` | < 400 خط (فقط مسیریابی تب‌ها) |
+| ستاره / fork / issue در GitHub | 0 / 0 / 0 | — | — |
+| زبان تشخیص‌داده‌شده توسط GitHub | HTML (اشتباه) | — (`.gitattributes` هنوز نیست) | Python |
+| PyPI | ندارد | ندارد | `pip install eisforge` |
+| مستندات آنلاین | ندارد | ندارد | سایت MkDocs + ۵ آموزش |
 
 ---
 
@@ -267,7 +268,7 @@
 - **نکتهٔ علمی برای رفع B5:** متن Interpretation تب CV نسبت I_f/I_b را «CO tolerance» تفسیر می‌کند (مثلاً «> 2.0
   Excellent CO tolerance»). طبق Chung 2016 (JPCC) و Hofstead-Duffy 2012، I_f/I_b معیار مقاومت در برابر CO نیست.
   وقتی B5 رفع شود این تفسیر باید هم‌زمان حذف یا خنثی شود. فعلاً چون نسبت همیشه NaN است، این متن نمایش داده نمی‌شود.
-- [ ] **محل:** `cv_analyzer.py`، در `analyze`: `i_b = float(i_bwd[np.argmin(i_bwd)])` («Backward scan is cathodic -> peak is a minimum»).
+- [x] (رفع شد در patch44) **محل:** `cv_analyzer.py`، در `analyze`: `i_b = float(i_bwd[np.argmin(i_bwd)])` («Backward scan is cathodic -> peak is a minimum»).
 - **مشکل:** پیک برگشت در الکترواکسیداسیون الکل روی Pt یک پیک **آندی** (مثبت) است، نه کمینهٔ کاتدی. کد کمینهٔ شاخهٔ برگشت را
   برمی‌دارد، که جریان کاتدی است. بعد شرط `i_b > 1e-10` برقرار نمی‌شود و نسبت **همیشه NaN** است.
 - **عدد تأییدشده (2026-10-09):** CV مصنوعی کتابی Pt با I_f = 0.52 mA در 0.6 V و I_b = 0.28 mA در 0.4 V (نسبت واقعی حدود 1.8):
@@ -294,7 +295,8 @@
 - [ ] حذف `eisforge/analysis/band_edge_calculator.py.bak2`.
 - [ ] یکی از دو `review.html` یکسان (هر کدام 844KB) حذف شود: `eisforge/knowledge/data/review/` و `.../reviews/`.
   اول با `grep -rn "review/review.html\|reviews/review.html" eisforge` چک کنید کد به کدام مسیر ارجاع می‌دهد.
-- [ ] به `.gitignore` اضافه شود: `*.bak`، `*.bak[0-9]`، `__pycache__/`، `htmlcov/`، `.coverage`.
+- [x] به `.gitignore` اضافه شود: `*.bak`، `*.bak[0-9]`، `__pycache__/`، `htmlcov/`، `.coverage`. (هر پنج الگو در `.gitignore` هست؛
+  ولی `band_edge_calculator.py.bak2` از قبل ردیابی می‌شود و باید با `git rm --cached` جدا شود، بند بالا.)
 - **تمام‌شده وقتی:** `git ls-files | grep -E "bak|pycache"` خروجی خالی بدهد.
 
 ### 0.3 — درست کردن زبان ریپو در GitHub
@@ -323,7 +325,7 @@
 ### 0.6 — اصلاحات علمی کوچک
 - [ ] `examples/aor_benchmark.yaml:26`: متن «pH = 13 assumed for … 1.0 M KOH» را اصلاح کنید. مقدار برای 1.0 M KOH باید pH ≈ 14 باشد (خط 139 درست است و فقط یادداشت غلط است).
 - [ ] `examples/aor_benchmark.yaml:7,25`: پتانسیل Ag/AgCl در 3 M NaCl حدود 0.209 V است. 0.197 مقدار KCl اشباع است. منبع مقاله را دوباره ببینید و مقدار درست را بنویسید.
-- [ ] متن I_f/I_b برای Pt و Pd (`eisforge/analysis/cv_analyzer.py:713-729`): عبارت‌هایی مثل «Excellent CO tolerance» حذف شوند. **پیشنهاد:**
+- [x] (رفع شد در patch44) متن I_f/I_b برای Pt و Pd (`eisforge/analysis/cv_analyzer.py:713-729`): عبارت‌هایی مثل «Excellent CO tolerance» حذف شوند. **پیشنهاد:**
   `"I_f/I_b = 2.31 (reported for comparison only; not a reliable CO-tolerance descriptor — see Chung et al. 2016)"`.
   مسیر carbon_material **دست نخورد**، چون الان درست است (خطوط 425 تا 428 برای کربن `NaN` برمی‌گردانند).
 - **تمام‌شده وقتی:** تست‌های موجود سبز بمانند و یک تست جدید چک کند که متن تفسیر برای `noble_metal` کلمهٔ «Excellent» ندارد.
@@ -450,6 +452,9 @@
   3. سه منحنی رسم شود: blank، با الکل، و تفاضل (net).
   4. پیک، onset و چگالی جریان **روی منحنی net** محاسبه شوند. مقادیر خام هم کنارش گزارش شوند.
   5. هشدار در این موارد: سرعت روبش دو فایل یکسان نباشد، بازهٔ پتانسیل خیلی متفاوت باشد، یا تعداد چرخه‌ها نخواند.
+- **وضعیت (2026-11-04): نیمه‌کاره.** انجام شد: uploader `cv_blank_up`، منحنی net و هشدارها (patch37، patch38)، مقایسه با blank یا
+  کاتالیست مرجع (patch48، patch50)، و جدا کردن جریان خازنی (patch51). منطق در `CVData.subtract` است، نه `subtract_blank`.
+  **مانده:** sheet اکسل `CV_blank_subtracted`، و تست «کمتر از ۲٪ اختلاف با Origin» روی جفت فایل واقعی.
 - **منطق در کتابخانه، نه در `app.py`:** تابع `subtract_blank(E, I, E_blank, I_blank) -> (E_common, I_net)` را در `eisforge/analysis/cv_analyzer.py` تعریف کنید تا از API پایتون هم قابل استفاده باشد.
 - **تست:** روی جفت فایل واقعی شما، پیک net با محاسبهٔ دستی در Origin کمتر از 2٪ اختلاف داشته باشد.
 - **خروجی Excel:** یک sheet با نام `CV_blank_subtracted` با ستون‌های E، I_alcohol، I_blank و I_net.
@@ -461,6 +466,8 @@
   - ناحیهٔ بالای این پتانسیل روی نمودار سایه بخورد.
 - **وابسته به:** 2.1، و تبدیل پتانسیل به RHE.
 - **تست:** blank مصنوعی با جریان نمایی بالای 1.2 V باید هشدار بدهد و blank تخت نباید.
+- **وضعیت (2026-11-04): نیمه‌کاره.** patch48 وقتی جریان اضافه بالای 1.23 V_RHE شروع شود هشدار می‌دهد. **مانده:** آستانهٔ
+  قابل تنظیم `cv_corrosion_E`، قاعدهٔ «جریان blank بیشتر از x٪ جریان net»، و سایهٔ ناحیه روی نمودار.
 
 ### 2.3 — 🔴 ECSA درست برای کربن
 - [ ] **مشکل:** در `app.py:420` برچسب ECSA برای کربن «cm²_BET» است. سطح BET و ECSA الکتروشیمیایی دو کمیت متفاوت‌اند.
@@ -520,7 +527,10 @@
 ### 2.10b — 🟠 موارد گزارش‌دهی متال‌فری از مرور ادبیات (2026-10-09)
 - [ ] **E_onset روی جریان net** (بعد از patch38): پتانسیلی که در آن جریان net (الکل منهای blank) از یک آستانهٔ صریح و
   قابل تنظیم عبور می‌کند. آستانه در خروجی گزارش شود.
-- [ ] **مقایسه با کاتالیست مرجع** (Pt/C یا Pd/C در همان سیستم) در داشبورد 2.11.
+  **وضعیت (2026-11-04): نیمه‌کاره.** patch48 مقدار `e_significant_V` را با معیار صریح (۳ برابر نویز، ۱۰٪ جریان blank، ۵ نقطه)
+  حساب می‌کند، ولی فقط داخل هشدار بالای 1.23 V دیده می‌شود. نه به‌عنوان E_onset گزارش می‌شود و نه آستانه‌اش قابل تنظیم است.
+- [ ] **مقایسه با کاتالیست مرجع** (Pt/C یا Pd/C در همان سیستم) در داشبورد 2.11. **نیمه‌کاره:** patch50 گزینهٔ «reference
+  catalyst» را در تب CV اضافه کرد؛ داشبورد 2.11 هنوز نیست.
 - [ ] **کنترل الکترود خالی (GC بدون کاتالیست)** به‌عنوان blank دوم، برای جدا کردن اثر خود الکترود.
 - **زمینهٔ ادبیات:** اکسایش الکتروشیمیایی الکل روی کربن واقعاً متال‌فری نادر است. بیشتر کارهای کربنی متال‌فری روی ORR
   هستند و «تحمل متانول» گزارش می‌کنند (CV با و بدون متانول یکسان؛ پتنت US 8221937، گروه Dai). ناخالصی فلزی (Fe)
@@ -890,6 +900,8 @@ grobid-superconductors فقط به‌عنوان **ایده** برای یک مد�
   - [GROBID](https://github.com/grobidOrg/grobid) و [grobid-quantities](https://github.com/lfoppiano/grobid-quantities) (Apache-2.0)، برای litbase (کار 2.15)
   - [s2-folks](https://github.com/allenai/s2-folks) (Apache-2.0، آرشیو شده)، مثال‌های Semantic Scholar API برای litbase (کار 2.16)
   - [llama_index](https://github.com/run-llama/llama_index) (MIT)، بررسی شد و فقط یک ایده گرفته شد (کار 2.17)
+  - [OpenMausBot](https://github.com/milind-soni/OpenMausBot) (Apache-2.0، TypeScript/Electron)، بررسی شد (2026-11-04): اپ دسکتاپ
+    چت با agentها، **ربطی به EISForge ندارد**؛ چیزی برداشته نشد. اینجا ثبت شد تا دوباره بررسی نشود.
 - ساختار مستندات: [Diátaxis](https://diataxis.fr/) · [MkDocs Material](https://squidfunk.github.io/mkdocs-material/) · [JOSS review criteria](https://joss.readthedocs.io/en/latest/review_criteria.html)
 
 > **یادآوری:** مشخصات کتاب‌شناختی Jiang & Kucernak (مجله و سال) و فهرست نویسندگان و صفحهٔ مقالهٔ Hofstead-Duffy
