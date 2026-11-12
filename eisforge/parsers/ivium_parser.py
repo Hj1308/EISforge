@@ -62,6 +62,57 @@ class IviumIDFParser(BaseEISParser):
             return self._parse_eis(raw_data, metadata, filepath)
         return self._parse_cv(raw_data, metadata, filepath, method)
 
+    # ── Multi-cycle files (.ids) ──────────────────────────────────────────────
+
+    def parse_cycles(self, filepath: Path | str) -> list[EISDataset]:
+        """Read every CV/LSV cycle of an Ivium file, one EISDataset per cycle (patch55, B16).
+
+        An Ivium .ids dataset stores each cycle as its own data object: a full header that
+        starts with a ``QR=`` line (its 19th field is the cycle label, e.g. "scan 1",
+        "cycle 2"), followed by a ``primary_data`` block. A leading object with fewer than
+        10 points is a placeholder and is skipped. A file with at most one ``QR=`` header
+        (an ordinary .idf) returns ``[self.parse(filepath)]``, so nothing changes for it.
+
+        Each dataset's metadata gets ``cycle_label`` and ``cycle_number`` (int or None).
+        Idea from ixdat's ``IviumDatasetReader`` (MIT): read one segment per cycle with an
+        explicit cycle number, then let the caller join them.
+        """
+        filepath = self._resolve_path(filepath)
+        lines = self._read_file(filepath).splitlines()
+        heads = [i for i, ln in enumerate(lines) if ln.lstrip().startswith("QR=")]
+        if len(heads) <= 1:
+            return [self.parse(filepath)]
+        out = []
+        for a, b in zip(heads, heads[1:] + [len(lines)]):
+            seg = lines[a:b]
+            start, n = self._find_data_block(seg)
+            if start is None:
+                continue                                    # placeholder (< 10 points)
+            raw = self._read_data_block(seg, start, n)
+            if raw is None or len(raw) == 0:
+                continue
+            md = self._parse_header(seg, filepath)
+            method = md.get("method", "").lower().replace(" ", "")
+            if not any(m in method for m in _CV_METHODS):
+                continue
+            fields = seg[0].split(",")
+            label = fields[18].strip() if len(fields) > 18 else ""
+            num = re.search(r"(\d+)\s*$", label)
+            md["cycle_label"] = label
+            md["cycle_number"] = int(num.group(1)) if num else None
+            out.append(self._parse_cv(raw, md, filepath, method))
+        if not out:
+            raise ValueError(f"No CV/LSV data block in: {filepath.name}")
+        # One technique per voltammogram: keep the cycles of the most common data type
+        # (e.g. drop a stray LSV object in front of CV cycles) and say so.
+        types = [d.metadata["data_type"] for d in out]
+        main = max(set(types), key=types.count)
+        kept = [d for d in out if d.metadata["data_type"] == main]
+        if len(kept) < len(out):
+            for d in kept:
+                d.metadata["cycles_dropped"] = len(out) - len(kept)
+        return kept
+
     # ── EIS Parsing ───────────────────────────────────────────────────────────
 
     def _parse_eis(self, raw_data, metadata, filepath) -> EISDataset:

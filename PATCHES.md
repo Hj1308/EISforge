@@ -1,5 +1,28 @@
 # EISForge — Patch Log
 
+## patch55 — B16: every cycle of a multi-cycle Ivium .ids file is read
+**Date:** 2026-11-12
+**Files changed:** eisforge/parsers/ivium_parser.py, eisforge/data/cv_data.py,
+tests/test_ivium_ids_cycles.py (new), ROADMAP.md
+**What it does:** new `IviumIDFParser.parse_cycles()`: an .ids dataset stores each cycle as its own
+data object (a header starting with `QR=`, whose 19th field is the cycle label, then a `primary_data`
+block); every CV/LSV object with >= 10 points becomes one dataset with `cycle_label` / `cycle_number`,
+a smaller leading placeholder is skipped, and objects of a minority data type are dropped
+(`cycles_dropped`). A file with at most one `QR=` header returns `[parse()]`, so ordinary .idf files
+are unchanged. `CVData.from_ivium()` joins the cycles and stores `meta["cycle_bounds"]` /
+`meta["cycle_labels"]` (warning `cycle_warning` if their scan rates differ); `select_cycle()` returns
+the recorded cycle when bounds exist (`-1` = last, out-of-range clamped) and keeps the legacy vertex
+rule (B12) otherwise. Second bug fixed by the same change: the placeholder's header was read, so an
+.ids CV was classified as "LSV".
+**Inspired by:** ixdat `IviumDatasetReader` (MIT): one segment per cycle with an explicit cycle number,
+joined afterwards.
+**Tested on:** the author's private multi-cycle .ids file: before, one cycle and data type LSV; after,
+all cycles, data type CV, each selected cycle equal to its raw block in the file. Private .idf files
+(single header): output identical to before. New tests (synthetic .ids with a placeholder object,
+mixed scan rates, single-header file, EIS file, private real file): 9 failed before, 10 passed after
+(1 private test skipped without the data). Full suite 302 passed, 16 skipped; coverage 40.7 %.
+**Not done here:** the app uploaders still accept only .idf (patch56).
+
 ## patch54 — private data out of the repository: real-file references move to a private JSON
 **Date:** 2026-11-12
 **Files changed:** tests/_private.py (new), tests/test_cv_blank_tab.py, tests/test_cv_data.py,

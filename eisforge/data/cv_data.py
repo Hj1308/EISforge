@@ -92,11 +92,17 @@ class CVData:
     # ── construction ──────────────────────────────────────────────────────────
     @classmethod
     def from_ivium(cls, path, label: Optional[str] = None) -> "CVData":
-        """Read an Ivium .idf CV/LSV through the package parser (single source of truth)."""
+        """Read an Ivium .idf / .ids CV/LSV through the package parser (single source of truth).
+
+        A multi-cycle .ids file (one data object per cycle, patch55 / B16) is joined into one
+        voltammogram; ``meta["cycle_bounds"]`` keeps the instrument's [start, end) index of
+        every cycle and ``meta["cycle_labels"]`` its label, so ``select_cycle`` returns the
+        recorded cycle instead of counting vertices.
+        """
         from eisforge.parsers.ivium_parser import IviumIDFParser
 
-        ds = IviumIDFParser().parse(path)
-        md = dict(ds.metadata)
+        parts = IviumIDFParser().parse_cycles(path)
+        md = dict(parts[0].metadata)
         if md.get("data_type") not in ("CV", "LSV"):
             raise ValueError(f"{Path(path).name} is not a CV/LSV file (data_type="
                              f"{md.get('data_type')!r})")
@@ -104,17 +110,45 @@ class CVData:
             sr = float(md.get("scanrate", "nan")) * 1e3            # V/s in the file -> mV/s
         except (TypeError, ValueError):
             sr = float("nan")
-        return cls(potential_V=ds.z_real, current_mA=ds.z_imag, scan_rate_mV_s=sr,
-                   label=label or Path(path).stem, meta=md)
+        if len(parts) == 1:
+            return cls(potential_V=parts[0].z_real, current_mA=parts[0].z_imag,
+                       scan_rate_mV_s=sr, label=label or Path(path).stem, meta=md)
+        rates = {p.metadata.get("scanrate") for p in parts}
+        if len(rates) > 1:
+            md["cycle_warning"] = ("The cycles of this file report different scan rates "
+                                   f"({', '.join(sorted(map(str, rates)))} V/s).")
+        sizes = [len(p.z_real) for p in parts]
+        ends = np.cumsum(sizes)
+        md["cycle_bounds"] = [(int(e - s), int(e)) for s, e in zip(sizes, ends)]
+        md["cycle_labels"] = [p.metadata.get("cycle_label", "") for p in parts]
+        md["n_points"] = int(ends[-1])
+        return cls(potential_V=np.concatenate([p.z_real for p in parts]),
+                   current_mA=np.concatenate([p.z_imag for p in parts]),
+                   scan_rate_mV_s=sr, label=label or Path(path).stem, meta=md)
 
     # ── cycles ────────────────────────────────────────────────────────────────
     def select_cycle(self, idx: int = -1) -> "CVData":
         """Return one cycle (ixdat ``select_cycle`` idea); ``idx=-1`` = last complete cycle.
 
-        Cycles are cut at every second potential vertex, starting from the first scan
-        direction (the rule of the former app loader, kept unchanged in patch45). The
-        result's meta gets ``n_cycles`` and ``cycle_used`` (1-based).
+        If the file stored its cycles separately (``meta["cycle_bounds"]``, .ids files,
+        patch55), those recorded cycles are used and ``idx=-1`` is the last one (each was
+        saved complete). Otherwise cycles are cut at every second potential vertex,
+        starting from the first scan direction (the rule of the former app loader, kept
+        unchanged in patch45; known off by one, ROADMAP B12). The result's meta gets
+        ``n_cycles`` and ``cycle_used`` (1-based).
         """
+        bounds = self.meta.get("cycle_bounds")
+        if bounds and bounds[-1][1] == len(self.potential_V):
+            n = len(bounds)
+            k = n - 1 if idx == -1 else max(0, min(idx, n - 1))
+            start, end = bounds[k]
+            meta = {key: v for key, v in self.meta.items()
+                    if key not in ("cycle_bounds", "cycle_labels")}
+            meta.update(n_cycles=n, cycle_used=k + 1,
+                        cycle_label=self.meta.get("cycle_labels", [""] * n)[k])
+            return CVData(potential_V=self.potential_V[start:end],
+                          current_mA=self.current_mA[start:end],
+                          scan_rate_mV_s=self.scan_rate_mV_s, label=self.label, meta=meta)
         E = self.potential_V
         v = np.where(np.diff(np.sign(np.diff(E))) != 0)[0] + 1
         if len(v) < 2:
