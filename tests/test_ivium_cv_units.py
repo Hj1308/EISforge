@@ -11,19 +11,19 @@ exercised (pytest alone cannot see app.py widget/loader bugs — see AGENTS.md).
   repo until approved for publication); otherwise it is skipped.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 
 
-def _synthetic_idf(current_range: str = "100uA", i_peak_a: float = 2.31e-6) -> bytes:
+def _synthetic_idf(current_range: str = "100uA", i_peak_a: float = 2.0e-6) -> bytes:
     """Minimal Ivium-style .idf: one CV cycle, current column in amperes."""
     e_up = np.round(np.arange(-0.8, 0.5001, 0.01), 5)
     e = np.concatenate([e_up, e_up[-2:0:-1]])
@@ -52,16 +52,14 @@ def _run_cv_upload(name: str, content: bytes):
 @pytest.mark.parametrize("current_range", ["100uA", "1mA", "10nA"])
 def test_synthetic_idf_current_is_amperes_to_mA(current_range):
     _at, cur = _run_cv_upload("synthetic.idf", _synthetic_idf(current_range))
-    # 2.31e-6 A must become 2.31e-3 mA whatever the hardware range says
-    assert cur.max() == pytest.approx(2.31e-3, rel=1e-3)
+    # 2.0e-6 A must become 2.0e-3 mA whatever the hardware range says
+    assert cur.max() == pytest.approx(2.0e-3, rel=1e-3)
 
 
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
-def test_real_koh_blank_50mVs():
-    p = Path(LOCAL) / "koh_50mVs.idf"
-    if not p.exists():
-        pytest.skip(f"{p} not found")
+def test_real_blank_file():
+    # file name and raw current extremes: reference_values.json (private)
+    folder, case = private_refs("cv_units")
+    p = private_file(folder, case["file"])
     _at, cur = _run_cv_upload(p.name, p.read_bytes())
-    # raw file: max +2.30957E-06 A, min -5.04540E-06 A (1 M KOH, 50 mV/s, Ag/AgCl 3 M KCl)
-    assert cur.max() == pytest.approx(2.30957e-3, abs=1e-6)
-    assert cur.min() == pytest.approx(-5.04540e-3, abs=1e-6)
+    assert cur.max() == pytest.approx(case["i_max_mA"], abs=1e-6)
+    assert cur.min() == pytest.approx(case["i_min_mA"], abs=1e-6)

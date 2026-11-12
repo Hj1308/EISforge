@@ -7,8 +7,6 @@ cathodic-positive (polarographic). Explicit current_convention overrides the gue
 Real-file tests run only when EISFORGE_LOCAL_DATA points to the private data folder.
 """
 
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -16,7 +14,7 @@ import pytest
 from eisforge.analysis.cv_analyzer import CVAnalyzer
 from eisforge.parsers.ivium_parser import IviumIDFParser
 
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
+from tests._private import private_file, private_refs
 
 
 def _pt_like(ib_gt_if=False, start_at_top=False):
@@ -79,16 +77,13 @@ def test_open_path_keeps_pre_patch35_rule():
 
 
 # ── real files (private; skipped unless EISFORGE_LOCAL_DATA is set) ───────────
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
-@pytest.mark.parametrize("fname", ["koh_50mVs.idf", "koh_ipa_50mVs.idf"])
 @pytest.mark.parametrize("sign", [1, -1])
-def test_real_files_orientation(fname, sign):
-    p = Path(LOCAL) / fname
-    if not p.exists():
-        pytest.skip(f"{p} not found")
-    ds = IviumIDFParser().parse(p)                 # patch34: potential vs reference
-    e, i_ma = np.asarray(ds.z_real), np.asarray(ds.z_imag)
-    r = _analyze(e, sign * i_ma)
-    assert r.current_sign_flipped is (sign == -1)
-    # before patch35 the "peak" sat at the cathodic vertex (-1.087 / -0.923 V)
-    assert r.e_forward_peak > 0.0
+def test_real_files_orientation(sign):
+    folder, case = private_refs("cv_files")
+    for entry in case:
+        ds = IviumIDFParser().parse(private_file(folder, entry["file"]))  # patch34: vs reference
+        e, i_ma = np.asarray(ds.z_real), np.asarray(ds.z_imag)
+        r = _analyze(e, sign * i_ma)
+        assert r.current_sign_flipped is (sign == -1)
+        # before patch35 the "peak" sat at the cathodic vertex
+        assert r.e_forward_peak > 0.0

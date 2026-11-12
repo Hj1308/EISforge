@@ -7,16 +7,16 @@ alone cannot see app.py widget bugs — see AGENTS.md). Real-pair tests run only
 when EISFORGE_LOCAL_DATA points to the private data folder.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 from eisforge.data.cv_data import CVData
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 
 
 def _loop(offset_mA=0.0, scale=1.0):
@@ -95,27 +95,20 @@ def test_app_without_blank_has_no_net_section():
     assert "Max net j (anodic sweep)" not in [m.label for m in at.metric]
 
 
-# ── real pairs (private data) ────────────────────────────────────────────────
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
-@pytest.mark.parametrize("sample, blank, expected", [
-    ("koh_ipa_50mVs.idf", "koh_50mVs.idf", 0.11),
-    ("koh_ipa_lsv_5mVs.idf", "koh_lsv_5mVs.idf", 0.14),
-])
-def test_real_valid_pairs_not_flagged(sample, blank, expected):
-    s, b = Path(LOCAL) / sample, Path(LOCAL) / blank
-    if not (s.exists() and b.exists()):
-        pytest.skip("private files not found")
-    r = CVData.from_ivium(s).subtract(CVData.from_ivium(b))
-    assert r.blank_dominant_fraction == pytest.approx(expected, abs=0.02)
-    assert not any("more than twice" in w for w in r.warnings)
+# ── real pairs (private data; names and values in reference_values.json) ─────
+def test_real_valid_pairs_not_flagged():
+    folder, pairs = private_refs("blank_fraction_pairs")
+    for case in pairs:
+        s, b = private_file(folder, case["sample"]), private_file(folder, case["blank"])
+        r = CVData.from_ivium(s).subtract(CVData.from_ivium(b))
+        assert r.blank_dominant_fraction == pytest.approx(case["fraction"], abs=0.02)
+        assert not any("more than twice" in w for w in r.warnings)
 
 
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
 def test_real_pair_in_app():
-    s, b = Path(LOCAL) / "koh_ipa_50mVs.idf", Path(LOCAL) / "koh_50mVs.idf"
-    if not (s.exists() and b.exists()):
-        pytest.skip("private files not found")
+    folder, case = private_refs("cv_pair")
+    s, b = private_file(folder, case["sample"]), private_file(folder, case["blank"])
     at = _run(s.read_bytes(), b.read_bytes())
     texts = " ".join(w.value for w in at.warning)
     assert "OCP differs by" in texts                 # patch37 warning reaches the UI
-    assert "not positive anywhere" in texts          # IPA gives no current above the blank
+    assert "not positive anywhere" in texts          # no current above the blank

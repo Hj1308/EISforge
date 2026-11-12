@@ -163,8 +163,17 @@ confirmed; a lesson that lives only in a chat is lost.
   pushed files byte for byte (CRLF stripped) with the tested copy, then check CI.
 - **Private data stays private.** The author's measurement files are unpublished.
   Diagnostic scripts run on the author's machine and print only qualitative
-  results (yes/no, verdicts); real numbers from those files are never written
-  into tracked files (`ROADMAP.md`, `PATCHES.md`, tests).
+  results (yes/no, verdicts). **Nothing that identifies or describes those files
+  goes into a tracked file** (`ROADMAP.md`, `PATCHES.md`, `README.md`, tests, code
+  comments, commit messages): no measured numbers, no file names or hashes, no
+  catalyst or sample names, no electrolyte, reference electrode, scan rate,
+  potential window or electrode area. Write the qualitative result instead
+  ("verified on the author's private files: no onset, as expected"). Real-file
+  tests read names and reference values from
+  `$EISFORGE_LOCAL_DATA/reference_values.json` via `tests/_private.py`.
+  Conditions the user tells you in chat are private too: confirm them in chat,
+  never write them into the repo. (patch53b put a catalyst name and conditions
+  into `ROADMAP.md` and it was pushed; patch54 removed it.)
 - **A synthetic reproduction is not a real-data bug.** When a bug shows on
   synthetic data only, re-run on a real file (or a real file plus a known added
   signal) before patching; if it does not reproduce, log it as unverified

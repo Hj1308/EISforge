@@ -1,11 +1,37 @@
 # EISForge — Patch Log
 
+## patch54 — private data out of the repository: real-file references move to a private JSON
+**Date:** 2026-11-12
+**Files changed:** tests/_private.py (new), tests/test_cv_blank_tab.py, tests/test_cv_data.py,
+tests/test_cv_orientation.py, tests/test_cv_peak_double_layer.py, tests/test_ivium_cv_units.py,
+tests/test_ivium_potential_column.py, tests/test_lsv_onset_gate.py, tests/test_rhe_shift.py,
+ROADMAP.md, PATCHES.md, AGENTS.md, README.md, CONTEXT.md, eisforge/analysis/cv_analyzer.py,
+eisforge/ml/uncertainty/active_learner.py, eisforge/ml/uncertainty/query_strategies.py
+**What it does:**
+- Real-file tests no longer carry private file names, measurement conditions or reference values.
+  They read them from `$EISFORGE_LOCAL_DATA/reference_values.json` (outside the repo) through the new
+  helper `tests/_private.py`, and skip when the variable, the JSON or the section is missing. The JSON
+  is written on the author's machine by an untracked script with exactly the values the tests had.
+- ROADMAP.md and PATCHES.md: measured numbers, file names and hashes, sample and catalyst names and
+  measurement conditions of the author's files replaced by the qualitative result. Bugs, fixes and
+  lessons are unchanged.
+- AGENTS.md: the "Private data stays private" rule now names everything that must stay out (numbers,
+  file names, sample/catalyst names, electrolyte, reference, scan rate, window, area) and applies to
+  conditions told in chat too. ROADMAP: decision D7 (history rewrite) for the author.
+- README examples, CONTEXT glossary and ML code comments: sample names and values from private data
+  replaced by generic ones; two synthetic tests no longer reuse a real current value.
+**Tested on:** clean copy of main (patch53). Without private data: 292 passed, 15 skipped (was 20:
+5 parametrized private tests are now one test each with a loop); coverage 40.3 %; ruff on tests clean.
+Equivalence: old and new private tests run against a stand-in folder with files of the same names
+fail at the same assertions with the same reference values, for every entry. The real check is the
+author's local run with the real files (`EISFORGE_LOCAL_DATA` set).
+**Not done:** git history still holds the old text (decision D7).
+
 ## patch53b — ROADMAP data list: confirmed conditions of the multi-cycle .ids file
 **Date:** 2026-11-12
 **Files changed:** ROADMAP.md
-**What it does:** replaces the "electrolyte unknown" line under the .ids entry of the data list with the
-author's confirmed conditions: 0.1 M H2SO4 blank (no alcohol), boron carbide (B4C) working electrode,
-Ag/AgCl 3 M KCl reference, and the approximate RHE frame (pH ~ 1). Documentation only.
+**What it does:** recorded the author's confirmed measurement conditions for the multi-cycle .ids file
+in the data list. Documentation only. (The details were removed again in patch54: private data.)
 **Tested on:** clean copy of main with patch53 (first download) applied: anchor found once, second run
 stops with STOP. No code changed.
 
@@ -22,7 +48,7 @@ stops with STOP. No code changed.
 - New `tests/test_app_smoke.py`: AppTest executes `app.py` and every `pages/*.py`, asserts 0 exceptions
   (AppTest pattern: Streamlit `streamlit.testing.v1` docs).
 - Lint left as is (still `continue-on-error`): the pre-existing ruff findings are fixed first.
-- ROADMAP: two findings from the author's real files logged as B15 and B16 (not patched).
+- ROADMAP: two findings from the author's private files logged as B15 and B16 (not patched).
 **Tested on:** clean copy of the repo, Python 3.13, galvani 0.4.1 wheel: full suite 292 passed,
 20 skipped (was 287; +5 smoke tests); coverage 40.3 %. A duplicate `number_input` pair appended to a
 copy of `app.py` made `test_app_smoke.py` fail with `StreamlitDuplicateElementId` (ROADMAP 1.2
@@ -141,9 +167,9 @@ New `CVData.select_cycle` (ixdat `select_cycle` idea) holds the former app cycle
 unchanged. `IviumIDFParser` now sets `potential_warning` when the scan was applied wrt
 OCP but the file has no absolute-potential column (previously only the app warned).
 Pattern: one reader per format (ixdat READER_CLASSES, cellpy BaseLoader).
-**Tested on:** 173 real CV/LSV .idf files (EISforg_localdata) — old loader vs new path
+**Tested on:** the author's private CV/LSV .idf files — old loader vs new path
 IDENTICAL for E, I, OCP, scan rate, cycle count and cycle used (idx -1/0/1); all
-real files are single-cycle. Full suite + ruff clean.
+of them are single-cycle. Full suite + ruff clean.
 **Behaviour change:** files the package classifies as EIS (e.g. long CA files) are now
 rejected by the CV/LSV/ECSA tabs with "not a CV/LSV file" instead of being read as CV.
 **Known, not fixed (B12):** the legacy cycle rule is off by one for multi-cycle scans
@@ -202,13 +228,14 @@ checks passed!; AppTest 0 exceptions.
 **What it does:** new `_to_rhe_shift(e_ref_type, ph, slope)` used by all six RHE conversions (CV tab, LSV Tafel
 window vs RHE, LSV plot vs RHE, ECSA x2, K-L); it returns 0 for an RHE reference (B8: data already vs RHE were
 shifted by 0.059·pH). Each site keeps its slope (0.059 or RT ln10/F). The LSV E_onset line is converted from the
-analysis frame like the Tafel markers (B10: it sat 0.210 V too high) and drawn only when finite. E_onset
+analysis frame like the Tafel markers (B10: it sat one reference-electrode offset too high) and drawn only when
+finite. E_onset
 (zero-cross) is NaN without a sustained anodic current. A static test blocks hand-written RHE shifts.
 **Inspired by:** unitpackage/echemdb reference-electrode model (value vs SHE per reference, RHE = −0.0591·pH vs SHE).
 Idea only; that code is GPL.
-**Tested on:** 2nd-catalyst LSV (comparison only): E_onset line 0.860 V vs Ag/AgCl (was 1.070), 1.898 V vs RHE;
-private koh_ipa_lsv_5mVs: zero-cross NaN (was 0.769 V_RHE). New tests: 6 failed / 2 passed before, 8 passed
-after. Full suite 262 passed; ruff All checks passed!; AppTest 0 exceptions.
+**Tested on:** the author's private LSV files: E_onset line now at the right potential (was shifted by the
+reference offset); no zero-cross onset without a wave (one was reported before). New tests: 6 failed /
+2 passed before, 8 passed after. Full suite 262 passed; ruff All checks passed!; AppTest 0 exceptions.
 
 ## patch39 — B6 + B7: LSV E_onset only with a sustained anodic current; vs-RHE conversion fixed
 **Date:** 2026-10-11
@@ -217,13 +244,13 @@ after. Full suite 262 passed; ruff All checks passed!; AppTest 0 exceptions.
 0.01 mA/cm², input lsv_onset_jmin) for 5 consecutive points; otherwise NaN, onset_found=False, a Tafel warning
 and "Not rated". The sign comes from current_convention (IUPAC default), not the magnitude rule. The LSV tab
 shows a warning and "—", the vs-RHE value in the help text, and a warning above 1.23 V_RHE. B7: the
-dual-onset vs-RHE help no longer adds the reference offset twice (+0.210 V for Ag/AgCl 3 M).
+dual-onset vs-RHE help no longer adds the reference offset twice.
 **Inspired by:** threshold definition of the onset potential (review "Defining the Onset Potential": no single
 definition, state the threshold). No onset implementation was found in ixdat, PyVoltammetry or the other
 packages reviewed.
-**Tested on:** private koh_ipa_lsv_5mVs (raw, and net vs koh_lsv_5mVs): no onset (net was 1.024 V_RHE before).
-2nd-catalyst IPA LSV (comparison only, not in the tests): OER warning, j-threshold 1.455 V_RHE (was shown as
-1.665). New tests: 9 failed before, 9 passed after. Full suite 254 passed; ruff All checks passed!;
+**Tested on:** the author's private LSV files (raw and blank-subtracted): no onset without a wave (a tangent
+onset was reported before); a second sample with a wave: OER warning, j-threshold vs RHE no longer shifted by
+the reference offset. New tests: 9 failed before, 9 passed after. Full suite 254 passed; ruff All checks passed!;
 AppTest 0 exceptions.
 
 ## patch38 — task 2.1 (part 2): blank CV uploader in the CV tab, net-current plot, blank-dominates warning
@@ -237,10 +264,9 @@ C_dl still from the alcohol CV. cv_data: blank_dominant_fraction + warning when 
 of the shared window (a linear-R² criterion was rejected: false alarm on a valid blank, R² 0.981).
 **Inspired by:** ixdat CVDiffPlotter (sample solid, blank dashed, separate difference plot); Gamry Echem Analyst
 "Subtract Background From File" (interpolated subtraction, [BKS] legend tag).
-**Tested on:** private pairs koh_ipa_50mVs - koh_50mVs (max net −0.236 uA, OCP warning, "not positive"),
-koh_ipa_lsv_5mVs - koh_lsv_5mVs (dominant fraction 0.14, no warning); second-catalyst LSV pair (0.91, warning;
-comparison only, not in tests). New tests: 6 failed / 1 passed / 1 skipped before, 7 passed / 1 skipped after
-(LSV pair filenames in the private folder differ). Full suite 244 passed / 1 skipped; ruff All checks passed!;
+**Tested on:** the author's private sample/blank pairs: OCP warning and "not positive" where expected, no
+false "blank dominates" warning on valid pairs, the warning on a pair where the blank dominates.
+New tests: 6 failed / 1 passed / 1 skipped before, 7 passed / 1 skipped after. Full suite 244 passed / 1 skipped; ruff All checks passed!;
 AppTest 0 exceptions.
 
 ## patch37 — task 2.1 (part 1): CVData module with sweep split and blank subtraction
@@ -254,16 +280,15 @@ OCP difference > 50 mV. Library only; the CV-tab uploader follows in patch38.
 **Inspired by:** pyimpspec DataSet (one data class with its own operations: subtract_impedances, average);
 ixdat CyclicVoltammogram (find_signed_sections sweep split, diff_with blank subtraction — improved: NaN instead
 of np.interp clamping outside the blank range).
-**Tested on:** private pair koh_ipa_50mVs.idf - koh_50mVs.idf: net -0.613 uA @ 0.30 V_RHE, -0.236 uA @ 0.70
-V_RHE (= hand calculation), 87% shared window, warning "OCP differs by 165 mV". New tests: collection error
+**Tested on:** the author's private sample/blank pair: net current equal to a hand calculation at two
+potentials, shared window and OCP-difference warning as expected. New tests: collection error
 before, 9 passed after. Full suite 237 passed; ruff All checks passed!; AppTest 0 exceptions.
 
 ## patch36 — B4: CV peak search with prominence, explicit "no anodic peak", C_dl from loop half-width
 **Date:** 2026-10-09
 **Files changed:** eisforge/analysis/cv_analyzer.py, app.py, tests/test_cv_peak_double_layer.py (new)
 **What it does:** (1) removed the metal-free straight background fitted through the first/last 15% of the whole
-array (both ends are at the cathodic vertex in a full CV; it produced fake peaks, e.g. 0.13 V_RHE on the 1 M KOH
-blank). (2) forward peak = scipy.signal.find_peaks with prominence >= max(10% of current range, 5x noise),
+array (both ends are at the cathodic vertex in a full CV; it produced fake peaks on a blank). (2) forward peak = scipy.signal.find_peaks with prominence >= max(10% of current range, 5x noise),
 3% of the window excluded at each vertex; no peak -> peak_found=False, E_onset = NaN ("undefined"), explicit
 interpretation; app shows a warning and "—" (no onset line / peak star). (3) metal-free C_dl = median
 (I_fwd - I_bwd)/(2 nu) in a double-layer window (default central 50%, or dl_window=(E1, E2)); net peak current
@@ -271,8 +296,8 @@ against a straight forward-branch baseline in that window. New options: dl_windo
 peak_noise_factor; new result fields: peak_found, dl_window.
 **Inspired by:** ixdat CyclicVoltammogram.calc_capacitance (MIT), PyVoltammetry FittingDoubleLayer (MIT),
 voltcycle (branch split + edge trim before peak search).
-**Tested on:** koh_50mVs.idf / koh_ipa_50mVs.idf (private; area 0.1256 cm2): no anodic peak, E_onset undefined,
-C_dl 0.2304 / 0.1239 mF/cm2 (before: fake peaks at 0.13 / 0.33 V_RHE). Synthetic: Pt peak 0.600 V, carbon peak
+**Tested on:** the author's private files: no anodic peak, E_onset undefined, C_dl as computed by hand
+(before: fake peaks). Synthetic: Pt peak 0.600 V, carbon peak
 0.805 V, rising-without-peak and noisy cases -> no peak. New tests 8 failed before, 8 passed after.
 Full suite 228 passed; ruff All checks passed!; AppTest 0 exceptions.
 **Not fixed here:** B5 (backward peak I_b for Pt -> I_f/I_b always NaN); see ROADMAP.md.
@@ -281,15 +306,15 @@ Full suite 228 passed; ruff All checks passed!; AppTest 0 exceptions.
 **Date:** 2026-10-09
 **Files changed:** eisforge/analysis/cv_analyzer.py, tests/test_cv_orientation.py (new)
 **What it does:** the old rule flipped the current when |I| at the low-E end of the forward sweep exceeded |I|
-at the high-E end, so a full CV starting at the cathodic limit (normal in KOH) was inverted and a cathodic
-current was reported as the anodic peak (1 M KOH blank: "peak" at the lower vertex, -1.087 V vs Ag/AgCl).
+at the high-E end, so a full CV starting at the cathodic limit (normal in alkaline media) was inverted and a
+cathodic current was reported as the anodic peak (on a blank: "peak" at the lower vertex).
 New `current_convention` = "auto" (default) | "iupac" | "polarographic". "auto" on a closed CV uses the sign
 of the loop area (closed-path integral of I dE), decided on the raw current before iR/smoothing/background;
 open paths keep the pre-patch35 rule. The result gains `current_sign_flipped` and `current_convention_used`.
 Design informed by SoftPotato (explicit `anodic_positive`, IUPAC default) and ixdat (assumes the instrument
 convention); EISForge offers both automatic detection and an explicit override.
-**Tested on:** koh_50mVs.idf / koh_ipa_50mVs.idf (private) normal and with negated current: correct
-orientation in all cases; noble-metal-path forward maximum moved from the cathodic vertex to +0.192 V / +0.357 V.
+**Tested on:** the author's private files, normal and with negated current: correct orientation in all cases;
+noble-metal-path forward maximum moved from the cathodic vertex to the anodic side.
 Synthetic Pt-like CVs (incl. I_b > I_f and cycles starting at the upper vertex): correct in both signs.
 New tests: 12 failed before, 12 passed after. Full suite 220 passed; ruff All checks passed!;
 AppTest 0 exceptions.
@@ -305,8 +330,8 @@ absolute potential vs the reference electrode (= column 1 + OCP). `_load_ivium_c
 `metadata["ocp_V"]`). The CV-tab status line shows `E vs ref (OCP ...)`. If the scan was wrt OCP but column 3 is
 missing, column 1 is kept and an explicit warning is shown. Side effect (intended): LSV (incl. blank subtraction)
 and ECSA tabs now also get absolute potentials. Windows typed earlier from the old relative axis must be re-entered.
-**Tested on:** koh_50mVs.idf -> E -1.08720..+0.212072 V vs Ag/AgCl (3 M KCl), OCP -0.287 V;
-koh_ipa_50mVs.idf -> E -0.922795..+0.376479 V, OCP -0.123 V (private files, 1 M KOH / + 1 M IPA, 50 mV/s).
+**Tested on:** the author's private files: potential range vs reference and OCP equal to the raw file
+values.
 Before patch: 6 new tests failed (control passed); after: 7 passed. Full suite 208 passed;
 ruff All checks passed!; AppTest 0 exceptions.
 **Not fixed here:** B3 (sign detection) and B4 (peak/background) in cv_analyzer.py; see ROADMAP.md.
@@ -328,14 +353,13 @@ full suite 201 passed; ruff All checks passed!; AppTest 0 exceptions.
 **Date:** 2026-10-09
 **Files changed:** app.py, tests/test_ivium_cv_units.py (new)
 **What it does:** `_load_ivium_cv` no longer derives a multiplier from the hardware "Current Range"
-(100uA -> x0.001 made 2.31e-6 A appear as 2.31e-9 "mA"). Ivium .idf current is always amperes, so a
+(100uA -> x0.001 made a microampere current appear 10^6 times too small). Ivium .idf current is always amperes, so a
 constant x1000 (A -> mA) is used; the range string is kept in `meta["_current_range"]` for reference.
 Unused `_parse_ivium_current_unit` removed. Affects CV, LSV and ECSA tabs (all use `_parse_idf_cached`).
 New AppTest-based tests upload an .idf into the CV tab: synthetic file for 100uA/1mA/10nA ranges
-(always runs) + real 1 M KOH file (runs only when EISFORGE_LOCAL_DATA is set; data kept outside the repo).
-**Tested on:** koh_50mVs.idf (1 M KOH, Ag/AgCl 3 M KCl, 50 mV/s; private) -> I_max 2.30957e-3 mA,
-I_min -5.04540e-3 mA (raw file: +2.30957E-06 / -5.04540E-06 A). Before patch: 4 new tests failed
-(2.31e-09); after: 4 passed. Full suite 201 passed; ruff All checks passed; AppTest app.py + 3 pages 0 exceptions.
+(always runs) + a private real file (runs only when EISFORGE_LOCAL_DATA is set; data kept outside the repo).
+**Tested on:** the author's private file: I_max and I_min in mA equal the raw file values in A x 1000.
+Before patch: 4 new tests failed (10^6 too small); after: 4 passed. Full suite 201 passed; ruff All checks passed; AppTest app.py + 3 pages 0 exceptions.
 check_idf_current_range.py: all files store amperes.
 **Not fixed here:** B2 (potential relative to OCP), B3 (sign detection), B4 (peak/background) — see ROADMAP.md.
 
@@ -587,12 +611,12 @@ reasoning, never in execution.
 - All three _onset_* methods (tangent, threshold, derivative) and forward peak-finding (np.argmax(i_fwd)) now receive positive-up current, matching their internal assumptions.
 
 **Tested on:**
-- BCN\\-0.7-1V 50mv.s 100microLSV.idf (real Ivium data) -> sign quirk detected: |I|_lo=7.6e-4 > |I|_hi=2.4e-4 -> FLIP triggered
+- a private real Ivium LSV file -> sign quirk detected (|I| at the low-E end > |I| at the high-E end) -> FLIP triggered
 - Synthetic inverted CV (known E_onset=0.650 V): old logic -> E_onset=0.060 V (error 590 mV, at baseline edge); new logic -> E_onset=0.542 V (error 108 mV, within tangent-method tolerance)
 - Forward peak: old 2.01 mA @ 0.105 V (baseline max) -> new 1.01 mA @ 0.986 V (faradaic peak)
 - Backward peak sign: old +0.508 mA -> new -0.508 mA (cathodic correct)
 
-> **Addendum (2026-07-09):** the file used for validation (`...100microLSV.idf`) is a single-sweep LSV file per its filename — the backward-sweep sign/peak fix (`i_bwd`, `argmin`) was validated only on synthetic data, not on real CV backward-sweep data. A genuine dual-sweep CV file was later found (B3C `CV -0.05 -0.15 V 10 mV.S`) but its forward scan is capacitive-dominated with no faradaic wave, so it doesn't validate the backward-sweep peak logic either. This remains an open validation gap.
+> **Addendum (2026-07-09):** the file used for validation is a single-sweep LSV file — the backward-sweep sign/peak fix (`i_bwd`, `argmin`) was validated only on synthetic data, not on real CV backward-sweep data. A genuine dual-sweep CV file was later found but its forward scan is capacitive-dominated with no faradaic wave, so it doesn't validate the backward-sweep peak logic either. This remains an open validation gap.
 
 ---
 
@@ -616,12 +640,12 @@ reasoning, never in execution.
   5×-sigma convention in LSV's `_threshold` method. However, testing on
   all 8 real electrochemistry files (3 faradaic CVs, 2 capacitive CVs,
   2 LSVs, 1 noise LSV) showed that gradient SNR was <1× for EVERY file,
-  including the strong IPA oxidation wave with I SNR > 11×. The reason:
+  including the strongest oxidation wave with I SNR > 11×. The reason:
   differentiation amplifies point-to-point noise by 1/ΔE (~100× at 0.01 V
   step) while gradual faradaic waves (Tafel slope 60–120 mV/dec) spread
   their gradient over 20–40 points. The gradient SNR metric cannot
   distinguish signal from noise at any sensible threshold for CV data.
-- Current-domain SNR (I span / I noise std) also failed: it passed the BCN
+- Current-domain SNR (I span / I noise std) also failed: it passed a
   noise-only file (I SNR = 6×), so it is not discriminative either.
 - The LSV analyzer has no SNR guard in `_tangent` — it relies on the
   fallback chain and edge guard. The CV analyzer already has these same
@@ -643,23 +667,14 @@ reasoning, never in execution.
   in the project has k within 5 points of the peak — alcohol oxidation
   waves are inherently gradual with margins of 40–144 points).
 
-**Validated on 8 real files (all 8 classified correctly):**
-
-| File | k | peak | margin | Tangent? |
-|---|---|---|---|---|
-| B4C IPA (strong faradaic CV) | 36 | 180 | 144 | YES — onset=-0.4983 V |
-| 1M-100cycle (strong CV) | 32 | 118 | 86 | YES — onset=0.0665 V |
-| BCN -0.5-1V (low-signal CV, µA) | 110 | 150 | 40 | YES — onset=-0.2183 V |
-| B3C CV (moderate, capacitive fwd) | 45 | 0 | — | REJECT — falls to threshold |
-| B3C 100mV/s capacitive | 19 | 0 | — | REJECT — falls to threshold |
-| B3C 10mV/s capacitive | 15 | 0 | — | REJECT — falls to threshold |
-| BCN -0.7-1V LSV (noise) | 84 | 0 | — | REJECT — falls to threshold |
-| B3C LSV 5mV/s wide | 38 | 0 | — | REJECT — falls to threshold |
+**Validated on 8 private real files (all 8 classified correctly):** the 3 CVs with a faradaic wave
+(strong, strong, low-signal) took the tangent method; the 5 capacitive or noise-only files were rejected
+and fell back to the threshold method. File names and values are kept with the private data.
 
 **Note on smoothing interaction:**
 - The Savitzky-Golay filter (default `smoothing=True`) distorts the current
-  enough to shift the onset in some cases (e.g., B4C IPA: E_onset shifts
-  from -0.4983 V to -0.6400 V, which triggers the edge guard). This is a
+  enough to shift the onset in some cases (on one private file the shift
+  triggered the edge guard). This is a
   pre-existing interaction with the window method, not specific to this
   patch. The LSV analyzer does not apply SG filtering before onset detection.
   Users seeing unexpected threshold fallbacks should try `smoothing=False`.
@@ -689,10 +704,8 @@ patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and vali
 - Includes a TODO comment documenting the cathodic-sign-convention gap: tangent uses argmax(dj)/argmax(current) (anodic), threshold uses `current > baseline + threshold` (anodic), derivative uses `d2[:peak]` (anodic peak shape). For a cathodic backward wave, argmin / `current < -threshold` / `d2[peak:]` would be needed. This is currently moot because `analyze()` never calls onset on `i_bwd`.
 - Scoped to baseline plumbing only — does NOT add backward-onset computation to `analyze()` and does NOT expose backward onset in the UI.
 
-**Tested on:**
-- B4C IPA 50mV/s (idf):   baseline 0.032 → −0.038 mA, forward onset −0.4983 V (unchanged)
-- B2C ETOH 5mV/s (idf):   baseline 0.035 → −0.069 mA, forward onset 1.0000 V (unchanged)
-- BCN −0.5-1V 100µA (idf): baseline 0.00023 → −0.00048 mA, forward onset −0.2183 V (unchanged)
+**Tested on:** 3 private real files: the backward baseline moved to the quiescent tail as intended;
+forward onset unchanged on all 3.
 
 ---
 
@@ -711,14 +724,12 @@ patch21's backward PEAK detection (`argmin` on `i_bwd`) remains correct and vali
   specified bounds (catches config errors before they produce silently bad CIs).
 
 **Tested on:**
-6 real HBC-4 IPA+H2SO4 spectra (0.25–0.92 V). TRF initial-fit Rs matches
-known ~25.5 Ω thesis value at the two extremes (0.25V: 25.7 Ω, 0.92V:
-25.2 Ω).
+6 private real spectra (one sample, six potentials). TRF initial-fit Rs matches
+the known circuit-fit value at the two extreme potentials.
 
 **Known limitation — bimodality at all potentials:**
 Bootstrap Rs samples remain substantially bimodal after modulus weighting
-at all 6 potentials — 54% of refits land at Rs=0 for 0.25V (median=0.00),
-42% for 0.92V (median=4.99), ~50% for mid-potential files. This is genuine
+at all 6 potentials — about half of the refits land at Rs = 0. This is genuine
 optimisation-landscape multimodality (confirmed independently by DRT and
 KK's own struggles on the same spectra), not a fixable weighting or bounds
 bug.  Root cause: wide |Z| dynamic range (~3 decades).  Best-fit point
@@ -744,15 +755,14 @@ until further work addresses the multimodality directly.
   cite accordingly if used in a thesis/publication.
 
 **Tested on:**
-Same 6 HBC-4 IPA+H2SO4 spectra. R_ohm converged to a tight **27.0–29.4 Ω**
-band across ALL 6 potentials after modulus weighting was added — matching
-raw high-frequency Z_real (28.4–28.8 Ω) and independent of the thesis
-Rs~25.5 Ω CNLS result.  This is the strongest independent cross-validation
+Same 6 private spectra. R_ohm converged to a tight band across ALL 6
+potentials after modulus weighting was added — matching the raw
+high-frequency Z_real and independent of the CNLS circuit-fit result.  This is the strongest independent cross-validation
 of the three new tools.
 
 **Known limitation — max_res:**
 `max_res` (single-point modulus-normalised residual) still exceeds the 1%
-threshold on most files (9–102%) — caused by localised high-frequency
+threshold on most files — caused by localised high-frequency
 scatter in the raw data, not a fit-quality issue.  The KK "verdict"
 (PASS/FAIL) should not be over-interpreted on these data; report mu and
 R_ohm as the meaningful diagnostic outputs, not the binary verdict.
@@ -774,25 +784,23 @@ R_ohm as the meaningful diagnostic outputs, not the binary verdict.
 - Post-hoc peak finding on γ(ln τ).
 
 **Tested on:**
-Same 6 HBC-4 IPA+H2SO4 spectra. R_inf recovered 19.8 Ω (0.25V) and
-31.0 Ω (0.92V) — same ballpark as KK/bootstrap/raw values at those two
-potentials. Main DRT peak at f≈2–11 Hz for these spectra.
+Same 6 private spectra. R_inf at the two extreme potentials is in the same
+ballpark as the KK/bootstrap/raw values there.
 
 **Known limitation — mid-potential bound saturation:**
-For the 4 mid-potential files (0.47–0.82 V), the bounded solver hits the
+For the 4 mid-potential files, the bounded solver hits the
 R_inf = 0 lower bound — the regularised inverse problem cannot extract a
 positive R_inf from these data without further tuning (L-curve / λ
 selection may need refinement).  Not resolved in this patch; report DRT
-R_inf only for 0.25V/0.92V-type spectra until then.
+R_inf only for well-conditioned spectra until then.
 
 ### Cross-tool summary
 
 Three independent methods (raw high-frequency impedance reading,
-KK-fitted R_ohm, DRT R_inf, and bootstrap Rs) agree within ~±5 Ω of
-a 25–29 Ω range at the two best-conditioned potentials (0.25 V, 0.92 V)
-tested against this project's 6-file HBC-4 IPA+H2SO4 dataset, supporting
-the thesis's existing Rs ≈ 25.5 Ω circuit-fit result.  Mid-potential
-spectra (0.47–0.82 V) show wide |Z| dynamic range that limits all three
+KK-fitted R_ohm, DRT R_inf, and bootstrap Rs) agree within a few ohms
+at the two best-conditioned potentials of the author's private 6-spectrum
+set, supporting the existing circuit-fit Rs.  Mid-potential
+spectra show wide |Z| dynamic range that limits all three
 model-free/statistical methods' reliability there — this is a data
 characteristic, not a flaw in the existing CNLS circuit fit (which does
 not suffer the same conditioning issue, fitting Rs and Rct simultaneously

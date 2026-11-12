@@ -5,16 +5,13 @@ with NaN outside the blank's range instead of silent clamping.
 Real-pair tests run only when EISFORGE_LOCAL_DATA points to the private data folder.
 """
 
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 from eisforge.data.cv_data import CVData
+from tests._private import private_file, private_refs
 
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
-OFF_RHE = 0.210 + 0.0592 * 14          # Ag/AgCl (3 M KCl) -> RHE in 1 M KOH
 
 
 def _cv(lo=-0.8, hi=0.5, step=0.01, offset_mA=0.0, start_at_top=False, sr=50.0, ocp=None):
@@ -92,19 +89,18 @@ def test_from_ivium_synthetic(tmp_path):
     assert cv.meta["ocp_V"] == pytest.approx(-0.2, abs=1e-6)
 
 
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
 def test_real_pair_net_current():
-    koh, ipa = Path(LOCAL) / "koh_50mVs.idf", Path(LOCAL) / "koh_ipa_50mVs.idf"
-    if not (koh.exists() and ipa.exists()):
-        pytest.skip("private files not found")
-    sample, blank = CVData.from_ivium(ipa), CVData.from_ivium(koh)
+    # file names, RHE offset and hand-computed values: reference_values.json (private)
+    folder, case = private_refs("cv_pair")
+    sample = CVData.from_ivium(private_file(folder, case["sample"]))
+    blank = CVData.from_ivium(private_file(folder, case["blank"]))
     r = sample.subtract(blank)
     fwd = sample.branches()[0]
-    e_rhe = sample.potential_V[fwd.index] + OFF_RHE
+    e_rhe = sample.potential_V[fwd.index] + case["e_rhe_offset"]
     net_uA = r.net_mA[fwd.index] * 1e3
-    for e_target, expected in ((0.30, -0.613), (0.70, -0.236)):     # hand-computed earlier
+    for e_target, expected in case["net_uA_at"]:                    # hand-computed earlier
         j = int(np.argmin(np.abs(e_rhe - e_target)))
         assert net_uA[j] == pytest.approx(expected, abs=0.02)
     assert np.nanmax(net_uA) < 0                     # no oxidation current above the blank
-    assert r.overlap_fraction == pytest.approx(0.873, abs=0.01)
-    assert any("OCP differs by 165 mV" in w for w in r.warnings)
+    assert r.overlap_fraction == pytest.approx(case["overlap_fraction"], abs=0.01)
+    assert any(case["ocp_warning"] in w for w in r.warnings)

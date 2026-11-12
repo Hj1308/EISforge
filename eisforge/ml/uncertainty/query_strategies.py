@@ -15,7 +15,7 @@ Available strategies:
 
 For EISForge the recommended strategy is:
     UncertaintySampling for everyday use
-    BALDStrategy        for careful scientific data collection (B4C, new catalysts)
+    BALDStrategy        for careful scientific data collection (new catalysts)
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ class BALDStrategy(QueryStrategy):
     disagree → this is a genuinely informative region for learning.
 
     When to use:
-    - For B4C and new metal-free catalysts (novel regime)
+    - For new metal-free catalysts (novel regime)
     - When you want to maximize information gain with minimum labels
     - When labeling is expensive (requires careful CNLS fitting)
 
@@ -305,7 +305,7 @@ def recommend_strategy(catalyst_type: str, pool_size: int) -> str:
     str — strategy name.
     """
     if catalyst_type == "metal_free":
-        # B4C, N-doped C: novel regime, use BALD for max information gain
+        # metal-free (e.g. N-doped C): novel regime, use BALD for max information gain
         return "bald"
     elif pool_size < 20:
         # Not enough labeled data yet — pure uncertainty is best

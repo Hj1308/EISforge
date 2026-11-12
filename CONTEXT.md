@@ -110,7 +110,7 @@ EISforge/
 - **BJH**: Barrett-Joyner-Halenda — pore size distribution
 - **Band edge**: Ecb = X - Ec - 0.5·Eg; Evb = Ecb + Eg (NEXT MODULE to build)
 - **Mott-Schottky**: Flat-band potential analysis for semiconductors
-- **BCN / g-C3N4**: Boron carbon nitride / graphitic carbon nitride — target materials
+- **BCN / g-C3N4**: Boron carbon nitride / graphitic carbon nitride — example entries in the band-edge materials database
 
 ### EIS-GPT (ML Module)
 - **EIS-GPT**: 6-layer Transformer encoder for circuit classification + parameter regression

@@ -87,7 +87,7 @@ from eisforge.analysis.cv_analyzer import CVAnalyzer, ElectrolyteInfo
 
 analyzer = CVAnalyzer(
     scan_rate=50,                      # mV/s
-    electrode_area=0.1225,             # cm²
+    electrode_area=0.0707,             # cm² (3 mm disk)
     ecsa=0.55,                         # cm², e.g. from H-UPD; not the geometric area
     catalyst_type="noble_metal",
     electrolyte=ElectrolyteInfo("alkaline", "KOH", 1.0),
@@ -118,13 +118,13 @@ from eisforge.analysis.lsv_analyzer import LSVAnalyzer, ElectrolyteInfo
 
 analyzer = LSVAnalyzer(
     scan_rate=5,                       # mV/s — use ≤5 for reliable Tafel
-    electrode_area=0.1225,             # cm²
+    electrode_area=0.0707,             # cm² (3 mm disk)
     catalyst_type="carbon_material",
     electrolyte=ElectrolyteInfo("acidic", "H2SO4", 0.5),
     equilibrium_potential=None,        # provide E_eq to compute a true j₀
 )
-E, I = LSVAnalyzer.load_csv("hbc4_lsv.csv")
-result = analyzer.analyze(E, I, r_s_ohms=25.5)
+E, I = LSVAnalyzer.load_csv("my_lsv.csv")
+result = analyzer.analyze(E, I, r_s_ohms=20.0)
 
 print(result.tafel_slope, "mV/dec",
       "| R² =", result.tafel_r_squared,

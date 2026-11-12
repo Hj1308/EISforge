@@ -3,8 +3,8 @@ Active Learner — Intelligent Data Acquisition for EIS-GPT.
 Author: Hoda Jafari | May 2026
 
 The model tells you WHICH experiment to label next, based on where it is most uncertain.
-For B4C: model will flag high uncertainty on first encounter → guides you to collect
-exactly the data needed to improve B4C predictions.
+For a new catalyst class: the model flags high uncertainty on first encounter → guides you to
+collect exactly the data needed to improve predictions for it.
 
 Workflow:
   1. Upload EIS spectrum

@@ -8,18 +8,18 @@ RHE is at -0.059*pH vs SHE, so E_RHE = E_meas + E_ref + 0.059*pH, and + 0 for RH
 """
 
 import json
-import os
 import re
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 from eisforge.analysis.cv_analyzer import CATALYST_METAL_FREE
 from eisforge.analysis.lsv_analyzer import LSVAnalyzer
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 
 
 # ── static guard: no hand-written RHE shift left in app.py ──────────────────
@@ -140,13 +140,11 @@ def test_lsv_no_onset_line_without_onset():
 
 
 # ── real data (private) ──────────────────────────────────────────────────────
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
 def test_real_metal_free_lsv_has_no_zero_cross():
     from eisforge.data.cv_data import CVData
-    p = Path(LOCAL) / "koh_ipa_lsv_5mVs.idf"
-    if not p.exists():
-        pytest.skip("private file not found")
-    S = CVData.from_ivium(p)
-    r = _lsv(electrode_area=0.1256, e_ref_vs_rhe=0.210).analyze(S.potential_V, S.current_mA)
+    folder, case = private_refs("lsv_pair")       # names and conditions: reference_values.json
+    S = CVData.from_ivium(private_file(folder, case["sample"]))
+    r = _lsv(electrode_area=case["area_cm2"],
+             e_ref_vs_rhe=case["e_ref_vs_rhe"]).analyze(S.potential_V, S.current_mA)
     assert not r.onset_found
-    assert np.isnan(r.e_onset_zerocross)          # was 0.769 V_RHE before patch40
+    assert np.isnan(r.e_onset_zerocross)          # before patch40 a zero-cross onset was reported

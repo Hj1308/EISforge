@@ -916,14 +916,14 @@ if __name__ == "__main__":
     print(result_pt.summary())
 
     # ── carbon_material in KOH (metal-free, alkaline) ──────────────────────────────────
-    ana_b4c = CVAnalyzer.for_carbon_material(
+    ana_c = CVAnalyzer.for_carbon_material(
         electrolyte_compound="KOH",
         concentration=1.0,
         scan_rate=50,
         electrode_area=0.196,
     )
-    result_b4c = ana_b4c.analyze(E, I)
-    print(result_b4c.summary())
+    result_c = ana_c.analyze(E, I)
+    print(result_c.summary())
 
     # ── PtRu in KOH (alloy, alkaline) ──────────────────────────────────────
     ana_ptru = CVAnalyzer.for_alloy(

@@ -11,23 +11,23 @@ is the absolute potential vs the reference electrode (= column 1 + OCP).
   files (kept outside the repo); otherwise skipped.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 from eisforge.parsers.ivium_parser import IviumIDFParser
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 OCP = -0.25
 
 
 def _idf(wrt_ocp: bool, ncols: int = 3) -> bytes:
     e_up = np.round(np.arange(-0.8, 0.5001, 0.01), 5)
     e = np.concatenate([e_up, e_up[-2:0:-1]])                 # applied, wrt OCP if wrt_ocp
-    i = 2.31e-6 * (e - e.min()) / (e.max() - e.min())         # A
+    i = 2.0e-6 * (e - e.min()) / (e.max() - e.min())          # A
     i[len(e_up):] -= 1.0e-6
     e_abs = e + (OCP if wrt_ocp else 0.0)
     if ncols >= 3:
@@ -92,22 +92,14 @@ def test_parser_potential_column(tmp_path, wrt_ocp, shift):
 
 
 # ── real files (private; skipped unless EISFORGE_LOCAL_DATA is set) ───────────
-REAL = [
-    # file, E_min, E_max (V vs Ag/AgCl 3 M KCl), OCP (V) — from the raw files
-    ("koh_50mVs.idf", -1.08720, 0.212072, -0.2874),
-    ("koh_ipa_50mVs.idf", -0.922795, 0.376479, -0.1227),
-]
-
-
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
-@pytest.mark.parametrize("fname, e_min, e_max, ocp", REAL)
-def test_real_files_absolute_potential(fname, e_min, e_max, ocp):
-    p = Path(LOCAL) / fname
-    if not p.exists():
-        pytest.skip(f"{p} not found")
-    pot, status, _ = _app_upload(p.name, p.read_bytes())
-    assert pot.min() == pytest.approx(e_min, abs=1e-5)
-    assert pot.max() == pytest.approx(e_max, abs=1e-5)
-    assert f"OCP {ocp:+.3f} V" in status
-    ds = IviumIDFParser().parse(p)
-    assert ds.metadata["ocp_V"] == pytest.approx(ocp, abs=5e-4)
+def test_real_files_absolute_potential():
+    # file names, E range (V vs reference) and OCP from the raw files: reference_values.json
+    folder, case = private_refs("cv_files")
+    for entry in case:
+        p = private_file(folder, entry["file"])
+        pot, status, _ = _app_upload(p.name, p.read_bytes())
+        assert pot.min() == pytest.approx(entry["e_min_V"], abs=1e-5)
+        assert pot.max() == pytest.approx(entry["e_max_V"], abs=1e-5)
+        assert f"OCP {entry['ocp_V']:+.3f} V" in status
+        ds = IviumIDFParser().parse(p)
+        assert ds.metadata["ocp_V"] == pytest.approx(entry["ocp_V"], abs=5e-4)

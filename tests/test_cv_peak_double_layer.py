@@ -8,17 +8,17 @@ branches and trim the edges before peak search). Real-file tests need EISFORGE_L
 """
 
 import math
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 from eisforge.analysis.cv_analyzer import CVAnalyzer
 from eisforge.parsers.ivium_parser import IviumIDFParser
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 I_CAP = 0.02            # mA, capacitive half-width of the synthetic CVs
 NU = 0.05               # V/s  -> C_dl = I_CAP / NU = 0.4 mF on 1 cm2
 
@@ -81,21 +81,17 @@ def test_noise_bump_is_not_a_peak():
 
 
 # ── real files (private; skipped unless EISFORGE_LOCAL_DATA is set) ───────────
-REAL = [("koh_50mVs.idf", 0.230), ("koh_ipa_50mVs.idf", 0.124)]   # C_dl mF/cm2, area 0.1256
-
-
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
-@pytest.mark.parametrize("fname, cdl", REAL)
-def test_real_files_no_peak_and_cdl(fname, cdl):
-    p = Path(LOCAL) / fname
-    if not p.exists():
-        pytest.skip(f"{p} not found")
-    ds = IviumIDFParser().parse(p)
-    r = CVAnalyzer(scan_rate=50, electrode_area=0.1256,
-                   catalyst_type="carbon_material").analyze(np.asarray(ds.z_real), np.asarray(ds.z_imag))
-    assert r.peak_found is False                     # before patch36: fake peak at 0.13 / 0.33 V_RHE
-    assert math.isnan(r.e_onset)
-    assert r.cdl_mF_cm2 == pytest.approx(cdl, abs=0.01)
+def test_real_files_no_peak_and_cdl():
+    # file names, scan rate, electrode area and C_dl: reference_values.json (private)
+    folder, case = private_refs("cv_files")
+    for entry in case:
+        ds = IviumIDFParser().parse(private_file(folder, entry["file"]))
+        r = CVAnalyzer(scan_rate=entry["scan_rate_mV_s"], electrode_area=entry["area_cm2"],
+                       catalyst_type="carbon_material").analyze(np.asarray(ds.z_real),
+                                                                np.asarray(ds.z_imag))
+        assert r.peak_found is False                 # before patch36: a fake peak was reported
+        assert math.isnan(r.e_onset)
+        assert r.cdl_mF_cm2 == pytest.approx(entry["cdl_mF_cm2"], abs=0.01)
 
 
 # ── app: no crash and an explicit warning when there is no peak ───────────────

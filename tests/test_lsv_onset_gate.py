@@ -5,17 +5,17 @@ LSV tab's vs-RHE conversion no longer adds the reference offset twice (B7).
 Real-file tests run only when EISFORGE_LOCAL_DATA points to the private data folder.
 """
 
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests._private import private_file, private_refs
+
 from eisforge.analysis.cv_analyzer import CATALYST_METAL_FREE
 from eisforge.analysis.lsv_analyzer import LSVAnalyzer
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
-LOCAL = os.environ.get("EISFORGE_LOCAL_DATA")
 
 
 def _analyzer(**kw):
@@ -139,16 +139,15 @@ def test_app_rhe_help_adds_reference_once():
 
 
 # ── real data (private) ──────────────────────────────────────────────────────
-@pytest.mark.skipif(not LOCAL, reason="EISFORGE_LOCAL_DATA not set (private files)")
 def test_real_metal_free_lsv_has_no_onset():
     from eisforge.data.cv_data import CVData
-    s, b = Path(LOCAL) / "koh_ipa_lsv_5mVs.idf", Path(LOCAL) / "koh_lsv_5mVs.idf"
-    if not (s.exists() and b.exists()):
-        pytest.skip("private files not found")
-    S, B = CVData.from_ivium(s), CVData.from_ivium(b)
-    la = _analyzer(electrode_area=0.1256, e_ref_vs_rhe=0.210)
-    assert not la.analyze(S.potential_V, S.current_mA).onset_found           # raw: max 2 uA/cm2
+    # file names, electrode area, reference offset: reference_values.json (private)
+    folder, case = private_refs("lsv_pair")
+    S = CVData.from_ivium(private_file(folder, case["sample"]))
+    B = CVData.from_ivium(private_file(folder, case["blank"]))
+    la = _analyzer(electrode_area=case["area_cm2"], e_ref_vs_rhe=case["e_ref_vs_rhe"])
+    assert not la.analyze(S.potential_V, S.current_mA).onset_found           # raw: no wave
     En, In = LSVAnalyzer.subtract_blank(S.potential_V, S.current_mA,
-                                        B.potential_V, B.current_mA, e_min=-0.1)
+                                        B.potential_V, B.current_mA, e_min=case["subtract_e_min"])
     r = la.analyze(En, In)                                                   # net < 0 everywhere
-    assert not r.onset_found          # was E_onset = 1.024 V_RHE (tangent) before patch39
+    assert not r.onset_found          # before patch39 a tangent onset was reported here
