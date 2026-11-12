@@ -1,5 +1,35 @@
 # EISForge — Patch Log
 
+## patch53b — ROADMAP data list: confirmed conditions of the multi-cycle .ids file
+**Date:** 2026-11-12
+**Files changed:** ROADMAP.md
+**What it does:** replaces the "electrolyte unknown" line under the .ids entry of the data list with the
+author's confirmed conditions: 0.1 M H2SO4 blank (no alcohol), boron carbide (B4C) working electrode,
+Ag/AgCl 3 M KCl reference, and the approximate RHE frame (pH ~ 1). Documentation only.
+**Tested on:** clean copy of main with patch53 (first download) applied: anchor found once, second run
+stops with STOP. No code changed.
+
+## patch53 — ROADMAP 1.2: CI installs the real dependencies, measures coverage, runs AppTest
+**Date:** 2026-11-12
+**Files changed:** .github/workflows/ci.yml, pyproject.toml, tests/test_app_smoke.py (new), ROADMAP.md
+**What it does:**
+- CI matrix 3.10, 3.11, 3.12, 3.13; `requires-python = ">=3.10"` (decision D5) and matching classifiers.
+- CI installs `pip install -e ".[dev]"` instead of a hand-written list, so streamlit, openpyxl and
+  galvani are present and the AppTest tests stop being skipped. galvani is pinned to the 0.4.1 wheel
+  first: galvani 0.5.0 is sdist-only and fails to build with current setuptools
+  (`AttributeError: install_layout`). Temporary, until decision D1 (ROADMAP 0.9).
+- pytest runs with `--cov=eisforge` (the coverage artifact was always empty) and `--cov-fail-under=39`.
+- New `tests/test_app_smoke.py`: AppTest executes `app.py` and every `pages/*.py`, asserts 0 exceptions
+  (AppTest pattern: Streamlit `streamlit.testing.v1` docs).
+- Lint left as is (still `continue-on-error`): the pre-existing ruff findings are fixed first.
+- ROADMAP: two findings from the author's real files logged as B15 and B16 (not patched).
+**Tested on:** clean copy of the repo, Python 3.13, galvani 0.4.1 wheel: full suite 292 passed,
+20 skipped (was 287; +5 smoke tests); coverage 40.3 %. A duplicate `number_input` pair appended to a
+copy of `app.py` made `test_app_smoke.py` fail with `StreamlitDuplicateElementId` (ROADMAP 1.2
+"done when" criterion, verified locally; the real check is a red CI run on a test PR). No
+detection/fitting logic changed, so no real-data run was needed. CI on 3.10-3.12 not run here;
+check the first GitHub Actions run after the push.
+
 ## patch52 — phase 0 cleanup: one version, no stale files/claims, no default catalyst type
 **Date:** 2026-11-04
 **Files changed:** app.py, eisforge/__init__.py, pyproject.toml, setup.py, .gitattributes (new),
